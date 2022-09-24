@@ -23,6 +23,7 @@ sudo apt install php
 4. Config website
 
     Place `000-default.conf` to `/etc/apache2/sites-available`
+    
     Reload apache2
 
     ```
