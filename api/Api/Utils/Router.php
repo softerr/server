@@ -40,13 +40,13 @@ class Router
         if ($method == 'POST' || $method == 'PUT' || $method == 'PATCH') {
             $contents = file_get_contents('php://input');
             if (strlen($contents) > 0) {
-                if (!Utils::is_content_type('application/json')) {
-                    throw new UnsupportedMediaType(ERR_UNSUPPORTED_CONTENT_FORMAT);
-                }
+                #if (!Utils::is_content_type('application/json')) {
+                #    throw new UnsupportedMediaType(ERR_UNSUPPORTED_CONTENT_FORMAT);
+                #}
 
                 $dto = json_decode($contents);
                 if ($dto == null) {
-                    throw new BadRequest(ERR_BAD_JSON_FORMAT);
+                    //throw new BadRequest(ERR_BAD_JSON_FORMAT);
                 }
             }
         }

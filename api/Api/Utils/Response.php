@@ -45,6 +45,9 @@ define('ERR_NOT_CURRENT_QUESTION', 36);
 
 define('ERR_SEND_EMAIL', 37);
 
+define('ERR_IMG_FORMAT', 38);
+define('ERR_IMG_SIZE', 39);
+
 class ErrorResponseBody
 {
     public int $status;
@@ -153,6 +156,13 @@ class UnsupportedMediaType extends Response
     public function __construct(int $code, string $message = null)
     {
         parent::__construct(415, new ErrorResponseBody(415, "Unsupported Media Type", $code, $message));
+    }
+}
+class UnprocessableEntity extends Response
+{
+    public function __construct(int $code, string $message = null)
+    {
+        parent::__construct(415, new ErrorResponseBody(422, "Unprocessable Entity", $code, $message));
     }
 }
 class InternalServerError extends Response

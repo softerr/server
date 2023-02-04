@@ -94,4 +94,22 @@ class Validator
     {
         return self::int($name, $value);
     }
+
+    public static function image($image)
+    {
+        $name = $image['name'];
+        $size = $image['size'];
+
+        $ext = pathinfo($name, PATHINFO_EXTENSION);
+
+        $validExt = array('jpeg', 'jpg', 'png', 'gif');
+
+        if (!in_array($ext, $validExt)) {
+            throw new UnprocessableEntity(ERR_IMG_FORMAT);
+        }
+
+        if ($size > 5 * 1024 * 1024) {
+            throw new UnprocessableEntity(ERR_IMG_SIZE);
+        }
+    }
 }

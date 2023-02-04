@@ -21,6 +21,7 @@ import UserEdit from "./Components/Admin/UserEdit";
 import Quiz from "./Components/Game/Quiz";
 import GameQuiz from "./Components/Game/GameQuiz";
 import Results from "./Components/Game/Results";
+import Image from "./Components/Image/Image";
 
 const App = () => {
     const dispatch = useDispatch();
@@ -46,6 +47,7 @@ const App = () => {
                 <MyNavbar />
                 <Routes>
                     <Route path="/quiz" element={user.roles ? <Explore /> : <Login />} />
+                    <Route path="/image" element={<Image />} />
                     <Route path="/quiz/login" element={<Login />} />
                     <Route path="/quiz/signup" element={<Signup />} />
                     <Route path="/quiz/activate/:token" element={<ActivateAccount />} />
