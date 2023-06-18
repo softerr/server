@@ -17,15 +17,16 @@ jobs:
 
       - name: Setup
         run: |
-          sudo ./config/setup
+          sudo ./config/setup ${{secrets.TEST_PHP_MYSQL}} ${{secrets.TEST_PHP_JWT}}
 
       - name: Install Postman CLI
         run: |
           curl -o- "https://dl-cli.pstmn.io/install/linux64.sh" | sh
 
       - name: Login to Postman CLI
-        run: postman login --with-api-key ${{ secrets.POSTMAN_API_KEY }}
+        run: postman login --with-api-key ${{secrets.POSTMAN_API_KEY}}
 
       - name: Run API tests
         run: |
           postman collection run "6437677-a11853aa-3132-418c-96a1-ad1ea28b4b23" -e "6437677-ce1121f6-8b26-4f71-8a60-f1039a36f510"
+
