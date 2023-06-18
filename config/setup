@@ -1,0 +1,16 @@
+#!/bin/sh
+
+apt install apache2 php -y
+echo "\n---------------------APACHE---------------------\n"
+apache2 -v
+echo "\n----------------------PHP-----------------------\n"
+php -v
+echo "\n------------------------------------------------\n"
+
+cp -r api /var/www
+cp -r web /var/www
+
+a2enmod rewrite
+cp ./config/000-default.conf /etc/apache2/sites-available
+systemctl reload apache2
+
