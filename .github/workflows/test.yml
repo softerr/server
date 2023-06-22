@@ -17,7 +17,7 @@ jobs:
 
       - name: Setup
         run: |
-          sudo ./config/setup ${{secrets.TEST_PHP_MYSQL}} ${{secrets.TEST_PHP_JWT}}
+          sudo ./config/setup ${{secrets.TEST_PHP_MYSQL}} ${{secrets.TEST_PHP_JWT}} ${{secrets.TEST_EMAIL}} ${{secrets.TEST_EMAIL_PASS}}
 
       - name: Install Postman CLI
         run: |
