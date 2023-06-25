@@ -221,6 +221,8 @@ const LibraryQuestionEdit = () => {
 
     return (
         <Container className="content px-3" style={{ maxWidth: "1000px" }}>
+            {terror && <div>{terror}</div>}
+            {tloading && <div>Loading...</div>}
             <Row style={{ marginBottom: "25px" }}>
                 <Col xs={"auto"} className="d-flex align-items-center justify-content-center">
                     <Button onClick={() => navigate(-1)}>Back</Button>

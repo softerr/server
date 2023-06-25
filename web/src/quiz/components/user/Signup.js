@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Alert, Button, Container, Form, Spinner } from "react-bootstrap";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import myFetch from "../../../hooks/myFetch";
 
 const Signup = () => {
@@ -8,7 +8,6 @@ const Signup = () => {
     const emailRef = useRef(null);
     const passwordRef = useRef(null);
     const repeatPasswordRef = useRef(null);
-    const navigate = useNavigate();
     const [{ creating, created, formErrors }, setState] = useState({ creating: false, created: false, formErrors: {} });
 
     const handleSubmit = e => {

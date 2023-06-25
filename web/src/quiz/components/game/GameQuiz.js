@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { Button, Card, Col, Container, Form, Modal, Row } from "react-bootstrap";
-import { Plus, Trash } from "react-bootstrap-icons";
+import { Button, Col, Container, Form, Row } from "react-bootstrap";
 import { useDispatch, useSelector } from "react-redux";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import myFetch from "../../../hooks/myFetch";

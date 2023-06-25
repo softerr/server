@@ -182,6 +182,12 @@ const UserEdit = () => {
 
     return (
         <Container className="content px-3" style={{ maxWidth: "1000px" }}>
+            {error && <div>{error}</div>}
+            {loading && <div>Loading...</div>}
+            {rerror && <div>{rerror}</div>}
+            {rloading && <div>Loading...</div>}
+            {urerror && <div>{urerror}</div>}
+            {urloading && <div>Loading...</div>}
             <Row style={{ marginBottom: "25px" }}>
                 <Col xs={"auto"} className="d-flex align-items-center justify-content-center">
                     <Button as={Link} to={`/quiz/users`}>

@@ -5,7 +5,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 
 const Results = () => {
     const location = useLocation();
-    const { quizId, gameId } = useParams();
+    const { quizId } = useParams();
 
     return (
         location.state?.gameQuiz && (
