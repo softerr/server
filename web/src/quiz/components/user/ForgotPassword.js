@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Alert, Button, Container, Form, Spinner } from "react-bootstrap";
-import myFetch from "../../../hooks/myFetch";
+import { forgotPassword } from "../../services";
 
 const Login = () => {
     const emailRef = useRef(null);
@@ -21,18 +21,9 @@ const Login = () => {
 
         if (Object.keys(errors).length === 0) {
             setState({ sending: true, sent: false, formErrors: errors });
-            myFetch(
-                "/api/quiz/forgot_password",
-                "POST",
-                undefined,
-                { email },
-                data => {
-                    setState({ sending: false, sent: true, formErrors: {} });
-                },
-                res => {
-                    setState({ sending: false, sent: false, formErrors: {} });
-                    console.log(res);
-                }
+            forgotPassword(email,
+                () => setState({ sending: false, sent: true, formErrors: {} }),
+                () => setState({ sending: false, sent: false, formErrors: {} })
             );
         } else {
             setState({ sending: false, sent: false, formErrors: errors });

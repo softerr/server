@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Container, Spinner } from "react-bootstrap";
 import { useNavigate, useParams } from "react-router-dom";
-import myFetch from "../../../hooks/myFetch";
-import NotFound from "../common/NotFound";
+import NotFound from "../../layouts/NotFound";
+import { activate } from "../../services";
 
 const ActivateAccount = () => {
     const { token } = useParams();
@@ -10,16 +10,11 @@ const ActivateAccount = () => {
     const [failed, setFailed] = useState(false);
 
     useEffect(() => {
-        myFetch(
-            `/api/quiz/activate/${token}`,
-            "POST",
-            undefined,
-            undefined,
-            () => {
-                navigate("/quiz/login", { replace: true, state: { message: "Account was successfully activated." } });
-            },
+        activate(token,
+            () => navigate("/quiz/login", { replace: true, state: { message: "Account was successfully activated." } }),
             res => {
                 setFailed(true);
+                console.log(res);
             }
         );
     }, []);

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import myFetch from "../../../hooks/myFetch";
 import { Button, Card, Col, Container, Row } from "react-bootstrap";
 import { CheckCircle, Eye, XCircle } from "react-bootstrap-icons";
 import { Link } from "react-router-dom";
+import { getModQuizzes } from "../../services";
 
 const Review = () => {
     const cachedUser = useSelector(state => state.user);
@@ -17,21 +17,12 @@ const Review = () => {
             return;
         }
         setState({ loading: true, error: null });
-        return myFetch(
-            `/api/quiz/modquizzes`,
-            "GET",
-            cachedUser.token,
-            undefined,
+        return getModQuizzes(cachedUser.token,
             data => {
                 dispatch({ type: "MOD_QUIZZES_SET", quizzes: data });
                 setState({ quizzes: data, loading: false, error: null });
             },
-            res => {
-                setState({ loading: false, error: res });
-            },
-            msg => {
-                setState({ loading: false, error: msg });
-            }
+            res => setState({ loading: false, error: res })
         );
     }, []);
 

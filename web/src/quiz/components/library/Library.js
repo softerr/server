@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { Button, Card, Col, Container, Modal, Row } from "react-bootstrap";
 import { Eye, PencilSquare, Plus, Trash } from "react-bootstrap-icons";
-import myFetch from "../../../hooks/myFetch";
+import { deleteUserQuiz, getUserQuizzes } from "../../services";
 
 function DeleteModal({ show, onYes, onNo, name }) {
     return (
@@ -34,18 +34,12 @@ const Library = () => {
     const [modal, setModal] = useState({ show: false, id: 0 });
 
     const onModalYes = () => {
-        myFetch(
-            `/api/quiz/users/${cachedUser.id}/quizzes/${modal.id}`,
-            "DELETE",
-            cachedUser.token,
-            undefined,
+        deleteUserQuiz(cachedUser.token, cachedUser.id, modal.id,
             () => {
                 dispatch({ type: "USER_QUIZZES_DEL", userId: cachedUser.id, id: modal.id });
                 setState({ quizzes: cachedUserQuizzes.userQuizzes[cachedUser.id], loading: false, error: null });
             },
-            res => {
-                console.log(res);
-            }
+            res => console.log(res)
         );
         setModal({ show: false });
     };
@@ -56,20 +50,13 @@ const Library = () => {
             return;
         }
         setState({ loading: true, error: null });
-        return myFetch(
-            `/api/quiz/users/${cachedUser.id}/quizzes`,
-            "GET",
-            cachedUser.token,
-            undefined,
+        return getUserQuizzes(cachedUser.token, cachedUser.id,
             data => {
                 dispatch({ type: "USER_QUIZZES_SET", userId: cachedUser.id, userQuizzes: data });
                 setState({ quizzes: data, loading: false, error: null });
             },
             res => {
                 setState({ loading: false, error: res });
-            },
-            msg => {
-                setState({ loading: false, error: msg });
             }
         );
     }, [cachedUser.id]);

@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Col, Form, Row } from "react-bootstrap";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
-import myFetch from "../../../hooks/myFetch";
+import { createOrUpdateQuiz } from "../../services";
 
 const QuizForm = ({ quiz, onSave, onCancel }) => {
-    const user = useSelector(state => state.user);
+    const cachedUser = useSelector(state => state.user);
     const nameRef = useRef(null);
     const descriptionRef = useRef(null);
     const publicRef = useRef(null);
@@ -40,11 +40,7 @@ const QuizForm = ({ quiz, onSave, onCancel }) => {
 
         setFormErrors(errors);
         if (Object.keys(errors).length === 0) {
-            myFetch(
-                quiz.id ? `/api/quiz/users/${quiz.user_id}/quizzes/${quiz.id}` : `/api/quiz/users/${quiz.user_id}/quizzes`,
-                quiz.id ? "PATCH" : "POST",
-                user.token,
-                { name, description, public: isPublic },
+            createOrUpdateQuiz(cachedUser.token, quiz.user_id, quiz.id, { name, description, public: isPublic },
                 data => {
                     dispatch({ type: quiz.id ? "USER_QUIZZES_SET_QUIZ" : "USER_QUIZZES_ADD", quiz: data, userId: data.user_id });
                     onSave(data);

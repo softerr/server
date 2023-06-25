@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Alert, Button, Container, Form } from "react-bootstrap";
 import { useDispatch } from "react-redux";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import myFetch from "../../../hooks/myFetch";
+import { signIn } from "../../services";
 
 const Login = () => {
     const dispatch = useDispatch();
@@ -34,11 +34,7 @@ const Login = () => {
 
         setFormErrors(errors);
         if (Object.keys(errors).length === 0) {
-            myFetch(
-                "/api/quiz/signin",
-                "POST",
-                undefined,
-                { email, password },
+            signIn(email, password,
                 data => {
                     dispatch({ type: "SIGN_IN", token: data.token });
                     navigate("/quiz/");

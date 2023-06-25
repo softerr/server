@@ -3,7 +3,7 @@ import { Button, Card, Col, Container, Dropdown, DropdownButton, Form, Modal, Ro
 import { Plus, Trash } from "react-bootstrap-icons";
 import { useDispatch, useSelector } from "react-redux";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import myFetch from "../../../hooks/myFetch";
+import { createOrUpdateUserQuizQuestion, getTypes } from "../../services";
 
 function DeleteModal({ show, onYes, onNo }) {
     return (
@@ -82,21 +82,12 @@ const LibraryQuestionEdit = () => {
             setTypesState({ types: cachedTypes.types, tloading: false, terror: null });
         } else {
             setTypesState({ tloading: true, terror: null });
-            myFetch(
-                `/api/quiz/types`,
-                "GET",
-                cachedUser.token,
-                undefined,
+            getTypes(cachedUser.token,
                 data => {
                     dispatch({ type: "TYPES_SET", types: data });
                     setTypesState({ types: data, tloading: false, terror: null });
                 },
-                res => {
-                    setTypesState({ tloading: false, terror: res });
-                },
-                msg => {
-                    setTypesState({ tloading: false, terror: msg });
-                }
+                res => setTypesState({ tloading: false, terror: res })
             );
         }
     }, []);
@@ -172,10 +163,7 @@ const LibraryQuestionEdit = () => {
 
         setFormErrors(errors);
         if (Object.keys(errors).length === 2 && errors.answers.length === 0 && errors.corrects.length === 0) {
-            myFetch(
-                questionId ? `/api/quiz/users/${cachedUser.id}/quizzes/${quizId}/questions/${questionId}` : `/api/quiz/users/${cachedUser.id}/quizzes/${quizId}/questions`,
-                questionId ? "PATCH" : "POST",
-                cachedUser.token,
+            createOrUpdateUserQuizQuestion(cachedUser.token, cachedUser.id, quizId, questionId,
                 { question, answers, type_id: questionData.type_id },
                 data => {
                     dispatch({ type: questionId ? "QUESTIONS_SET_QUESTION" : "QUESTIONS_ADD", question: data, userId: cachedUser.id, quizId: quizId });

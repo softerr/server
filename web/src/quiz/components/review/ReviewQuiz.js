@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import myFetch from "../../../hooks/myFetch";
 import { Button, Col, Container, Row } from "react-bootstrap";
-import QuestionCard from "../common/QuestionCard";
+import QuestionCard from "../../layouts/QuestionCard";
+import { getModQuizQuestions, updateModQuiz } from "../../services";
 
 const ReviewQuiz = () => {
     const cachedUser = useSelector(state => state.user);
@@ -20,30 +20,19 @@ const ReviewQuiz = () => {
             return;
         }
         setState({ loading: true, error: null });
-        return myFetch(
-            `/api/quiz/modquizzes/${quizId}/questions`,
-            "GET",
-            cachedUser.token,
-            undefined,
+        return getModQuizQuestions(cachedUser.token, quizId,
             data => {
                 setState({ questions: data, loading: false, error: null });
                 dispatch({ type: "QUESTIONS_SET", quizId: quizId, questions: data });
             },
             res => {
                 setState({ loading: false, error: res });
-            },
-            msg => {
-                setState({ loading: false, error: msg });
             }
         );
     }, [quizId]);
 
     const setStatus = status => {
-        myFetch(
-            `/api/quiz/modquizzes/${quizId}`,
-            "PATCH",
-            cachedUser.token,
-            { status: status },
+        updateModQuiz(cachedUser.token, quizId, { status: status },
             data => {
                 dispatch({ type: "MOD_QUIZZES_SET_QUIZ_STATUS", index: location.state.index, status: data.status });
                 navigate("/quiz/review");

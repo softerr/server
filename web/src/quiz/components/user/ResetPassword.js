@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, Container, Form, Spinner } from "react-bootstrap";
 import { useNavigate, useParams } from "react-router-dom";
-import myFetch from "../../../hooks/myFetch";
-import NotFound from "../common/NotFound";
+import NotFound from "../../layouts/NotFound";
+import { beginResetPassword, resetPassword } from "../../services";
 
 const ActivateAccount = () => {
     const { token } = useParams();
@@ -12,21 +12,11 @@ const ActivateAccount = () => {
     const repeatPasswordRef = useRef(null);
 
     useEffect(() => {
-        myFetch(
-            `/api/quiz/begin_reset_password/${token}`,
-            "POST",
-            undefined,
-            undefined,
-            data => {
-                if (data.token) {
-                    setState({ failed: false, resetToken: data.token, formErrors: {} });
-                } else {
-                    setState({ failed: true, formErrors: {} });
-                }
-            },
-            res => {
-                setState({ failed: true, formErrors: {} });
-            }
+        beginResetPassword(token,
+            data => data.token ?
+                setState({ failed: false, resetToken: data.token, formErrors: {} }) :
+                setState({ failed: true, formErrors: {} }),
+            () => setState({ failed: true, formErrors: {} })
         );
     }, []);
 
@@ -52,17 +42,9 @@ const ActivateAccount = () => {
         }
 
         if (Object.keys(errors).length === 0) {
-            myFetch(
-                `/api/quiz/reset_password/${resetToken}`,
-                "POST",
-                undefined,
-                { password },
-                () => {
-                    navigate("/quiz/login", { replace: true, state: { message: "Password was successfully changed." } });
-                },
-                res => {
-                    console.log(res);
-                }
+            resetPassword(resetToken, password,
+                () => navigate("/quiz/login", { replace: true, state: { message: "Password was successfully changed." } }),
+                res => console.log(res)
             );
         } else {
             setState({ failed: false, formErrors: errors });

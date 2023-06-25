@@ -3,7 +3,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Button, Container } from "react-bootstrap";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, Link } from "react-router-dom";
-import myFetch from "../../../hooks/myFetch";
+import { createQuizGame } from "../../services";
 
 const Quiz = () => {
     const cachedUser = useSelector(state => state.user);
@@ -14,14 +14,8 @@ const Quiz = () => {
     const dispatch = useDispatch();
 
     const handlePlay = e => {
-        myFetch(
-            `/api/quiz/quizzes/${quizId}/games`,
-            "POST",
-            cachedUser.token,
-            {},
-            data => {
-                navigate(`/quiz/quizzes/${quizId}/games/${data.id}`, { state: { gameQuiz: data } });
-            },
+        createQuizGame(cachedUser.token, quizId, {},
+            data => navigate(`/quiz/quizzes/${quizId}/games/${data.id}`, { state: { gameQuiz: data } }),
             res => {
                 if (res.status === 401) {
                     dispatch({ type: "SIGN_OUT" });

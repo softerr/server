@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Button, Col, Container, Modal, Row, Table } from "react-bootstrap";
-import myFetch from "../../../hooks/myFetch";
 import { PencilSquare, Trash } from "react-bootstrap-icons";
 import { Link } from "react-router-dom";
+import { getUserRoles, getUsers } from "../../services";
 
 const DeleteModal = ({ show, onYes, onNo, email }) => {
     return (
@@ -38,38 +38,23 @@ const Users = () => {
             setState({ users: cachedUsers.users, loading: false, error: null });
         }
         setState({ loading: true, error: null });
-        return myFetch(
-            `/api/quiz/users`,
-            "GET",
-            cachedUser.token,
-            undefined,
+        return getUsers(cachedUser.token,
             data => {
                 dispatch({ type: "USERS_SET", users: data });
                 setState({ users: data, loading: false, error: null });
             },
-            res => {
-                setState({ loading: false, error: res });
-            },
-            msg => {
-                setState({ loading: false, error: msg });
-            }
+            res => setState({ loading: false, error: res })
         );
     }, []);
 
     const onModalYes = () => {
-        myFetch(
-            `/api/quiz/users/${modal.id}`,
-            "DELETE",
-            cachedUser.token,
-            undefined,
+        getUserRoles(cachedUser.token, modal.id,
             () => {
                 const newUsers = users.filter(user => user.id !== modal.id);
                 dispatch({ type: "USERS_SET", users: newUsers });
                 setState({ users: newUsers, loading: false, error: null });
             },
-            res => {
-                console.log(res);
-            }
+            res => console.log(res)
         );
         setModal({ show: false });
     };

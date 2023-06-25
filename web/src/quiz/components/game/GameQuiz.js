@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Button, Col, Container, Form, Row } from "react-bootstrap";
 import { useDispatch, useSelector } from "react-redux";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import myFetch from "../../../hooks/myFetch";
+import { updateQuizGame } from "../../services";
 
 const GameQuiz = () => {
     const location = useLocation();
@@ -48,10 +48,7 @@ const GameQuiz = () => {
 
         setFormErrors(errors);
         if (Object.keys(errors).length === 2 && errors.answers.length === 0 && errors.corrects.length === 0) {
-            myFetch(
-                `/api/quiz/quizzes/${quizId}/games/${gameId}`,
-                "PATCH",
-                cachedUser.token,
+            updateQuizGame(cachedUser.token, quizId, gameId,
                 { current_question: gameQuiz.current_question + 1, answers, end: gameQuiz.current_question >= gameQuiz.question_count - 1 },
                 data => {
                     if (gameQuiz.current_question < gameQuiz.question_count - 1) {
@@ -100,10 +97,7 @@ const GameQuiz = () => {
 
         const answers = [];
         answers.push({ id: gameQuiz.question.answers[0].id, user_correct: newValue });
-        myFetch(
-            `/api/quiz/quizzes/${quizId}/games/${gameId}`,
-            "PATCH",
-            cachedUser.token,
+        updateQuizGame(cachedUser.token, quizId, gameId,
             { current_question: gameQuiz.current_question, answers },
             data => {
                 setGameQuiz(data);

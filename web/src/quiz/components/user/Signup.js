@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Alert, Button, Container, Form, Spinner } from "react-bootstrap";
 import { Link } from "react-router-dom";
-import myFetch from "../../../hooks/myFetch";
+import { signUp } from "../../services";
 
 const Signup = () => {
     const usernameRef = useRef(null);
@@ -48,14 +48,8 @@ const Signup = () => {
 
         if (Object.keys(errors).length === 0) {
             setState({ created: true, creating: true, formErrors: {} });
-            myFetch(
-                "/api/quiz/signup",
-                "POST",
-                undefined,
-                username.length === 0 ? { email, password } : { email, username, password },
-                () => {
-                    setState({ created: true, creating: false, formErrors: {} });
-                },
+            signUp(email, username, password,
+                () => setState({ created: true, creating: false, formErrors: {} }),
                 res => {
                     setState({ created: false, creating: false, formErrors: {} });
                     console.log(res);

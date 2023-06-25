@@ -1,9 +1,9 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import myFetch from "../../../hooks/myFetch";
 import { Button, Col, Container, Dropdown, DropdownButton, Form, Modal, Row, Table } from "react-bootstrap";
 import { Trash } from "react-bootstrap-icons";
+import { createOrUpdateUserRole, getRoles, getUserRoles, updateUser, deleteUserRole } from "../../services";
 
 const DeleteModal = ({ show, onYes, onNo, role }) => {
     return (
@@ -52,40 +52,20 @@ const UserEdit = () => {
             setRolesState({ roles: cachedRoles.roles, rloading: false, rerror: null });
         } else {
             setRolesState({ rloading: true, rerror: null });
-            myFetch(
-                `/api/quiz/roles`,
-                "GET",
-                cachedUser.token,
-                undefined,
+            getRoles(cachedUser.token,
                 data => {
                     dispatch({ type: "ROLES_SET", roles: data });
                     setRolesState({ roles: data, rloading: false, rerror: null });
                 },
-                res => {
-                    setRolesState({ rloading: false, rerror: res });
-                },
-                msg => {
-                    setRolesState({ rloading: false, rerror: msg });
-                }
+                res => setRolesState({ rloading: false, rerror: res })
             );
         }
 
         if (!uroles || uroles.length === 0) {
             setUserRolesState({ urloading: true, urerror: null });
-            myFetch(
-                `/api/quiz/users/${userId}/roles`,
-                "GET",
-                cachedUser.token,
-                undefined,
-                data => {
-                    setUserRolesState({ uroles: data, urloading: false, urerror: null });
-                },
-                res => {
-                    setUserRolesState({ urloading: false, urerror: res });
-                },
-                msg => {
-                    setUserRolesState({ urloading: false, urerror: msg });
-                }
+            getUserRoles(cachedUser.token, userId,
+                data => setUserRolesState({ uroles: data, urloading: false, urerror: null }),
+                res => setUserRolesState({ urloading: false, urerror: res })
             );
         }
     }, [userId]);
@@ -113,12 +93,8 @@ const UserEdit = () => {
 
         setFormErrors(errors);
         if (Object.keys(errors).length === 0) {
-            myFetch(
-                `/api/quiz/users/${userId}`,
-                "PATCH",
-                cachedUser.token,
-                { email, username },
-                () => {},
+            updateUser(cachedUser.token, userId, { email, username },
+                () => { },
                 res => {
                     console.log(res);
                 }
@@ -132,14 +108,8 @@ const UserEdit = () => {
             return;
         }
 
-        myFetch(
-            id === 0 ? `/api/quiz/users/${userId}/roles` : `/api/quiz/users/${userId}/roles/${id}`,
-            id === 0 ? "POST" : "PATCH",
-            cachedUser.token,
-            { role_id: role },
-            data => {
-                setUserRolesState({ uroles: uroles.map(urole => (urole.id === data.id || urole.id === 0 ? data : urole)), urloading: false, urerror: null });
-            },
+        createOrUpdateUserRole(cachedUser.token, userId, id, { role_id: role },
+            data => setUserRolesState({ uroles: uroles.map(urole => (urole.id === data.id || urole.id === 0 ? data : urole)), urloading: false, urerror: null }),
             res => {
                 if (res.status === 401) {
                     dispatch({ type: "SIGN_OUT" });
@@ -157,17 +127,9 @@ const UserEdit = () => {
     };
 
     const onModalYes = () => {
-        myFetch(
-            `/api/quiz/users/${userId}/roles/${modal.id}`,
-            "DELETE",
-            cachedUser.token,
-            undefined,
-            () => {
-                setUserRolesState({ uroles: uroles.filter(urole => urole.id !== modal.id), urloading: false, urerror: null });
-            },
-            res => {
-                console.log(res);
-            }
+        deleteUserRole(cachedUser.token, userId, modal.id,
+            () => setUserRolesState({ uroles: uroles.filter(urole => urole.id !== modal.id), urloading: false, urerror: null }),
+            res => console.log(res)
         );
         setModal({ show: false });
     };

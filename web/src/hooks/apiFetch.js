@@ -1,4 +1,4 @@
-const myFetch = (url, method, token, body, onSuccess, onError) => {
+const apiFetch = (url, method, token, body, onSuccess, onError) => {
     const abortCont = new AbortController();
     fetch(url, {
         method,
@@ -23,4 +23,4 @@ const myFetch = (url, method, token, body, onSuccess, onError) => {
     return () => abortCont.abort();
 };
 
-export default myFetch;
+export default apiFetch;

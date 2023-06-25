@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import myFetch from "../../../hooks/myFetch";
 import { Card, Col, Container, Row } from "react-bootstrap";
 import { CheckCircle } from "react-bootstrap-icons";
+import { getQuizzes } from "../../services";
 
 const Explore = () => {
     const cachedUser = useSelector(state => state.user);
@@ -16,21 +16,12 @@ const Explore = () => {
             setState({ quizzes: cachedPublicQuizzes.quizzes, loading: false, error: null });
         }
         setState({ loading: true, error: null });
-        return myFetch(
-            `/api/quiz/quizzes`,
-            "GET",
-            cachedUser.token,
-            undefined,
+        return getQuizzes(cachedUser.token,
             data => {
                 dispatch({ type: "PUBLIC_QUIZZES_SET", quizzes: data });
                 setState({ quizzes: data, loading: false, error: null });
             },
-            res => {
-                setState({ loading: false, error: res });
-            },
-            msg => {
-                setState({ loading: false, error: msg });
-            }
+            res => setState({ loading: false, error: res })
         );
     }, []);
 

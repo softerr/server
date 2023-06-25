@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import myFetch from "../../../hooks/myFetch";
 import { Button, Card, Col, Container, Modal, Row } from "react-bootstrap";
 import QuizForm from "./QuizForm";
-import QuestionCard from "../common/QuestionCard";
+import QuestionCard from "../../layouts/QuestionCard";
+import { deleteUserQuizQuestion, getUserQuizQuestions } from "../../services";
 
 function DeleteModal({ show, onYes, onNo }) {
     return (
@@ -38,19 +38,13 @@ const LibraryQuizEdit = () => {
     const [modal, setModal] = useState({ show: false, id: 0 });
 
     const onModalYes = () => {
-        myFetch(
-            `/api/quiz/users/${cachedUser.id}/quizzes/${quizId}/questions/${modal.id}`,
-            "DELETE",
-            cachedUser.token,
-            undefined,
+        deleteUserQuizQuestion(cachedUser.token, cachedUser.id, quizId, modal.id,
             () => {
                 dispatch({ type: "QUESTIONS_DEL", userId: cachedUser.id, quizId: parseInt(quizId, 10), id: modal.id });
                 dispatch({ type: "USER_QUIZZES_SET_QUESTION_COUNT", userId: cachedUser.id, quizId: parseInt(quizId, 10), question_count: cachedQuestions.questions[quizId].length });
                 setState({ questions: cachedQuestions.questions[quizId], loading: false, error: null });
             },
-            res => {
-                console.log(res);
-            }
+            res => console.log(res)
         );
         setModal({ show: false });
     };
@@ -63,21 +57,12 @@ const LibraryQuizEdit = () => {
                 return;
             }
             setState({ loading: true, error: null });
-            return myFetch(
-                `/api/quiz/users/${cachedUser.id}/quizzes/${quizId}/questions`,
-                "GET",
-                cachedUser.token,
-                undefined,
+            return getUserQuizQuestions(cachedUser.token, cachedUser.id, quizId,
                 data => {
                     setState({ questions: data, loading: false, error: null });
                     dispatch({ type: "QUESTIONS_SET", quizId: quizId, questions: data });
                 },
-                res => {
-                    setState({ loading: false, error: res });
-                },
-                msg => {
-                    setState({ loading: false, error: msg });
-                }
+                res => setState({ loading: false, error: res })
             );
         }
     }, [cachedUser.id, quizId]);
