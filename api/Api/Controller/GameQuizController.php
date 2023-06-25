@@ -27,6 +27,10 @@ class GameQuizController
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
+        if (!isset($dto)) {
+            throw new BadRequest(ERR_NO_DATA);
+        }
+
         $db = new Database();
         $quizRepo = new QuizRepo($db);
         $quiz = $quizRepo->getPublicId($quizId);
