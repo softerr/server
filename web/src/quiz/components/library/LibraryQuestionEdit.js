@@ -3,7 +3,7 @@ import { Button, Card, Col, Container, Dropdown, DropdownButton, Form, Modal, Ro
 import { Plus, Trash } from "react-bootstrap-icons";
 import { useDispatch, useSelector } from "react-redux";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import myFetch from "../../hooks/myFetch";
+import myFetch from "../../../hooks/myFetch";
 
 function DeleteModal({ show, onYes, onNo }) {
     return (

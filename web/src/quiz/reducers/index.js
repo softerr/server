@@ -8,7 +8,7 @@ import UsersReducer from "./UsersReducer";
 import RolesReducer from "./RolesReducer";
 import TypesReducer from "./TypesReducer";
 
-const allReducers = combineReducers({
+const quizReducers = combineReducers({
     user: UserReducer,
     userQuizzes: UserQuizzesReducer,
     questions: QuestionsReducer,
@@ -19,4 +19,4 @@ const allReducers = combineReducers({
     types: TypesReducer,
 });
 
-export default allReducers;
+export default quizReducers;

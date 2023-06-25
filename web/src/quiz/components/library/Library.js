@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { Button, Card, Col, Container, Modal, Row } from "react-bootstrap";
 import { Eye, PencilSquare, Plus, Trash } from "react-bootstrap-icons";
-import myFetch from "../../hooks/myFetch";
+import myFetch from "../../../hooks/myFetch";
 
 function DeleteModal({ show, onYes, onNo, name }) {
     return (

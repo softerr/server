@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Button, Col, Container, Modal, Row, Table } from "react-bootstrap";
-import myFetch from "../../hooks/myFetch";
+import myFetch from "../../../hooks/myFetch";
 import { PencilSquare, Trash } from "react-bootstrap-icons";
 import { Link } from "react-router-dom";
 

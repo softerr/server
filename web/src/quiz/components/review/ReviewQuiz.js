@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import myFetch from "../../hooks/myFetch";
+import myFetch from "../../../hooks/myFetch";
 import { Button, Col, Container, Row } from "react-bootstrap";
-import QuestionCard from "../Common/QuestionCard";
+import QuestionCard from "../common/QuestionCard";
 
 const ReviewQuiz = () => {
     const cachedUser = useSelector(state => state.user);

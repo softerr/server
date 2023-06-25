@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import myFetch from "../../hooks/myFetch";
+import myFetch from "../../../hooks/myFetch";
 import { Button, Card, Col, Container, Row } from "react-bootstrap";
 import { CheckCircle, Eye, XCircle } from "react-bootstrap-icons";
 import { Link } from "react-router-dom";

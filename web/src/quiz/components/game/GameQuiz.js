@@ -3,7 +3,7 @@ import { Button, Card, Col, Container, Form, Modal, Row } from "react-bootstrap"
 import { Plus, Trash } from "react-bootstrap-icons";
 import { useDispatch, useSelector } from "react-redux";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import myFetch from "../../hooks/myFetch";
+import myFetch from "../../../hooks/myFetch";
 
 const GameQuiz = () => {
     const location = useLocation();

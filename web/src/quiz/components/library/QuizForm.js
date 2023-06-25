@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Col, Form, Row } from "react-bootstrap";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
-import myFetch from "../../hooks/myFetch";
+import myFetch from "../../../hooks/myFetch";
 
 const QuizForm = ({ quiz, onSave, onCancel }) => {
     const user = useSelector(state => state.user);

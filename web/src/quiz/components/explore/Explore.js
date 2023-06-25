@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import myFetch from "../../hooks/myFetch";
+import myFetch from "../../../hooks/myFetch";
 import { Card, Col, Container, Row } from "react-bootstrap";
 import { CheckCircle } from "react-bootstrap-icons";
 

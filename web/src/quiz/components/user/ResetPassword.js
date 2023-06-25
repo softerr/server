@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, Container, Form, Spinner } from "react-bootstrap";
 import { useNavigate, useParams } from "react-router-dom";
-import myFetch from "../../hooks/myFetch";
-import NotFound from "../Common/NotFound";
+import myFetch from "../../../hooks/myFetch";
+import NotFound from "../common/NotFound";
 
 const ActivateAccount = () => {
     const { token } = useParams();

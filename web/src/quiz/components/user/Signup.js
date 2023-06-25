@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Alert, Button, Container, Form, Spinner } from "react-bootstrap";
 import { Link, useNavigate } from "react-router-dom";
-import myFetch from "../../hooks/myFetch";
+import myFetch from "../../../hooks/myFetch";
 
 const Signup = () => {
     const usernameRef = useRef(null);

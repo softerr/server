@@ -3,7 +3,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Button, Container } from "react-bootstrap";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, Link } from "react-router-dom";
-import myFetch from "../../hooks/myFetch";
+import myFetch from "../../../hooks/myFetch";
 
 const Quiz = () => {
     const cachedUser = useSelector(state => state.user);
