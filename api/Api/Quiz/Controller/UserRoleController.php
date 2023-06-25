@@ -1,9 +1,9 @@
 <?php
 require_once('Api/Utils/Router.php');
-require_once('Api/Repo/UserRoleRepo.php');
+require_once('Api/Quiz/Repo/UserRoleRepo.php');
 require_once('Api/Utils/Auth.php');
 require_once('Api/Utils/Response.php');
-require_once('Api/Entity/UserRole.php');
+require_once('Api/Quiz/Entity/UserRole.php');
 
 class UserRoleController
 {

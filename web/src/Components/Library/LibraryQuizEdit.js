@@ -84,7 +84,7 @@ const LibraryQuizEdit = () => {
 
     const onSave = data => {
         if (!quizId) {
-            navigate(`/library/${data.id}/edit`, { state: { quiz: data } });
+            navigate(`/quiz/library/${data.id}/edit`, { state: { quiz: data } });
         }
     };
 

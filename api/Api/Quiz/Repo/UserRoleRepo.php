@@ -1,6 +1,6 @@
 <?php
 require_once('Api/Utils/Database.php');
-require_once('Api/Entity/UserRole.php');
+require_once('Api/Quiz/Entity/UserRole.php');
 
 class UserRoleRepo
 {

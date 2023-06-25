@@ -1,10 +1,10 @@
 <?php
 require_once('Api/Utils/Router.php');
-require_once('Api/Repo/UserRepo.php');
-require_once('Api/Repo/LoginTokenRepo.php');
-require_once('Api/Repo/ActivateTokenRepo.php');
-require_once('Api/Repo/PasswordTokenRepo.php');
-require_once('Api/Entity/User.php');
+require_once('Api/Quiz/Repo/UserRepo.php');
+require_once('Api/Quiz/Repo/LoginTokenRepo.php');
+require_once('Api/Quiz/Repo/ActivateTokenRepo.php');
+require_once('Api/Quiz/Repo/PasswordTokenRepo.php');
+require_once('Api/Quiz/Entity/User.php');
 require_once('Api/Utils/Auth.php');
 require_once('Api/Utils/Database.php');
 require_once('Api/Utils/Utils.php');

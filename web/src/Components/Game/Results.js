@@ -78,7 +78,7 @@ const Results = () => {
                         </Button>
                     </Col>
                     <Col xs={"auto"}>
-                        <Button variant="primary" as={Link} to={"/"}>
+                        <Button variant="primary" as={Link} to={"/quiz"}>
                             Close
                         </Button>
                     </Col>

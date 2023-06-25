@@ -53,18 +53,18 @@ const App = () => {
                     <Route path="/quiz/reset_password/:token" element={<ResetPassword />} />
                     {user.roles && (
                         <Fragment>
-                            <Route path="/quiz/quizzes/:quizId" element={<Quiz />} />
-                            <Route path="/quiz/review" element={<Review />} />
-                            <Route path="/quiz/review/:quizId" element={<ReviewQuiz />} />
-                            <Route path="/quiz/quiz/quizzes/:quizId/games/:gameId" element={<GameQuiz />} />
-                            <Route path="/quiz/quizzes/:quizId/games/:gameId/results" element={<Results />} />
-                            <Route path="/quiz/users" element={<Users />} />
-                            <Route path="/quiz/users/:userId/edit" element={<UserEdit />} />
                             <Route path="/quiz/library" element={<Library />} />
                             <Route path="/quiz/library/create" element={<LibraryQuizEdit />} />
                             <Route path="/quiz/library/:quizId/edit" element={<LibraryQuizEdit />} />
                             <Route path="/quiz/library/:quizId/questions/create" element={<LibraryQuestionEdit />} />
                             <Route path="/quiz/library/:quizId/questions/:questionId/edit" element={<LibraryQuestionEdit />} />
+                            <Route path="/quiz/quizzes/:quizId" element={<Quiz />} />
+                            <Route path="/quiz/quizzes/:quizId/games/:gameId" element={<GameQuiz />} />
+                            <Route path="/quiz/quizzes/:quizId/games/:gameId/results" element={<Results />} />
+                            <Route path="/quiz/review" element={<Review />} />
+                            <Route path="/quiz/review/:quizId" element={<ReviewQuiz />} />
+                            <Route path="/quiz/users" element={<Users />} />
+                            <Route path="/quiz/users/:userId/edit" element={<UserEdit />} />
                         </Fragment>
                     )}
                     <Route path="*" element={<NotFound />} />

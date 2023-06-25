@@ -1,10 +1,10 @@
 <?php
 require_once('Api/Utils/Router.php');
-require_once('Api/Repo/QuizRepo.php');
+require_once('Api/Quiz/Repo/QuizRepo.php');
 require_once('Api/Utils/Auth.php');
 require_once('Api/Utils/Response.php');
 require_once('GameQuizController.php');
-require_once('Api/Entity/Quiz.php');
+require_once('Api/Quiz/Entity/Quiz.php');
 
 class PublicQuizController
 {

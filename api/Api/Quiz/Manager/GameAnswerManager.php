@@ -1,7 +1,7 @@
 <?php
 require_once('Api/Utils/Database.php');
 require_once('Api/Utils/Response.php');
-require_once('Api/Repo/GameAnswerRepo.php');
+require_once('Api/Quiz/Repo/GameAnswerRepo.php');
 
 class GameAnswerManager
 {

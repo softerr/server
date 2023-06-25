@@ -1,13 +1,13 @@
 <?php
 require_once('Api/Utils/Router.php');
-require_once('Api/Repo/QuizRepo.php');
-require_once('Api/Repo/QuestionRepo.php');
-require_once('Api/Repo/AnswerRepo.php');
-require_once('Api/Entity/Answer.php');
+require_once('Api/Quiz/Repo/QuizRepo.php');
+require_once('Api/Quiz/Repo/QuestionRepo.php');
+require_once('Api/Quiz/Repo/AnswerRepo.php');
+require_once('Api/Quiz/Entity/Answer.php');
 require_once('Api/Utils/Auth.php');
 require_once('Api/Utils/Utils.php');
 require_once('Api/Utils/Database.php');
-require_once('Api/Manager/AnswerManager.php');
+require_once('Api/Quiz/Manager/AnswerManager.php');
 
 class UserAnswerController
 {

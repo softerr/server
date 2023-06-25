@@ -67,7 +67,7 @@ const GameQuiz = () => {
                             }
                         });
                     } else {
-                        navigate(`/quizzes/${quizId}/games/${gameId}/results`, { state: { gameQuiz: data } });
+                        navigate(`/quiz/quizzes/${quizId}/games/${gameId}/results`, { state: { gameQuiz: data } });
                     }
                 },
                 res => {

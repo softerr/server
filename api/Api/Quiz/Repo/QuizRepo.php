@@ -1,6 +1,6 @@
 <?php
 require_once('Api/Utils/Database.php');
-require_once('Api/Entity/Quiz.php');
+require_once('Api/Quiz/Entity/Quiz.php');
 
 class QuizRepo
 {

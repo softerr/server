@@ -1,11 +1,11 @@
 <?php
 require_once('Api/Utils/Router.php');
-require_once('Api/Repo/GameQuizRepo.php');
-require_once('Api/Repo/GameQuestionRepo.php');
+require_once('Api/Quiz/Repo/GameQuizRepo.php');
+require_once('Api/Quiz/Repo/GameQuestionRepo.php');
 require_once('Api/Utils/Auth.php');
 require_once('Api/Utils/Database.php');
-require_once('Api/Manager/GameAnswerManager.php');
-require_once('Api/Entity/GameAnswer.php');
+require_once('Api/Quiz/Manager/GameAnswerManager.php');
+require_once('Api/Quiz/Entity/GameAnswer.php');
 
 class GameAnswerController
 {

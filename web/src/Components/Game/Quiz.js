@@ -20,7 +20,7 @@ const Quiz = () => {
             cachedUser.token,
             {},
             data => {
-                navigate(`/quizzes/${quizId}/games/${data.id}`, { state: { gameQuiz: data } });
+                navigate(`/quiz/quizzes/${quizId}/games/${data.id}`, { state: { gameQuiz: data } });
             },
             res => {
                 if (res.status === 401) {
