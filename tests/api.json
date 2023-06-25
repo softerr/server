@@ -1,0 +1,1864 @@
+{
+	"info": {
+		"_postman_id": "a11853aa-3132-418c-96a1-ad1ea28b4b23",
+		"name": "api",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "6437677"
+	},
+	"item": [
+		{
+			"name": "quiz",
+			"item": [
+				{
+					"name": "users (login)",
+					"item": [
+						{
+							"name": "login",
+							"item": [
+								{
+									"name": "login",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.test(\"Test\", () => {",
+													"    pm.response.to.have.status(200);",
+													"    pm.expect(pm.response.code).eql(200);",
+													"",
+													"    pm.response.to.have.header('Content-Type');",
+													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+													"    pm.response.to.be.withBody;",
+													"    pm.response.to.be.json;",
+													"",
+													"    const json = pm.response.json();",
+													"    pm.expect(json.token).a('string');",
+													"    pm.environment.set(\"token\", json.token);",
+													"});"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "POST",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"email\": \"test@quizzmaker.com\",\n    \"password\": \"test_password\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{URL}}/api/quiz/signin",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"quiz",
+												"signin"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "list initial",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.test(\"Test\", () => {",
+													"    pm.response.to.have.status(200);",
+													"    pm.expect(pm.response.code).eql(200);",
+													"",
+													"    pm.response.to.have.header('Content-Type');",
+													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+													"    pm.response.to.be.withBody;",
+													"    pm.response.to.be.json;",
+													"",
+													"    const json = pm.response.json();",
+													"    pm.expect(json).an('array');",
+													"    pm.expect(json.length).eql(1);",
+													"    pm.expect(json[0].id).a('number').eql(1);",
+													"    pm.expect(json[0].email).a('string').eql('test@quizzmaker.com');",
+													"    pm.expect(json[0].username).a('string').eql('test');",
+													"    pm.expect(json[0].roles).a('string').eql('1,2,3');",
+													"    pm.expect(json[0].roles_names).a('string').eql('USER,MOD,ADMIN');",
+													"});"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "GET",
+										"header": [],
+										"url": {
+											"raw": "{{URL}}/api/quiz/users",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"quiz",
+												"users"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "signup without email",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.test(\"Test\", () => {",
+													"    pm.response.to.have.status(400);",
+													"    pm.expect(pm.response.code).eql(400);",
+													"",
+													"    pm.response.to.have.header('Content-Type');",
+													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+													"    pm.response.to.be.withBody;",
+													"    pm.response.to.be.json;",
+													"",
+													"    const json = pm.response.json();",
+													"    pm.expect(json.status).a('number').eql(400);",
+													"    pm.expect(json.error).a('string').eql('Bad Request');",
+													"    pm.expect(json.code).a('number').eql(35);",
+													"    pm.expect(json.message).a('string').eql('Email is required');",
+													"});"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "POST",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"username\":\"user\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{URL}}/api/quiz/signup",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"quiz",
+												"signup"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "signup without password",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.test(\"Test\", () => {",
+													"    pm.response.to.have.status(400);",
+													"    pm.expect(pm.response.code).eql(400);",
+													"",
+													"    pm.response.to.have.header('Content-Type');",
+													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+													"    pm.response.to.be.withBody;",
+													"    pm.response.to.be.json;",
+													"",
+													"    const json = pm.response.json();",
+													"    pm.expect(json.status).a('number').eql(400);",
+													"    pm.expect(json.error).a('string').eql('Bad Request');",
+													"    pm.expect(json.code).a('number').eql(35);",
+													"    pm.expect(json.message).a('string').eql('Password is required');",
+													"});"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "POST",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"email\": \"user@quizzmaker.com\",\n    \"username\":\"user\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{URL}}/api/quiz/signup",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"quiz",
+												"signup"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "signup without username",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.test(\"Test\", () => {",
+													"    pm.response.to.have.status(201);",
+													"    pm.expect(pm.response.code).eql(201);",
+													"",
+													"    pm.response.to.have.header('Content-Type');",
+													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+													"    pm.response.to.be.withBody;",
+													"    pm.response.to.be.json;",
+													"",
+													"    const json = pm.response.json();",
+													"    pm.expect(json.id).a('number').eql(2);",
+													"    pm.expect(json.email).a('string').eql('user@quizzmaker.com');",
+													"    pm.expect(json.username).eql(null);",
+													"    pm.expect(json.roles).an('array');",
+													"    pm.expect(json.roles.length).eql(1);",
+													"    pm.expect(json.roles[0]).a('number').eql(1);",
+													"});"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "POST",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"email\": \"user@quizzmaker.com\",\n    \"password\": \"user_password\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{URL}}/api/quiz/signup",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"quiz",
+												"signup"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "edit username",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.test(\"Test\", () => {",
+													"    pm.response.to.have.status(200);",
+													"    pm.expect(pm.response.code).eql(200);",
+													"",
+													"    pm.response.to.have.header('Content-Type');",
+													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+													"    pm.response.to.be.withBody;",
+													"    pm.response.to.be.json;",
+													"",
+													"    const json = pm.response.json();",
+													"    pm.expect(json.id).a('number').eql(2);",
+													"    pm.expect(json.email).a('string').eql('user@quizzmaker.com');",
+													"    pm.expect(json.username).a('string').eql('user');",
+													"    pm.expect(json.roles).a('string').eql('1');",
+													"});"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "PATCH",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"username\": \"user\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{URL}}/api/quiz/users/2",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"quiz",
+												"users",
+												"2"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "list added",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.test(\"Test\", () => {",
+													"    pm.response.to.have.status(200);",
+													"    pm.expect(pm.response.code).eql(200);",
+													"",
+													"    pm.response.to.have.header('Content-Type');",
+													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+													"    pm.response.to.be.withBody;",
+													"    pm.response.to.be.json;",
+													"",
+													"    const json = pm.response.json();",
+													"    pm.expect(json).an('array');",
+													"    pm.expect(json.length).eql(2);",
+													"    pm.expect(json[0].id).a('number').eql(1);",
+													"    pm.expect(json[0].email).a('string').eql('test@quizzmaker.com');",
+													"    pm.expect(json[0].username).a('string').eql('test');",
+													"    pm.expect(json[0].roles).a('string').eql('1,2,3');",
+													"    pm.expect(json[0].roles_names).a('string').eql('USER,MOD,ADMIN');",
+													"",
+													"    pm.expect(json[1].id).a('number').eql(2);",
+													"    pm.expect(json[1].email).a('string').eql('user@quizzmaker.com');",
+													"    pm.expect(json[1].username).a('string').eql('user');",
+													"    pm.expect(json[1].roles).a('string').eql('1');",
+													"    pm.expect(json[1].roles_names).a('string').eql('USER');",
+													"});"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "GET",
+										"header": [],
+										"url": {
+											"raw": "{{URL}}/api/quiz/users",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"quiz",
+												"users"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "delete",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.test(\"Test\", () => {",
+													"    pm.response.to.have.status(204);",
+													"    pm.expect(pm.response.code).eql(204);",
+													"",
+													"    pm.response.to.not.have.header('Content-Type');",
+													"    pm.response.to.not.be.withBody;",
+													"});"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "DELETE",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"email\": \"user@quizzmaker.com\",\n    \"password\": \"user_password\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{URL}}/api/quiz/users/2",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"quiz",
+												"users",
+												"2"
+											]
+										}
+									},
+									"response": []
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "types",
+					"item": [
+						{
+							"name": "list",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Test\", () => {",
+											"    pm.response.to.have.status(200);",
+											"    pm.expect(pm.response.code).eql(200);",
+											"",
+											"    pm.response.to.have.header('Content-Type');",
+											"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+											"    pm.response.to.be.withBody;",
+											"    pm.response.to.be.json;",
+											"",
+											"    const json = pm.response.json();",
+											"    pm.expect(json).an('array');",
+											"    pm.expect(json.length).eql(9);",
+											"    pm.expect(json[0].id).a('number').eql(1);",
+											"    pm.expect(json[0].name).a('string').eql('MULTIPLE_ANSWER');",
+											"    pm.expect(json[0].label).a('string').eql('Multiple answer');",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{URL}}/api/quiz/types",
+									"host": [
+										"{{URL}}"
+									],
+									"path": [
+										"api",
+										"quiz",
+										"types"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "roles",
+					"item": [
+						{
+							"name": "list",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Test\", () => {",
+											"    pm.response.to.have.status(200);",
+											"    pm.expect(pm.response.code).eql(200);",
+											"",
+											"    pm.response.to.have.header('Content-Type');",
+											"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+											"    pm.response.to.be.withBody;",
+											"    pm.response.to.be.json;",
+											"",
+											"    const json = pm.response.json();",
+											"    pm.expect(json).an('array');",
+											"    pm.expect(json.length).eql(3);",
+											"    pm.expect(json[0].id).a('number').eql(1);",
+											"    pm.expect(json[0].name).a('string').eql('USER');",
+											"    pm.expect(json[0].label).a('string').eql('User');",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{URL}}/api/quiz/roles",
+									"host": [
+										"{{URL}}"
+									],
+									"path": [
+										"api",
+										"quiz",
+										"roles"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "quizzes (list)",
+					"item": [
+						{
+							"name": "list empty",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Test\", () => {",
+											"    pm.response.to.have.status(200);",
+											"    pm.expect(pm.response.code).eql(200);",
+											"",
+											"    pm.response.to.have.header('Content-Type');",
+											"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+											"    pm.response.to.be.withBody;",
+											"    pm.response.to.be.json;",
+											"",
+											"    const json = pm.response.json();",
+											"    pm.expect(json).an('array');",
+											"    pm.expect(json.length).eql(0);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{URL}}/api/quiz/quizzes",
+									"host": [
+										"{{URL}}"
+									],
+									"path": [
+										"api",
+										"quiz",
+										"quizzes"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "get empty",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Test\", () => {",
+											"    pm.response.to.have.status(404);",
+											"    pm.expect(pm.response.code).eql(404);",
+											"",
+											"    pm.response.to.have.header('Content-Type');",
+											"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+											"    pm.response.to.be.withBody;",
+											"    pm.response.to.be.json;",
+											"",
+											"    const json = pm.response.json();",
+											"    pm.expect(json.status).a('number').eql(404);",
+											"    pm.expect(json.error).a('string').eql('Not Found');",
+											"    pm.expect(json.code).a('number').eql(20);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{URL}}/api/quiz/quizzes/1",
+									"host": [
+										"{{URL}}"
+									],
+									"path": [
+										"api",
+										"quiz",
+										"quizzes",
+										"1"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "user (create)",
+					"item": [
+						{
+							"name": "quizzes",
+							"item": [
+								{
+									"name": "create",
+									"item": [
+										{
+											"name": "list empty",
+											"event": [
+												{
+													"listen": "test",
+													"script": {
+														"exec": [
+															"pm.test(\"Test\", () => {",
+															"    pm.response.to.have.status(200);",
+															"    pm.expect(pm.response.code).eql(200);",
+															"",
+															"    pm.response.to.have.header('Content-Type');",
+															"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+															"    pm.response.to.be.withBody;",
+															"    pm.response.to.be.json;",
+															"",
+															"    const json = pm.response.json();",
+															"    pm.expect(json).an('array');",
+															"    pm.expect(json.length).eql(0);",
+															"});"
+														],
+														"type": "text/javascript"
+													}
+												}
+											],
+											"request": {
+												"method": "GET",
+												"header": [],
+												"url": {
+													"raw": "{{URL}}/api/quiz/users/1/quizzes",
+													"host": [
+														"{{URL}}"
+													],
+													"path": [
+														"api",
+														"quiz",
+														"users",
+														"1",
+														"quizzes"
+													]
+												}
+											},
+											"response": []
+										},
+										{
+											"name": "create",
+											"event": [
+												{
+													"listen": "test",
+													"script": {
+														"exec": [
+															"pm.test(\"Test\", () => {",
+															"    pm.response.to.have.status(201);",
+															"    pm.expect(pm.response.code).eql(201);",
+															"",
+															"    pm.response.to.have.header('Content-Type');",
+															"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+															"    pm.response.to.be.withBody;",
+															"    pm.response.to.be.json;",
+															"",
+															"    const json = pm.response.json();",
+															"    pm.expect(json.name).a('string').eql('Test');",
+															"    pm.expect(json.description).eql(null);",
+															"    pm.expect(json.public).a('number').eql(1);",
+															"    pm.expect(json.user_id).a('number').eql(1);",
+															"    pm.expect(json.question_count).a('number').eql(0);",
+															"    pm.expect(json.id).a('number').eql(1);",
+															"});"
+														],
+														"type": "text/javascript"
+													}
+												}
+											],
+											"request": {
+												"method": "POST",
+												"header": [],
+												"body": {
+													"mode": "raw",
+													"raw": "{\n    \"name\": \"Test\",\n    \"public\": 1\n}",
+													"options": {
+														"raw": {
+															"language": "json"
+														}
+													}
+												},
+												"url": {
+													"raw": "{{URL}}/api/quiz/users/1/quizzes",
+													"host": [
+														"{{URL}}"
+													],
+													"path": [
+														"api",
+														"quiz",
+														"users",
+														"1",
+														"quizzes"
+													]
+												}
+											},
+											"response": []
+										},
+										{
+											"name": "edit description",
+											"event": [
+												{
+													"listen": "test",
+													"script": {
+														"exec": [
+															"pm.test(\"Test\", () => {",
+															"    pm.response.to.have.status(200);",
+															"    pm.expect(pm.response.code).eql(200);",
+															"",
+															"    pm.response.to.have.header('Content-Type');",
+															"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+															"    pm.response.to.be.withBody;",
+															"    pm.response.to.be.json;",
+															"",
+															"    const json = pm.response.json();",
+															"    pm.expect(json.name).a('string').eql('Test');",
+															"    pm.expect(json.description).a('string').eql('Test quiz');",
+															"    pm.expect(json.public).a('number').eql(1);",
+															"    pm.expect(json.user_id).a('number').eql(1);",
+															"    pm.expect(json.id).a('number').eql(1);",
+															"});"
+														],
+														"type": "text/javascript"
+													}
+												}
+											],
+											"request": {
+												"method": "PATCH",
+												"header": [],
+												"body": {
+													"mode": "raw",
+													"raw": "{\n    \"description\": \"Test quiz\"\n}",
+													"options": {
+														"raw": {
+															"language": "json"
+														}
+													}
+												},
+												"url": {
+													"raw": "{{URL}}/api/quiz/users/1/quizzes/1",
+													"host": [
+														"{{URL}}"
+													],
+													"path": [
+														"api",
+														"quiz",
+														"users",
+														"1",
+														"quizzes",
+														"1"
+													]
+												}
+											},
+											"response": []
+										}
+									]
+								},
+								{
+									"name": "questions",
+									"item": [
+										{
+											"name": "create no answer",
+											"item": [
+												{
+													"name": "create",
+													"item": [
+														{
+															"name": "list empty",
+															"event": [
+																{
+																	"listen": "test",
+																	"script": {
+																		"exec": [
+																			"pm.test(\"Test\", () => {",
+																			"    pm.response.to.have.status(200);",
+																			"    pm.expect(pm.response.code).eql(200);",
+																			"",
+																			"    pm.response.to.have.header('Content-Type');",
+																			"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+																			"    pm.response.to.be.withBody;",
+																			"    pm.response.to.be.json;",
+																			"",
+																			"    const json = pm.response.json();",
+																			"    pm.expect(json).an('array');",
+																			"    pm.expect(json.length).eql(0);",
+																			"});"
+																		],
+																		"type": "text/javascript"
+																	}
+																}
+															],
+															"request": {
+																"method": "GET",
+																"header": [],
+																"url": {
+																	"raw": "{{URL}}/api/quiz/users/1/quizzes/1/questions",
+																	"host": [
+																		"{{URL}}"
+																	],
+																	"path": [
+																		"api",
+																		"quiz",
+																		"users",
+																		"1",
+																		"quizzes",
+																		"1",
+																		"questions"
+																	]
+																}
+															},
+															"response": []
+														},
+														{
+															"name": "create",
+															"event": [
+																{
+																	"listen": "test",
+																	"script": {
+																		"exec": [
+																			"pm.test(\"Test\", () => {",
+																			"    pm.response.to.have.status(201);",
+																			"    pm.expect(pm.response.code).eql(201);",
+																			"",
+																			"    pm.response.to.have.header('Content-Type');",
+																			"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+																			"    pm.response.to.be.withBody;",
+																			"    pm.response.to.be.json;",
+																			"",
+																			"    const json = pm.response.json();",
+																			"    pm.expect(json.type_id).a('number').eql(9);",
+																			"    pm.expect(json.question).a('string').eql('No answer question');",
+																			"    pm.expect(json.quiz_id).a('number').eql(1);",
+																			"    pm.expect(json.id).a('number').eql(1);",
+																			"});"
+																		],
+																		"type": "text/javascript"
+																	}
+																}
+															],
+															"request": {
+																"method": "POST",
+																"header": [],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n    \"type_id\": 9,\n    \"question\": \"No answer question\"\n}",
+																	"options": {
+																		"raw": {
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{URL}}/api/quiz/users/1/quizzes/1/questions",
+																	"host": [
+																		"{{URL}}"
+																	],
+																	"path": [
+																		"api",
+																		"quiz",
+																		"users",
+																		"1",
+																		"quizzes",
+																		"1",
+																		"questions"
+																	]
+																}
+															},
+															"response": []
+														}
+													]
+												},
+												{
+													"name": "answers",
+													"item": [
+														{
+															"name": "list empty",
+															"event": [
+																{
+																	"listen": "test",
+																	"script": {
+																		"exec": [
+																			"pm.test(\"Test\", () => {",
+																			"    pm.response.to.have.status(200);",
+																			"    pm.expect(pm.response.code).eql(200);",
+																			"",
+																			"    pm.response.to.have.header('Content-Type');",
+																			"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+																			"    pm.response.to.be.withBody;",
+																			"    pm.response.to.be.json;",
+																			"",
+																			"    const json = pm.response.json();",
+																			"    pm.expect(json).an('array');",
+																			"    pm.expect(json.length).eql(0);",
+																			"});"
+																		],
+																		"type": "text/javascript"
+																	}
+																}
+															],
+															"request": {
+																"method": "GET",
+																"header": [],
+																"url": {
+																	"raw": "{{URL}}/api/quiz/users/1/quizzes/1/questions/1/answers",
+																	"host": [
+																		"{{URL}}"
+																	],
+																	"path": [
+																		"api",
+																		"quiz",
+																		"users",
+																		"1",
+																		"quizzes",
+																		"1",
+																		"questions",
+																		"1",
+																		"answers"
+																	]
+																}
+															},
+															"response": []
+														},
+														{
+															"name": "create",
+															"event": [
+																{
+																	"listen": "test",
+																	"script": {
+																		"exec": [
+																			"pm.test(\"Test\", () => {",
+																			"    pm.response.to.have.status(201);",
+																			"    pm.expect(pm.response.code).eql(201);",
+																			"",
+																			"    pm.response.to.have.header('Content-Type');",
+																			"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+																			"    pm.response.to.be.withBody;",
+																			"    pm.response.to.be.json;",
+																			"",
+																			"    const json = pm.response.json();",
+																			"    pm.expect(json.answer).eql(null);",
+																			"    pm.expect(json.correct).eql(null);",
+																			"    pm.expect(json.question_id).a('number').eql(1);",
+																			"    pm.expect(json.id).a('number').eql(1);",
+																			"});"
+																		],
+																		"type": "text/javascript"
+																	}
+																}
+															],
+															"request": {
+																"method": "POST",
+																"header": [],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n    \"answer\": \"Answer\"\n}",
+																	"options": {
+																		"raw": {
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{URL}}/api/quiz/users/1/quizzes/1/questions/1/answers",
+																	"host": [
+																		"{{URL}}"
+																	],
+																	"path": [
+																		"api",
+																		"quiz",
+																		"users",
+																		"1",
+																		"quizzes",
+																		"1",
+																		"questions",
+																		"1",
+																		"answers"
+																	]
+																}
+															},
+															"response": []
+														},
+														{
+															"name": "edit answer",
+															"event": [
+																{
+																	"listen": "test",
+																	"script": {
+																		"exec": [
+																			"pm.test(\"Test\", () => {",
+																			"    pm.response.to.have.status(200);",
+																			"    pm.expect(pm.response.code).eql(200);",
+																			"",
+																			"    pm.response.to.have.header('Content-Type');",
+																			"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+																			"    pm.response.to.be.withBody;",
+																			"    pm.response.to.be.json;",
+																			"",
+																			"    const json = pm.response.json();",
+																			"    pm.expect(json.answer).a('string').eql('No Answer');",
+																			"    pm.expect(json.correct).eql(null);",
+																			"    pm.expect(json.question_id).a('number').eql(1);",
+																			"    pm.expect(json.id).a('number').eql(1);",
+																			"});"
+																		],
+																		"type": "text/javascript"
+																	}
+																}
+															],
+															"request": {
+																"method": "PATCH",
+																"header": [],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n    \"answer\": \"No Answer\"\n}",
+																	"options": {
+																		"raw": {
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{URL}}/api/quiz/users/1/quizzes/1/questions/1/answers/1",
+																	"host": [
+																		"{{URL}}"
+																	],
+																	"path": [
+																		"api",
+																		"quiz",
+																		"users",
+																		"1",
+																		"quizzes",
+																		"1",
+																		"questions",
+																		"1",
+																		"answers",
+																		"1"
+																	]
+																}
+															},
+															"response": []
+														}
+													]
+												},
+												{
+													"name": "edit question",
+													"event": [
+														{
+															"listen": "test",
+															"script": {
+																"exec": [
+																	"pm.test(\"Test\", () => {",
+																	"    pm.response.to.have.status(200);",
+																	"    pm.expect(pm.response.code).eql(200);",
+																	"",
+																	"    pm.response.to.have.header('Content-Type');",
+																	"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+																	"    pm.response.to.be.withBody;",
+																	"    pm.response.to.be.json;",
+																	"",
+																	"    const json = pm.response.json();",
+																	"    pm.expect(json.type_id).a('number').eql(9);",
+																	"    pm.expect(json.question).a('string').eql('No Answer Question');",
+																	"    pm.expect(json.quiz_id).a('number').eql(1);",
+																	"    pm.expect(json.id).a('number').eql(1);",
+																	"});"
+																],
+																"type": "text/javascript"
+															}
+														}
+													],
+													"request": {
+														"method": "PATCH",
+														"header": [],
+														"body": {
+															"mode": "raw",
+															"raw": "{\n    \"type_id\": 9,\n    \"question\": \"No Answer Question\"\n}",
+															"options": {
+																"raw": {
+																	"language": "json"
+																}
+															}
+														},
+														"url": {
+															"raw": "{{URL}}/api/quiz/users/1/quizzes/1/questions/1",
+															"host": [
+																"{{URL}}"
+															],
+															"path": [
+																"api",
+																"quiz",
+																"users",
+																"1",
+																"quizzes",
+																"1",
+																"questions",
+																"1"
+															]
+														}
+													},
+													"response": []
+												}
+											]
+										},
+										{
+											"name": "create show answer",
+											"item": [
+												{
+													"name": "create",
+													"item": [
+														{
+															"name": "create",
+															"event": [
+																{
+																	"listen": "test",
+																	"script": {
+																		"exec": [
+																			"pm.test(\"Test\", () => {",
+																			"    pm.response.to.have.status(201);",
+																			"    pm.expect(pm.response.code).eql(201);",
+																			"",
+																			"    pm.response.to.have.header('Content-Type');",
+																			"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+																			"    pm.response.to.be.withBody;",
+																			"    pm.response.to.be.json;",
+																			"",
+																			"    const json = pm.response.json();",
+																			"    pm.expect(json.type_id).a('number').eql(8);",
+																			"    pm.expect(json.question).a('string').eql('Show answer question');",
+																			"    pm.expect(json.quiz_id).a('number').eql(1);",
+																			"    pm.expect(json.id).a('number').eql(2);",
+																			"});"
+																		],
+																		"type": "text/javascript"
+																	}
+																}
+															],
+															"request": {
+																"method": "POST",
+																"header": [],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n    \"type_id\": 8,\n    \"question\": \"Show answer question\"\n}",
+																	"options": {
+																		"raw": {
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{URL}}/api/quiz/users/1/quizzes/1/questions",
+																	"host": [
+																		"{{URL}}"
+																	],
+																	"path": [
+																		"api",
+																		"quiz",
+																		"users",
+																		"1",
+																		"quizzes",
+																		"1",
+																		"questions"
+																	]
+																}
+															},
+															"response": []
+														}
+													]
+												},
+												{
+													"name": "answers",
+													"item": [
+														{
+															"name": "create",
+															"event": [
+																{
+																	"listen": "test",
+																	"script": {
+																		"exec": [
+																			"pm.test(\"Test\", () => {",
+																			"    pm.response.to.have.status(201);",
+																			"    pm.expect(pm.response.code).eql(201);",
+																			"",
+																			"    pm.response.to.have.header('Content-Type');",
+																			"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+																			"    pm.response.to.be.withBody;",
+																			"    pm.response.to.be.json;",
+																			"",
+																			"    const json = pm.response.json();",
+																			"    pm.expect(json.answer).eql('Answer');",
+																			"    pm.expect(json.correct).eql(null);",
+																			"    pm.expect(json.question_id).a('number').eql(2);",
+																			"    pm.expect(json.id).a('number').eql(2);",
+																			"});"
+																		],
+																		"type": "text/javascript"
+																	}
+																}
+															],
+															"request": {
+																"method": "POST",
+																"header": [],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n    \"answer\": \"Answer\"\n}",
+																	"options": {
+																		"raw": {
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{URL}}/api/quiz/users/1/quizzes/1/questions/2/answers",
+																	"host": [
+																		"{{URL}}"
+																	],
+																	"path": [
+																		"api",
+																		"quiz",
+																		"users",
+																		"1",
+																		"quizzes",
+																		"1",
+																		"questions",
+																		"2",
+																		"answers"
+																	]
+																}
+															},
+															"response": []
+														}
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "quizzes (list)",
+					"item": [
+						{
+							"name": "games",
+							"item": [
+								{
+									"name": "create",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.test(\"Test\", () => {",
+													"    pm.response.to.have.status(201);",
+													"    pm.expect(pm.response.code).eql(201);",
+													"",
+													"    pm.response.to.have.header('Content-Type');",
+													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+													"    pm.response.to.be.withBody;",
+													"    pm.response.to.be.json;",
+													"",
+													"    const json = pm.response.json();",
+													"    pm.expect(json.id).a('number').eql(1);",
+													"    pm.expect(json.user_id).a('number').eql(1);",
+													"    pm.expect(json.quiz_id).a('number').eql(1);",
+													"    pm.expect(new Date(json.start)).not.greaterThan(new Date());",
+													"    pm.expect(json.end).eql(null);",
+													"    pm.expect(json.current_question).a('number').eql(0);",
+													"    pm.expect(json.question).an('object');",
+													"    pm.expect(json.question.id).a('number').eql(1);",
+													"    pm.expect(json.question.game_quiz_id).a('number').eql(1);",
+													"    pm.expect(json.question.type_id).a('number').eql(9);",
+													"    pm.expect(json.question.question).a('string').eql('No Answer Question');",
+													"    pm.expect(json.question.answers).an('array');",
+													"    pm.expect(json.question.answers.length).eql(1);",
+													"    pm.expect(json.question_count).a('number').eql(2);",
+													"});"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "POST",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{URL}}/api/quiz/quizzes/1/games",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"quiz",
+												"quizzes",
+												"1",
+												"games"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "update end",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.test(\"Test\", () => {",
+													"    pm.response.to.have.status(200);",
+													"    pm.expect(pm.response.code).eql(200);",
+													"",
+													"    pm.response.to.have.header('Content-Type');",
+													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+													"    pm.response.to.be.withBody;",
+													"    pm.response.to.be.json;",
+													"",
+													"    const json = pm.response.json();",
+													"    pm.expect(json.id).a('number').eql(1);",
+													"    pm.expect(json.user_id).a('number').eql(1);",
+													"    pm.expect(json.quiz_id).a('number').eql(1);",
+													"    pm.expect(new Date(json.start)).not.greaterThan(new Date());",
+													"    pm.expect(new Date(json.end)).not.greaterThan(new Date());",
+													"    pm.expect(new Date(json.start)).not.greaterThan(new Date(json.end));",
+													"    pm.expect(json.current_question).eql(null);",
+													"    pm.expect(json.questions).an('array');",
+													"    pm.expect(json.questions.length).eql(2)",
+													"    pm.expect(json.questions[0].id).a('number').eql(1);",
+													"    pm.expect(json.questions[0].game_quiz_id).a('number').eql(1);",
+													"    pm.expect(json.questions[0].question_id).a('number').eql(1);",
+													"    pm.expect(json.questions[0].type_id).a('number').eql(9);",
+													"    pm.expect(json.questions[0].question).a('string').eql('No Answer Question');",
+													"    pm.expect(json.questions[0].answers).an('array');",
+													"    pm.expect(json.questions[0].answers.length).eql(1);",
+													"    pm.expect(json.question_count).a('number').eql(2);",
+													"});"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "PATCH",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"end\": true\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{URL}}/api/quiz/quizzes/1/games/1",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"quiz",
+												"quizzes",
+												"1",
+												"games",
+												"1"
+											]
+										}
+									},
+									"response": []
+								}
+							]
+						},
+						{
+							"name": "list",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Test\", () => {",
+											"    pm.response.to.have.status(200);",
+											"    pm.expect(pm.response.code).eql(200);",
+											"",
+											"    pm.response.to.have.header('Content-Type');",
+											"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+											"    pm.response.to.be.withBody;",
+											"    pm.response.to.be.json;",
+											"",
+											"    const json = pm.response.json();",
+											"    pm.expect(json).an('array');",
+											"    pm.expect(json.length).eql(1);",
+											"    pm.expect(json[0].id).a('number').eql(1);",
+											"    pm.expect(json[0].user_id).a('number').eql(1);",
+											"    pm.expect(json[0].description).a('string').eql('Test quiz');",
+											"    pm.expect(json[0].public).a('number').eql(1);",
+											"    pm.expect(json[0].status).a('number').eql(0);",
+											"    pm.expect(json[0].games).a('number').eql(1);",
+											"    pm.expect(json[0].question_count).a('number').eql(2);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{URL}}/api/quiz/quizzes",
+									"host": [
+										"{{URL}}"
+									],
+									"path": [
+										"api",
+										"quiz",
+										"quizzes"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "modquizzes",
+					"item": [
+						{
+							"name": "list",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Test\", () => {",
+											"    pm.response.to.have.status(200);",
+											"    pm.expect(pm.response.code).eql(200);",
+											"",
+											"    pm.response.to.have.header('Content-Type');",
+											"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+											"    pm.response.to.be.withBody;",
+											"    pm.response.to.be.json;",
+											"",
+											"    const json = pm.response.json();",
+											"    pm.expect(json).an('array');",
+											"    pm.expect(json.length).eql(1);",
+											"    pm.expect(json[0].id).a('number').eql(1);",
+											"    pm.expect(json[0].user_id).a('number').eql(1);",
+											"    pm.expect(json[0].description).a('string').eql('Test quiz');",
+											"    pm.expect(json[0].public).a('number').eql(1);",
+											"    pm.expect(json[0].status).a('number').eql(0);",
+											"    pm.expect(json[0].games).a('number').eql(1);",
+											"    pm.expect(json[0].question_count).a('number').eql(2);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{URL}}/api/quiz/modquizzes",
+									"host": [
+										"{{URL}}"
+									],
+									"path": [
+										"api",
+										"quiz",
+										"modquizzes"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "update status",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Test\", () => {",
+											"    pm.response.to.have.status(200);",
+											"    pm.expect(pm.response.code).eql(200);",
+											"",
+											"    pm.response.to.have.header('Content-Type');",
+											"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+											"    pm.response.to.be.withBody;",
+											"    pm.response.to.be.json;",
+											"",
+											"    const json = pm.response.json();",
+											"    pm.expect(json.id).a('number').eql(1);",
+											"    pm.expect(json.user_id).a('number').eql(1);",
+											"    pm.expect(json.description).a('string').eql('Test quiz');",
+											"    pm.expect(json.public).a('number').eql(1);",
+											"    pm.expect(json.status).a('number').eql(1);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "PATCH",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"status\": 1\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{URL}}/api/quiz/modquizzes/1",
+									"host": [
+										"{{URL}}"
+									],
+									"path": [
+										"api",
+										"quiz",
+										"modquizzes",
+										"1"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "user (delete)",
+					"item": [
+						{
+							"name": "quizzes",
+							"item": [
+								{
+									"name": "questions",
+									"item": [
+										{
+											"name": "answers",
+											"item": [
+												{
+													"name": "delete",
+													"event": [
+														{
+															"listen": "test",
+															"script": {
+																"exec": [
+																	"pm.test(\"Test\", () => {",
+																	"    pm.response.to.have.status(204);",
+																	"    pm.expect(pm.response.code).eql(204);",
+																	"",
+																	"    pm.response.to.not.have.header('Content-Type');",
+																	"    pm.response.to.not.be.withBody;",
+																	"});"
+																],
+																"type": "text/javascript"
+															}
+														}
+													],
+													"request": {
+														"method": "DELETE",
+														"header": [],
+														"body": {
+															"mode": "raw",
+															"raw": "",
+															"options": {
+																"raw": {
+																	"language": "json"
+																}
+															}
+														},
+														"url": {
+															"raw": "{{URL}}/api/quiz/users/1/quizzes/1/questions/1/answers/1",
+															"host": [
+																"{{URL}}"
+															],
+															"path": [
+																"api",
+																"quiz",
+																"users",
+																"1",
+																"quizzes",
+																"1",
+																"questions",
+																"1",
+																"answers",
+																"1"
+															]
+														}
+													},
+													"response": []
+												}
+											]
+										},
+										{
+											"name": "delete",
+											"event": [
+												{
+													"listen": "test",
+													"script": {
+														"exec": [
+															"pm.test(\"Test\", () => {",
+															"    pm.response.to.have.status(204);",
+															"    pm.expect(pm.response.code).eql(204);",
+															"",
+															"    pm.response.to.not.have.header('Content-Type');",
+															"    pm.response.to.not.be.withBody;",
+															"});"
+														],
+														"type": "text/javascript"
+													}
+												}
+											],
+											"request": {
+												"method": "DELETE",
+												"header": [],
+												"body": {
+													"mode": "raw",
+													"raw": "",
+													"options": {
+														"raw": {
+															"language": "json"
+														}
+													}
+												},
+												"url": {
+													"raw": "{{URL}}/api/quiz/users/1/quizzes/1/questions/1",
+													"host": [
+														"{{URL}}"
+													],
+													"path": [
+														"api",
+														"quiz",
+														"users",
+														"1",
+														"quizzes",
+														"1",
+														"questions",
+														"1"
+													]
+												}
+											},
+											"response": []
+										}
+									]
+								},
+								{
+									"name": "delete",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.test(\"Test\", () => {",
+													"    pm.response.to.have.status(204);",
+													"    pm.expect(pm.response.code).eql(204);",
+													"",
+													"    pm.response.to.not.have.header('Content-Type');",
+													"    pm.response.to.not.be.withBody;",
+													"});"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "DELETE",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{URL}}/api/quiz/users/1/quizzes/1",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"quiz",
+												"users",
+												"1",
+												"quizzes",
+												"1"
+											]
+										}
+									},
+									"response": []
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "user (logout)",
+					"item": [
+						{
+							"name": "logout",
+							"item": [
+								{
+									"name": "logout",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.environment.set(\"token\", \"\");"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "POST",
+										"header": [],
+										"url": {
+											"raw": "{{URL}}/api/quiz/refresh/signout",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"quiz",
+												"refresh",
+												"signout"
+											]
+										}
+									},
+									"response": []
+								}
+							]
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "api",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Test\", () => {",
+							"    pm.response.to.have.status(404);",
+							"    pm.expect(pm.response.code).eql(404);",
+							"",
+							"    pm.response.to.have.header('Content-Type');",
+							"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+							"    pm.response.to.be.withBody;",
+							"    pm.response.to.be.json;",
+							"",
+							"    const json = pm.response.json();",
+							"    pm.expect(json.status).a('number').eql(404);",
+							"    pm.expect(json.error).a('string').eql('Not Found');",
+							"    pm.expect(json.code).a('number').eql(20);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{URL}}/api",
+					"host": [
+						"{{URL}}"
+					],
+					"path": [
+						"api"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	]
+}
