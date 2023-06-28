@@ -13,6 +13,7 @@ const App = () => {
             data => dispatch({ type: "SIGN_IN", token: data.token }),
             () => { }
         );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return (

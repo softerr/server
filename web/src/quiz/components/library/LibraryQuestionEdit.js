@@ -90,6 +90,7 @@ const LibraryQuestionEdit = () => {
                 res => setTypesState({ tloading: false, terror: res })
             );
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const onModalYes = () => {

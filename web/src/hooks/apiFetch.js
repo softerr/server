@@ -11,11 +11,7 @@ const apiFetch = (url, method, token, body, onSuccess, onError) => {
         signal: abortCont.signal,
     }).then(async res => {
         if (res.ok) {
-            if (res.status === 204) {
-                onSuccess(undefined);
-            } else {
-                onSuccess(await res.json());
-            }
+            onSuccess(res.status === 204 ? undefined : await res.json());
         } else {
             onError(await res.json());
         }

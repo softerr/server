@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Col, Form, Row } from "react-bootstrap";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
-import { createOrUpdateQuiz } from "../../services";
+import { createOrUpdateUserQuiz } from "../../services";
 
 const QuizForm = ({ quiz, onSave, onCancel }) => {
     const cachedUser = useSelector(state => state.user);
@@ -17,6 +17,7 @@ const QuizForm = ({ quiz, onSave, onCancel }) => {
         nameRef.current.value = quiz.name;
         descriptionRef.current.value = quiz.description;
         publicRef.current.checked = quiz.public;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleSubmit = e => {
@@ -40,7 +41,7 @@ const QuizForm = ({ quiz, onSave, onCancel }) => {
 
         setFormErrors(errors);
         if (Object.keys(errors).length === 0) {
-            createOrUpdateQuiz(cachedUser.token, quiz.user_id, quiz.id, { name, description, public: isPublic },
+            createOrUpdateUserQuiz(cachedUser.token, quiz.user_id, quiz.id, { name, description, public: isPublic },
                 data => {
                     dispatch({ type: quiz.id ? "USER_QUIZZES_SET_QUIZ" : "USER_QUIZZES_ADD", quiz: data, userId: data.user_id });
                     onSave(data);

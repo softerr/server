@@ -1,4 +1,5 @@
 name: test
+run-name: api-test
 
 on:
   push:

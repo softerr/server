@@ -24,6 +24,7 @@ const Review = () => {
             },
             res => setState({ loading: false, error: res })
         );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return (

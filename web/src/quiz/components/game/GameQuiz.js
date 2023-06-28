@@ -19,6 +19,7 @@ const GameQuiz = () => {
         if (location.state?.gameQuiz) {
             setGameQuiz(location.state.gameQuiz);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleNext = e => {

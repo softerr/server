@@ -65,6 +65,7 @@ const LibraryQuizEdit = () => {
                 res => setState({ loading: false, error: res })
             );
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [cachedUser.id, quizId]);
 
     const onSave = data => {

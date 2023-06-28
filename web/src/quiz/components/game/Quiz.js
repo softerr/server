@@ -9,6 +9,7 @@ const Quiz = () => {
     const cachedUser = useSelector(state => state.user);
     const cachedPublicQuizzes = useSelector(state => state.publicQuizzes);
     const [quiz, setQuiz] = useState();
+    // eslint-disable-next-line no-unused-vars
     const { _, quizId } = useParams();
     const navigate = useNavigate();
     const dispatch = useDispatch();
@@ -31,6 +32,7 @@ const Quiz = () => {
         if (cachedPublicQuizzes.quizzes && cachedPublicQuizzes.quizzes.length > 0) {
             setQuiz(cachedPublicQuizzes.quizzes.find(quiz => quiz.id === parseInt(quizId, 10)));
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return (

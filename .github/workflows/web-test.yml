@@ -1,0 +1,39 @@
+name: test
+run-name: web-test
+
+on:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - '.github/**'
+
+  workflow_dispatch:
+
+jobs:
+  Test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup
+      run: sudo ./config/setup ${{secrets.TEST_PHP_MYSQL}} ${{secrets.TEST_PHP_JWT}} ${{secrets.TEST_EMAIL}} ${{secrets.TEST_EMAIL_PASS}}
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: ./web/package-lock.json
+
+    - name: Run Tests
+      working-directory: ./web/
+      run: |
+        npm ci
+        npm run build --if-present
+        npm test
+

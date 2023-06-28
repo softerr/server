@@ -17,6 +17,7 @@ const ActivateAccount = () => {
                 console.log(res);
             }
         );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return failed ? (

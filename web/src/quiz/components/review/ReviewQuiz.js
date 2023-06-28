@@ -29,6 +29,7 @@ const ReviewQuiz = () => {
                 setState({ loading: false, error: res });
             }
         );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [quizId]);
 
     const setStatus = status => {

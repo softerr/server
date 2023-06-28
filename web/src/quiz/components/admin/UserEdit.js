@@ -68,6 +68,7 @@ const UserEdit = () => {
                 res => setUserRolesState({ urloading: false, urerror: res })
             );
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userId]);
 
     const handleSubmit = e => {

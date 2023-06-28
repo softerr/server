@@ -176,7 +176,7 @@ export function deleteUserQuizQuestion(token, userId, quizId, questionId, onSucc
     );
 }
 
-export function createOrUpdateQuiz(token, userId, quizId, quiz, onSuccess, onError) {
+export function createOrUpdateUserQuiz(token, userId, quizId, quiz, onSuccess, onError) {
     return apiFetch(
         quizId ? `/api/quiz/users/${userId}/quizzes/${quizId}` : `/api/quiz/users/${userId}/quizzes`,
         quizId ? "PATCH" : "POST",
