@@ -21,7 +21,7 @@ class GameAnswerController
     public static function updateAll($dto, int $quizId, int $gameQuizId, int $gameQuestionId)
     {
         $user = Auth::authenticate();
-        if (!in_array(USER, $user->roles)) {
+        if (!in_array(QUIZ_USER, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
@@ -36,7 +36,7 @@ class GameAnswerController
         foreach ($dto as &$answer) {
             GameAnswer::validate_update($answer);
         }
-        $db = new Database();
+        $db = new Database('quiz');
         $gameQuizRepo = new GameQuizRepo($db);
         $gameQuiz = $gameQuizRepo->getNotEnded($gameQuizId, $user->id, $quizId);
 

@@ -21,11 +21,11 @@ class ModQuestionController
     public static function getAll($dto, int $quizId)
     {
         $user = Auth::authenticate();
-        if (!in_array(MOD, $user->roles)) {
+        if (!in_array(QUIZ_MOD, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
-        $db = new Database();
+        $db = new Database('quiz');
         $quizRepo = new QuizRepo($db);
         $quiz = $quizRepo->getPublicId($quizId);
         $questionRepo = new QuestionRepo($db);

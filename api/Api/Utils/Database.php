@@ -6,11 +6,11 @@ class Database
 {
     private mysqli $conn;
 
-    public function __construct()
+    public function __construct(string $db)
     {
         $cs = explode(':', Utils::read_file("/home/.mysql"));
         try {
-            $conn = mysqli_connect($cs[0], $cs[1], $cs[2], $cs[3], intval($cs[4]));
+            $conn = mysqli_connect($cs[0], $cs[1], $cs[2], $db, intval($cs[3]));
             if (!$conn) {
                 throw new InternalServerError(ERR_DB_CONNECT, mysqli_connect_error());
             }

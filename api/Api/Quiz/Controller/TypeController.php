@@ -16,11 +16,11 @@ class TypeController
     public static function getAll($dto)
     {
         $user = Auth::authenticate();
-        if (!in_array(USER, $user->roles) && !in_array(MOD, $user->roles)) {
+        if (!in_array(QUIZ_USER, $user->roles) && !in_array(QUIZ_MOD, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
-        $rolRepo = new TypeRepo(new Database());
+        $rolRepo = new TypeRepo(new Database('quiz'));
         throw new Ok($rolRepo->get());
     }
 }

@@ -23,18 +23,18 @@ class ModQuizController
     public static function getAll($dto)
     {
         $user = Auth::authenticate();
-        if (!in_array(MOD, $user->roles)) {
+        if (!in_array(QUIZ_MOD, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
-        $quizRepo = new QuizRepo(new Database());
+        $quizRepo = new QuizRepo(new Database('quiz'));
         throw new Ok($quizRepo->getModQuizzes());
     }
 
     public static function update($dto, int $id)
     {
         $user = Auth::authenticate();
-        if (!in_array(MOD, $user->roles)) {
+        if (!in_array(QUIZ_MOD, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
@@ -43,7 +43,7 @@ class ModQuizController
         }
 
         Quiz::validate_update_public($dto);
-        $quizRepo = new QuizRepo(new Database());
+        $quizRepo = new QuizRepo(new Database('quiz'));
         $quizRepo->updatePublic($id, $dto);
         throw new Ok($dto);
     }

@@ -1,10 +1,8 @@
 <?php
-
 require_once('Api/Utils/Validator.php');
 
 define('USER', 1);
-define('MOD', 2);
-define('ADMIN', 3);
+define('ADMIN', 2);
 
 class User
 {

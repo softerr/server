@@ -21,11 +21,11 @@ class PublicQuizController
     public static function getAll($dto)
     {
         $user = Auth::authenticate();
-        if (!in_array(USER, $user->roles)) {
+        if (!in_array(QUIZ_USER, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
-        $quizRepo = new QuizRepo(new Database());
+        $quizRepo = new QuizRepo(new Database('quiz'));
         throw new Ok($quizRepo->getPublicQuizzes());
     }
 }

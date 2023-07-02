@@ -3,7 +3,11 @@
 require_once('Api/Utils/Validator.php');
 require_once('Api/Utils/Response.php');
 
-class UserRole
+define('QUIZ_USER', 1);
+define('QUIZ_MOD', 2);
+define('QUIZ_ADMIN', 3);
+
+class QuizUserRole
 {
     public static function update(object $userRole, object &$dto)
     {

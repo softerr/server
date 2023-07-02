@@ -26,11 +26,11 @@ class UserQuestionController
     public static function getAll($dto, int $userId, int $quizId)
     {
         $user = Auth::authenticate();
-        if (!in_array(USER, $user->roles) || $user->id != $userId) {
+        if (!in_array(QUIZ_USER, $user->roles) || $user->id != $userId) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
-        $db = new Database();
+        $db = new Database('quiz');
         $quizRepo = new QuizRepo($db);
         $quiz = $quizRepo->getId($quizId, $userId);
         $questionRepo = new QuestionRepo($db);
@@ -45,7 +45,7 @@ class UserQuestionController
     public static function create($dto, int $userId, int $quizId)
     {
         $user = Auth::authenticate();
-        if (!in_array(USER, $user->roles) || $user->id != $userId) {
+        if (!in_array(QUIZ_USER, $user->roles) || $user->id != $userId) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
@@ -61,7 +61,7 @@ class UserQuestionController
             Question::validate_insert($dto);
         }
 
-        $db = new Database();
+        $db = new Database('quiz');
         $quizRepo = new QuizRepo($db);
         $quiz = $quizRepo->getId($quizId, $userId);
 
@@ -79,7 +79,7 @@ class UserQuestionController
     public static function update($dto, int $userId, int $quizId, int $id)
     {
         $user = Auth::authenticate();
-        if (!in_array(USER, $user->roles) || $user->id != $userId) {
+        if (!in_array(QUIZ_USER, $user->roles) || $user->id != $userId) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
@@ -88,7 +88,7 @@ class UserQuestionController
         }
 
         Question::validate_update($dto);
-        $db = new Database();
+        $db = new Database('quiz');
         $quizRepo = new QuizRepo($db);
         $quiz = $quizRepo->getId($quizId, $userId);
         QuestionManager::update($db, $id, $quiz->id, $dto);
@@ -98,10 +98,10 @@ class UserQuestionController
     public static function delete($dto, int $userId, int $quizId, int $id)
     {
         $user = Auth::authenticate();
-        if (!in_array(USER, $user->roles) || $user->id != $userId) {
+        if (!in_array(QUIZ_USER, $user->roles) || $user->id != $userId) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
-        $db = new Database();
+        $db = new Database('quiz');
         $quizRepo = new QuizRepo($db);
         $quiz = $quizRepo->getId($quizId, $userId);
         QuestionManager::delete($db, $id, $quiz->id);

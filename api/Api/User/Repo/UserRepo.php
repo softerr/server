@@ -38,14 +38,14 @@ class UserRepo
         );
     }
 
-    public function getByEmail(string $email): object
+    public function getByEmail(string $roles_db, string $email): object
     {
         return $this->db->select(
-            'SELECT `user`.`id` AS `id`, `user`.`email` AS `email`, `user`.`username` AS `username`, `user`.`password` AS `password`, GROUP_CONCAT(`user_role`.`role_id`) AS `roles` 
+            "SELECT `user`.`id` AS `id`, `user`.`email` AS `email`, `user`.`username` AS `username`, `user`.`password` AS `password`, GROUP_CONCAT(`user_role`.`role_id`) AS `roles` 
              FROM `user`
-                LEFT JOIN `user_role` ON `user`.`id`=`user_role`.`user_id` 
+                LEFT JOIN `$roles_db`.`user_role` ON `user`.`id`=`user_role`.`user_id` 
              WHERE `user`.`email`=? AND `activated`=1 
-             GROUP BY `user`.`id`',
+             GROUP BY `user`.`id`",
             's',
             $email
         );

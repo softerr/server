@@ -23,7 +23,7 @@ class GameQuizController
     public static function create($dto, int $quizId)
     {
         $user = Auth::authenticate();
-        if (!in_array(USER, $user->roles)) {
+        if (!in_array(QUIZ_USER, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
@@ -31,7 +31,7 @@ class GameQuizController
             throw new BadRequest(ERR_NO_DATA);
         }
 
-        $db = new Database();
+        $db = new Database('quiz');
         $quizRepo = new QuizRepo($db);
         $quiz = $quizRepo->getPublicId($quizId);
 
@@ -42,7 +42,7 @@ class GameQuizController
     public static function update($dto, int $quizId, int $id)
     {
         $user = Auth::authenticate();
-        if (!in_array(USER, $user->roles)) {
+        if (!in_array(QUIZ_USER, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
@@ -51,7 +51,7 @@ class GameQuizController
         }
 
         GameQuiz::validate_update($dto);
-        $db = new Database();
+        $db = new Database('quiz');
         $quizRepo = new QuizRepo($db);
         $quiz = $quizRepo->getPublicId($quizId);
         GameQuizManager::update($db, $id, $user->id, $quiz->id, $dto);

@@ -1,15 +1,13 @@
 <?php
 require_once('Api/Utils/Router.php');
-require_once('Api/Quiz/Repo/UserRepo.php');
-require_once('Api/Quiz/Repo/LoginTokenRepo.php');
-require_once('Api/Quiz/Repo/ActivateTokenRepo.php');
-require_once('Api/Quiz/Repo/PasswordTokenRepo.php');
-require_once('Api/Quiz/Entity/User.php');
+require_once('Api/User/Repo/UserRepo.php');
+require_once('Api/User/Repo/LoginTokenRepo.php');
+require_once('Api/User/Repo/ActivateTokenRepo.php');
+require_once('Api/User/Repo/PasswordTokenRepo.php');
+require_once('Api/User/Entity/User.php');
 require_once('Api/Utils/Auth.php');
 require_once('Api/Utils/Database.php');
 require_once('Api/Utils/Utils.php');
-require_once('UserQuizController.php');
-require_once('UserRoleController.php');
 
 class UserController
 {
@@ -17,21 +15,19 @@ class UserController
     {
         Router::prefix($uri, '/users', function (string $uri) {
             Router::resolve($uri, '', UserController::class, ['GET' => 'getAll']);
+            Router::resolve($uri, '/signin', UserController::class, ['POST' => 'signin']);
+            Router::resolve($uri, '/signup', UserController::class, ['POST' => 'signup']);
+            Router::resolve($uri, '/refresh/signout', UserController::class, ['POST' => 'signout']);
+            Router::resolve($uri, '/whoami', UserController::class, ['POST' => 'whoami']);
+            Router::resolve($uri, '/refresh', UserController::class, ['POST' => 'refresh']);
+            Router::resolve($uri, '/forgot_password', UserController::class, ['POST' => 'forgotPassword']);
+            Router::resolve($uri, '/activate/(\w+)', UserController::class, ['POST' => 'activate']);
+            Router::resolve($uri, '/begin_reset_password/(\w+)', UserController::class, ['POST' => 'beginResetPassword']);
+            Router::resolve($uri, '/reset_password/(\w+)', UserController::class, ['POST' => 'resetPassword']);
             Router::prefix($uri, '/(\d+)', function (string $uri, int $id) {
                 Router::resolve($uri, '', UserController::class, ['PATCH' => 'update', 'DELETE' => 'delete'], $id);
-                UserQuizController::route($uri, $id);
-                UserRoleController::route($uri, $id);
             });
         });
-        Router::resolve($uri, '/signin', UserController::class, ['POST' => 'signin']);
-        Router::resolve($uri, '/signup', UserController::class, ['POST' => 'signup']);
-        Router::resolve($uri, '/refresh/signout', UserController::class, ['POST' => 'signout']);
-        Router::resolve($uri, '/whoami', UserController::class, ['POST' => 'whoami']);
-        Router::resolve($uri, '/refresh', UserController::class, ['POST' => 'refresh']);
-        Router::resolve($uri, '/forgot_password', UserController::class, ['POST' => 'forgotPassword']);
-        Router::resolve($uri, '/activate/(\w+)', UserController::class, ['POST' => 'activate']);
-        Router::resolve($uri, '/begin_reset_password/(\w+)', UserController::class, ['POST' => 'beginResetPassword']);
-        Router::resolve($uri, '/reset_password/(\w+)', UserController::class, ['POST' => 'resetPassword']);
     }
 
     public static function getAll($dto)
@@ -41,8 +37,7 @@ class UserController
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
-        $db = new Database();
-        $userRepo = new UserRepo($db);
+        $userRepo = new UserRepo(new Database('user'));
         throw new Ok($userRepo->get());
     }
 
@@ -58,7 +53,7 @@ class UserController
         }
 
         User::validate_update($dto);
-        $userRepo = new UserRepo(new Database());
+        $userRepo = new UserRepo(new Database('user'));
         $userRepo->update($id, $dto);
         throw new Ok($dto);
     }
@@ -69,8 +64,7 @@ class UserController
         if (!in_array(ADMIN, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
-        $db = new Database();
-        $userRepo = new UserRepo($db);
+        $userRepo = new UserRepo(new Database('user'));
         $user = $userRepo->delete($id);
         throw new NoContent();
     }
@@ -82,10 +76,10 @@ class UserController
         }
 
         $dto = User::validate_signin($dto);
-        $db = new Database();
+        $db = new Database('user');
         $userRepo = new UserRepo($db);
         try {
-            $user = $userRepo->getByEmail($dto->email);
+            $user = $userRepo->getByEmail('user', $dto->email);
         } catch (NotFound $e) {
             throw new BadRequest(ERR_USR_LOGIN);
         }
@@ -106,7 +100,7 @@ class UserController
 
         $dto = User::validate_signup($dto);
         $roles = [1];
-        $db = new Database();
+        $db = new Database('user');
         $userRepo = new UserRepo($db);
         if ($userRepo->getCountByEmail($dto->email) != 0) {
             throw new BadRequest(ERR_USR_EMAIL_EXISTS);
@@ -137,8 +131,7 @@ class UserController
         if (!array_key_exists('token', $_COOKIE)) {
             throw new Unauthorized(ERR_AUTH_NO_REFRESH_TOKEN);
         }
-        $db = new Database();
-        $loginTokenRepo = new LoginTokenRepo($db);
+        $loginTokenRepo = new LoginTokenRepo(new Database('user'));
         $loginTokenRepo->setExpiredByToken($_COOKIE['token']);
         setcookie('token', NULL, 1);
         throw new NoContent();
@@ -154,8 +147,7 @@ class UserController
         if (!array_key_exists('token', $_COOKIE)) {
             throw new Unauthorized(ERR_AUTH_NO_REFRESH_TOKEN);
         }
-        $db = new Database();
-        $loginTokenRepo = new LoginTokenRepo($db);
+        $loginTokenRepo = new LoginTokenRepo(new Database('user'));
         try {
             $user = $loginTokenRepo->getUserByToken($_COOKIE['token']);
         } catch (NotFound $e) {
@@ -167,14 +159,14 @@ class UserController
         throw new Ok(['token' => Auth::generateToken($user->id, $user->email, $user->username, array_map('intval', explode(',', $user->roles)))]);
     }
 
-    private static function setRefreshToken(string $token)
+    public static function setRefreshToken(string $token)
     {
-        setcookie('token', $token, time() + 14400, '/quiz/api/refresh', 'localhost', false, true);
+        setcookie('token', $token, time() + 14400, '/api/users/refresh', 'localhost', false, true);
     }
 
     public static function activate($dto, string $token)
     {
-        $db = new Database();
+        $db = new Database('user');
         $activateTokenRepo = new ActivateTokenRepo($db);
         try {
             $user = $activateTokenRepo->getUserByToken($token);
@@ -200,9 +192,9 @@ class UserController
             throw new BadRequest(ERR_REQUIRED, 'Email is required');
         }
 
-        $db = new Database();
+        $db = new Database('user');
         $userRepo = new UserRepo($db);
-        $user = $userRepo->getByEmail($dto->email);
+        $user = $userRepo->getByEmail('user', $dto->email);
         $passwordTokenRepo = new PasswordTokenRepo($db);
         $passwordToken = $passwordTokenRepo->getTokenById($passwordTokenRepo->insert($user->id));
         $url = "http://localhost:3000/reset_password/$passwordToken";
@@ -219,8 +211,7 @@ class UserController
 
     public static function beginResetPassword($dto, string $token)
     {
-        $db = new Database();
-        $passwordTokenRepo = new PasswordTokenRepo($db);
+        $passwordTokenRepo = new PasswordTokenRepo(new Database('user'));
         try {
             $user = $passwordTokenRepo->getUserByToken($token);
         } catch (NotFound $e) {
@@ -239,7 +230,7 @@ class UserController
             throw new BadRequest(ERR_REQUIRED, 'Password is required');
         }
 
-        $db = new Database();
+        $db = new Database('user');
         $passwordTokenRepo = new PasswordTokenRepo($db);
         try {
             $user = $passwordTokenRepo->getUserByToken($token);

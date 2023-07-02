@@ -3,7 +3,7 @@ require_once('Api/Utils/Router.php');
 require_once('Api/Quiz/Repo/UserRoleRepo.php');
 require_once('Api/Utils/Auth.php');
 require_once('Api/Utils/Response.php');
-require_once('Api/Quiz/Entity/UserRole.php');
+require_once('Api/Quiz/Entity/QuizUserRole.php');
 
 class UserRoleController
 {
@@ -18,11 +18,11 @@ class UserRoleController
     public static function getAll($dto, int $userId)
     {
         $user = Auth::authenticate();
-        if (!in_array(ADMIN, $user->roles)) {
+        if (!in_array(QUIZ_ADMIN, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
-        $userRoleRepo = new UserRoleRepo(new Database());
+        $userRoleRepo = new UserRoleRepo(new Database('quiz'));
         throw new Ok($userRoleRepo->getByUserId($userId));
     }
 
@@ -30,7 +30,7 @@ class UserRoleController
     public static function create($dto, int $userId)
     {
         $user = Auth::authenticate();
-        if (!in_array(ADMIN, $user->roles)) {
+        if (!in_array(QUIZ_ADMIN, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
@@ -38,11 +38,10 @@ class UserRoleController
             throw new BadRequest(ERR_NO_DATA);
         }
 
-        UserRole::validate_insert($dto);
-        $db = new Database();
-        $userRepo = new UserRepo($db);
+        QuizUserRole::validate_insert($dto);
+        $userRepo = new UserRepo(new Database('user'));
         $user = $userRepo->getId($userId);
-        $userRoleRepo = new UserRoleRepo($db);
+        $userRoleRepo = new UserRoleRepo(new Database('quiz'));
         $userRoleRepo->insert($user->id, $dto);
         throw new Created($dto);
     }
@@ -50,7 +49,7 @@ class UserRoleController
     public static function update($dto, int $userId, int $id)
     {
         $user = Auth::authenticate();
-        if (!in_array(ADMIN, $user->roles)) {
+        if (!in_array(QUIZ_ADMIN, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
@@ -58,11 +57,10 @@ class UserRoleController
             throw new BadRequest(ERR_NO_DATA);
         }
 
-        UserRole::validate_update($dto);
-        $db = new Database();
-        $userRepo = new UserRepo($db);
+        QuizUserRole::validate_update($dto);
+        $userRepo = new UserRepo(new Database('user'));
         $user = $userRepo->getId($userId);
-        $userRoleRepo = new UserRoleRepo($db);
+        $userRoleRepo = new UserRoleRepo(new Database('quiz'));
         $userRoleRepo->update($id, $user->id, $dto);
         throw new Ok($dto);
     }
@@ -70,13 +68,12 @@ class UserRoleController
     public static function delete($dto, int $userId, int $id)
     {
         $user = Auth::authenticate();
-        if (!in_array(ADMIN, $user->roles)) {
+        if (!in_array(QUIZ_ADMIN, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
-        $db = new Database();
-        $userRepo = new UserRepo($db);
+        $userRepo = new UserRepo(new Database('user'));
         $user = $userRepo->getId($userId);
-        $userRoleRepo = new UserRoleRepo($db);
+        $userRoleRepo = new UserRoleRepo(new Database('quiz'));
         $userRoleRepo->delete($id, $user->id);
         throw new NoContent();
     }

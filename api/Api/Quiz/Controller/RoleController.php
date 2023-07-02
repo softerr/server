@@ -16,11 +16,11 @@ class RoleController
     public static function getAll($dto)
     {
         $user = Auth::authenticate();
-        if (!in_array(ADMIN, $user->roles)) {
+        if (!in_array(QUIZ_ADMIN, $user->roles)) {
             throw new Forbidden(ERR_USR_FORBIDDEN);
         }
 
-        $rolRepo = new RoleRepo(new Database());
+        $rolRepo = new RoleRepo(new Database('quiz'));
         throw new Ok($rolRepo->get());
     }
 }
