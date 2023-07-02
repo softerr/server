@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Alert, Button, Container, Form, Spinner } from "react-bootstrap";
 import { Link } from "react-router-dom";
-import { signUp } from "../../services";
+import { userSignUp } from "../../../users/services";
 
 const Signup = () => {
     const usernameRef = useRef(null);
@@ -48,7 +48,7 @@ const Signup = () => {
 
         if (Object.keys(errors).length === 0) {
             setState({ created: true, creating: true, formErrors: {} });
-            signUp(email, username, password,
+            userSignUp(email, username, password,
                 () => setState({ created: true, creating: false, formErrors: {} }),
                 res => {
                     setState({ created: false, creating: false, formErrors: {} });

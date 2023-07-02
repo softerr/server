@@ -3,7 +3,8 @@ import { useDispatch, useSelector } from "react-redux";
 import { Button, Col, Container, Modal, Row, Table } from "react-bootstrap";
 import { PencilSquare, Trash } from "react-bootstrap-icons";
 import { Link } from "react-router-dom";
-import { getUserRoles, getUsers } from "../../services";
+import { getUserRoles } from "../../services";
+import { getUsers } from "../../../users/services";
 
 const DeleteModal = ({ show, onYes, onNo, email }) => {
     return (

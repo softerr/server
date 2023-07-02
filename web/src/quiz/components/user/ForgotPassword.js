@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Alert, Button, Container, Form, Spinner } from "react-bootstrap";
-import { forgotPassword } from "../../services";
+import { userForgotPassword } from "../../../users/services";
 
 const Login = () => {
     const emailRef = useRef(null);
@@ -21,7 +21,7 @@ const Login = () => {
 
         if (Object.keys(errors).length === 0) {
             setState({ sending: true, sent: false, formErrors: errors });
-            forgotPassword(email,
+            userForgotPassword(email,
                 () => setState({ sending: false, sent: true, formErrors: {} }),
                 () => setState({ sending: false, sent: false, formErrors: {} })
             );

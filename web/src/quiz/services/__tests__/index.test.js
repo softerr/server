@@ -1,4 +1,4 @@
-import { signUp, signIn, activate, forgotPassword, refreshToken, beginResetPassword, resetPassword, getModQuizzes, updateModQuiz, getModQuizQuestions, getUserQuizzes, deleteUserQuiz, createOrUpdateUserQuizQuestion, getUserQuizQuestions, deleteUserQuizQuestion, createOrUpdateUserQuiz, createQuizGame, updateQuizGame, getQuizzes, getTypes, getRoles, getUserRoles, updateUser, createOrUpdateUserRole, deleteUserRole, getUsers } from "../index"
+import { quizSignIn, getModQuizzes, updateModQuiz, getModQuizQuestions, getUserQuizzes, deleteUserQuiz, createOrUpdateUserQuizQuestion, getUserQuizQuestions, deleteUserQuizQuestion, createOrUpdateUserQuiz, createQuizGame, updateQuizGame, getQuizzes, getTypes, getRoles, getUserRoles, createOrUpdateUserRole, deleteUserRole } from "../index"
 
 jest.mock("../../../hooks/apiFetch", () => {
     return async (url, method, token, body, onSuccess, onError) => {
@@ -20,101 +20,10 @@ jest.mock("../../../hooks/apiFetch", () => {
     };
 })
 
-describe("API", () => {
+describe("Quiz API", () => {
     describe("Account", () => {
-        test("Sign Up Without Username", async () => {
-            return signUp("", "", "",
-                data => {
-                    expect(data).toBe(0);
-                },
-                res => {
-                    expect(res).toMatchObject({
-                        status: 400
-                    });
-                }
-            );
-        });
-
-        test("Sign Up With Username", async () => {
-            return signUp("", "a", "",
-                data => {
-                    expect(data).toBe(0);
-                },
-                res => {
-                    expect(res).toMatchObject({
-                        status: 400
-                    });
-                }
-            );
-        });
-
         test("Sign In", () => {
-            return signIn("", "",
-                data => {
-                    expect(data).toBe(0);
-                },
-                res => {
-                    expect(res).toMatchObject({
-                        status: 400
-                    });
-                }
-            );
-        });
-
-        test("Activate", () => {
-            return activate("a",
-                data => {
-                    expect(data).toBe(0);
-                },
-                res => {
-                    expect(res).toMatchObject({
-                        status: 400
-                    });
-                }
-            );
-        });
-
-        test("Forgot Password", () => {
-            return forgotPassword("",
-                data => {
-                    expect(data).toBe(0);
-                },
-                res => {
-                    expect(res).toMatchObject({
-                        status: 400
-                    });
-                }
-            );
-        });
-
-        test("Refresh Token", () => {
-            return refreshToken(
-                data => {
-                    expect(data).toBe(0);
-                },
-                res => {
-                    expect(res).toMatchObject({
-                        status: 401
-                    });
-                }
-            );
-        });
-
-        test("Begin Reset Password", () => {
-            return beginResetPassword("a",
-                data => {
-                    expect(data).toBe(0);
-                },
-                res => {
-                    expect(res).toMatchObject({
-                        status: 400
-                    });
-                }
-            );
-        });
-
-        test("Reset Password", () => {
-            return resetPassword("a", "",
+            return quizSignIn("", "",
                 data => {
                     expect(data).toBe(0);
                 },
@@ -199,32 +108,6 @@ describe("API", () => {
     });
 
     describe("User", () => {
-        test("Update", () => {
-            return updateUser("", 0, undefined,
-                data => {
-                    expect(data).toBe(0);
-                },
-                res => {
-                    expect(res).toMatchObject({
-                        status: 401
-                    });
-                }
-            );
-        });
-
-        test("Get All", () => {
-            return getUsers("",
-                data => {
-                    expect(data).toBe(0);
-                },
-                res => {
-                    expect(res).toMatchObject({
-                        status: 401
-                    });
-                }
-            );
-        });
-
         describe("Role", () => {
             test("Create", () => {
                 return createOrUpdateUserRole("", 0, 0, undefined,

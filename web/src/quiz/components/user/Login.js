@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Alert, Button, Container, Form } from "react-bootstrap";
 import { useDispatch } from "react-redux";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { signIn } from "../../services";
+import { quizSignIn } from "../../services";
 
 const Login = () => {
     const dispatch = useDispatch();
@@ -34,7 +34,7 @@ const Login = () => {
 
         setFormErrors(errors);
         if (Object.keys(errors).length === 0) {
-            signIn(email, password,
+            quizSignIn(email, password,
                 data => {
                     dispatch({ type: "SIGN_IN", token: data.token });
                     navigate("/quiz/");

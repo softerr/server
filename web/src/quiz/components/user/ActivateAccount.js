@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Container, Spinner } from "react-bootstrap";
 import { useNavigate, useParams } from "react-router-dom";
 import NotFound from "../../layouts/NotFound";
-import { activate } from "../../services";
+import { userActivate } from "../../../users/services";
 
 const ActivateAccount = () => {
     const { token } = useParams();
@@ -10,7 +10,7 @@ const ActivateAccount = () => {
     const [failed, setFailed] = useState(false);
 
     useEffect(() => {
-        activate(token,
+        userActivate(token,
             () => navigate("/quiz/login", { replace: true, state: { message: "Account was successfully activated." } }),
             res => {
                 setFailed(true);

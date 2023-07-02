@@ -3,13 +3,13 @@ import { useEffect } from "react";
 import { useDispatch } from "react-redux";
 import NotFound from "./quiz/layouts/NotFound";
 import QuizApp from "./quiz"
-import { refreshToken } from "./quiz/services";
+import { userRefreshToken } from "./users/services";
 
 const App = () => {
     const dispatch = useDispatch();
 
     useEffect(() => {
-        return refreshToken(
+        return userRefreshToken(
             data => dispatch({ type: "SIGN_IN", token: data.token }),
             () => { }
         );

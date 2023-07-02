@@ -3,7 +3,8 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { Button, Col, Container, Dropdown, DropdownButton, Form, Modal, Row, Table } from "react-bootstrap";
 import { Trash } from "react-bootstrap-icons";
-import { createOrUpdateUserRole, getRoles, getUserRoles, updateUser, deleteUserRole } from "../../services";
+import { createOrUpdateUserRole, getRoles, getUserRoles, deleteUserRole } from "../../services";
+import { updateUser } from "../../../users/services";
 
 const DeleteModal = ({ show, onYes, onNo, role }) => {
     return (

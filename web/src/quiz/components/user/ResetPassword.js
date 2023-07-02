@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Container, Form, Spinner } from "react-bootstrap";
 import { useNavigate, useParams } from "react-router-dom";
 import NotFound from "../../layouts/NotFound";
-import { beginResetPassword, resetPassword } from "../../services";
+import { userBeginResetPassword, userResetPassword } from "../../../users/services";
 
 const ActivateAccount = () => {
     const { token } = useParams();
@@ -12,7 +12,7 @@ const ActivateAccount = () => {
     const repeatPasswordRef = useRef(null);
 
     useEffect(() => {
-        beginResetPassword(token,
+        userBeginResetPassword(token,
             data => data.token ?
                 setState({ failed: false, resetToken: data.token, formErrors: {} }) :
                 setState({ failed: true, formErrors: {} }),
@@ -43,7 +43,7 @@ const ActivateAccount = () => {
         }
 
         if (Object.keys(errors).length === 0) {
-            resetPassword(resetToken, password,
+            userResetPassword(resetToken, password,
                 () => navigate("/quiz/login", { replace: true, state: { message: "Password was successfully changed." } }),
                 res => console.log(res)
             );

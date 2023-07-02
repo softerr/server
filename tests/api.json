@@ -7,427 +7,498 @@
 	},
 	"item": [
 		{
+			"name": "users",
+			"item": [
+				{
+					"name": "login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Test\", () => {",
+									"    pm.response.to.have.status(200);",
+									"    pm.expect(pm.response.code).eql(200);",
+									"",
+									"    pm.response.to.have.header('Content-Type');",
+									"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+									"    pm.response.to.be.withBody;",
+									"    pm.response.to.be.json;",
+									"",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.token).a('string');",
+									"    pm.environment.set(\"token\", json.token);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test@quizzmaker.com\",\n    \"password\": \"test_password\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/api/users/signin",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"signin"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "list initial",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Test\", () => {",
+									"    pm.response.to.have.status(200);",
+									"    pm.expect(pm.response.code).eql(200);",
+									"",
+									"    pm.response.to.have.header('Content-Type');",
+									"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+									"    pm.response.to.be.withBody;",
+									"    pm.response.to.be.json;",
+									"",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).an('array');",
+									"    pm.expect(json.length).eql(1);",
+									"    pm.expect(json[0].id).a('number').eql(1);",
+									"    pm.expect(json[0].email).a('string').eql('test@quizzmaker.com');",
+									"    pm.expect(json[0].username).a('string').eql('test');",
+									"    pm.expect(json[0].roles).a('string').eql('1,2');",
+									"    pm.expect(json[0].roles_names).a('string').eql('USER,ADMIN');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{URL}}/api/users",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"api",
+								"users"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "signup without email",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Test\", () => {",
+									"    pm.response.to.have.status(400);",
+									"    pm.expect(pm.response.code).eql(400);",
+									"",
+									"    pm.response.to.have.header('Content-Type');",
+									"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+									"    pm.response.to.be.withBody;",
+									"    pm.response.to.be.json;",
+									"",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.status).a('number').eql(400);",
+									"    pm.expect(json.error).a('string').eql('Bad Request');",
+									"    pm.expect(json.code).a('number').eql(35);",
+									"    pm.expect(json.message).a('string').eql('Email is required');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\":\"user\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/api/users/signup",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"signup"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "signup without password",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Test\", () => {",
+									"    pm.response.to.have.status(400);",
+									"    pm.expect(pm.response.code).eql(400);",
+									"",
+									"    pm.response.to.have.header('Content-Type');",
+									"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+									"    pm.response.to.be.withBody;",
+									"    pm.response.to.be.json;",
+									"",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.status).a('number').eql(400);",
+									"    pm.expect(json.error).a('string').eql('Bad Request');",
+									"    pm.expect(json.code).a('number').eql(35);",
+									"    pm.expect(json.message).a('string').eql('Password is required');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@quizzmaker.com\",\n    \"username\":\"user\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/api/users/signup",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"signup"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "signup without username",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Test\", () => {",
+									"    pm.response.to.have.status(201);",
+									"    pm.expect(pm.response.code).eql(201);",
+									"",
+									"    pm.response.to.have.header('Content-Type');",
+									"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+									"    pm.response.to.be.withBody;",
+									"    pm.response.to.be.json;",
+									"",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.id).a('number').eql(2);",
+									"    pm.expect(json.email).a('string').eql('user@quizzmaker.com');",
+									"    pm.expect(json.username).eql(null);",
+									"    pm.expect(json.roles).an('array');",
+									"    pm.expect(json.roles.length).eql(1);",
+									"    pm.expect(json.roles[0]).a('number').eql(1);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@quizzmaker.com\",\n    \"password\": \"user_password\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/api/users/signup",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"signup"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "edit username",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Test\", () => {",
+									"    pm.response.to.have.status(200);",
+									"    pm.expect(pm.response.code).eql(200);",
+									"",
+									"    pm.response.to.have.header('Content-Type');",
+									"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+									"    pm.response.to.be.withBody;",
+									"    pm.response.to.be.json;",
+									"",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.id).a('number').eql(2);",
+									"    pm.expect(json.email).a('string').eql('user@quizzmaker.com');",
+									"    pm.expect(json.username).a('string').eql('user');",
+									"    pm.expect(json.roles).a('string').eql('1');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"user\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/api/users/2",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"2"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "refresh",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Test\", () => {",
+									"    pm.response.to.have.status(200);",
+									"    pm.expect(pm.response.code).eql(200);",
+									"",
+									"    pm.response.to.have.header('Content-Type');",
+									"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+									"    pm.response.to.be.withBody;",
+									"    pm.response.to.be.json;",
+									"",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.id).a('number').eql(2);",
+									"    pm.expect(json.email).a('string').eql('user@quizzmaker.com');",
+									"    pm.expect(json.username).a('string').eql('user');",
+									"    pm.expect(json.roles).a('string').eql('1');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"user\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/api/users/refresh",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"refresh"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "list added",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Test\", () => {",
+									"    pm.response.to.have.status(200);",
+									"    pm.expect(pm.response.code).eql(200);",
+									"",
+									"    pm.response.to.have.header('Content-Type');",
+									"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+									"    pm.response.to.be.withBody;",
+									"    pm.response.to.be.json;",
+									"",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).an('array');",
+									"    pm.expect(json.length).eql(2);",
+									"    pm.expect(json[0].id).a('number').eql(1);",
+									"    pm.expect(json[0].email).a('string').eql('test@quizzmaker.com');",
+									"    pm.expect(json[0].username).a('string').eql('test');",
+									"    pm.expect(json[0].roles).a('string').eql('1,2');",
+									"    pm.expect(json[0].roles_names).a('string').eql('USER,ADMIN');",
+									"",
+									"    pm.expect(json[1].id).a('number').eql(2);",
+									"    pm.expect(json[1].email).a('string').eql('user@quizzmaker.com');",
+									"    pm.expect(json[1].username).a('string').eql('user');",
+									"    pm.expect(json[1].roles).a('string').eql('1');",
+									"    pm.expect(json[1].roles_names).a('string').eql('USER');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{URL}}/api/users",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"api",
+								"users"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
 			"name": "quiz",
 			"item": [
 				{
-					"name": "users (login)",
+					"name": "login",
 					"item": [
 						{
 							"name": "login",
-							"item": [
+							"event": [
 								{
-									"name": "login",
-									"event": [
-										{
-											"listen": "test",
-											"script": {
-												"exec": [
-													"pm.test(\"Test\", () => {",
-													"    pm.response.to.have.status(200);",
-													"    pm.expect(pm.response.code).eql(200);",
-													"",
-													"    pm.response.to.have.header('Content-Type');",
-													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
-													"    pm.response.to.be.withBody;",
-													"    pm.response.to.be.json;",
-													"",
-													"    const json = pm.response.json();",
-													"    pm.expect(json.token).a('string');",
-													"    pm.environment.set(\"token\", json.token);",
-													"});"
-												],
-												"type": "text/javascript"
-											}
-										}
-									],
-									"request": {
-										"method": "POST",
-										"header": [],
-										"body": {
-											"mode": "raw",
-											"raw": "{\n    \"email\": \"test@quizzmaker.com\",\n    \"password\": \"test_password\"\n}",
-											"options": {
-												"raw": {
-													"language": "json"
-												}
-											}
-										},
-										"url": {
-											"raw": "{{URL}}/api/quiz/signin",
-											"host": [
-												"{{URL}}"
-											],
-											"path": [
-												"api",
-												"quiz",
-												"signin"
-											]
-										}
-									},
-									"response": []
-								},
-								{
-									"name": "list initial",
-									"event": [
-										{
-											"listen": "test",
-											"script": {
-												"exec": [
-													"pm.test(\"Test\", () => {",
-													"    pm.response.to.have.status(200);",
-													"    pm.expect(pm.response.code).eql(200);",
-													"",
-													"    pm.response.to.have.header('Content-Type');",
-													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
-													"    pm.response.to.be.withBody;",
-													"    pm.response.to.be.json;",
-													"",
-													"    const json = pm.response.json();",
-													"    pm.expect(json).an('array');",
-													"    pm.expect(json.length).eql(1);",
-													"    pm.expect(json[0].id).a('number').eql(1);",
-													"    pm.expect(json[0].email).a('string').eql('test@quizzmaker.com');",
-													"    pm.expect(json[0].username).a('string').eql('test');",
-													"    pm.expect(json[0].roles).a('string').eql('1,2,3');",
-													"    pm.expect(json[0].roles_names).a('string').eql('USER,MOD,ADMIN');",
-													"});"
-												],
-												"type": "text/javascript"
-											}
-										}
-									],
-									"request": {
-										"method": "GET",
-										"header": [],
-										"url": {
-											"raw": "{{URL}}/api/quiz/users",
-											"host": [
-												"{{URL}}"
-											],
-											"path": [
-												"api",
-												"quiz",
-												"users"
-											]
-										}
-									},
-									"response": []
-								},
-								{
-									"name": "signup without email",
-									"event": [
-										{
-											"listen": "test",
-											"script": {
-												"exec": [
-													"pm.test(\"Test\", () => {",
-													"    pm.response.to.have.status(400);",
-													"    pm.expect(pm.response.code).eql(400);",
-													"",
-													"    pm.response.to.have.header('Content-Type');",
-													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
-													"    pm.response.to.be.withBody;",
-													"    pm.response.to.be.json;",
-													"",
-													"    const json = pm.response.json();",
-													"    pm.expect(json.status).a('number').eql(400);",
-													"    pm.expect(json.error).a('string').eql('Bad Request');",
-													"    pm.expect(json.code).a('number').eql(35);",
-													"    pm.expect(json.message).a('string').eql('Email is required');",
-													"});"
-												],
-												"type": "text/javascript"
-											}
-										}
-									],
-									"request": {
-										"method": "POST",
-										"header": [],
-										"body": {
-											"mode": "raw",
-											"raw": "{\n    \"username\":\"user\"\n}",
-											"options": {
-												"raw": {
-													"language": "json"
-												}
-											}
-										},
-										"url": {
-											"raw": "{{URL}}/api/quiz/signup",
-											"host": [
-												"{{URL}}"
-											],
-											"path": [
-												"api",
-												"quiz",
-												"signup"
-											]
-										}
-									},
-									"response": []
-								},
-								{
-									"name": "signup without password",
-									"event": [
-										{
-											"listen": "test",
-											"script": {
-												"exec": [
-													"pm.test(\"Test\", () => {",
-													"    pm.response.to.have.status(400);",
-													"    pm.expect(pm.response.code).eql(400);",
-													"",
-													"    pm.response.to.have.header('Content-Type');",
-													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
-													"    pm.response.to.be.withBody;",
-													"    pm.response.to.be.json;",
-													"",
-													"    const json = pm.response.json();",
-													"    pm.expect(json.status).a('number').eql(400);",
-													"    pm.expect(json.error).a('string').eql('Bad Request');",
-													"    pm.expect(json.code).a('number').eql(35);",
-													"    pm.expect(json.message).a('string').eql('Password is required');",
-													"});"
-												],
-												"type": "text/javascript"
-											}
-										}
-									],
-									"request": {
-										"method": "POST",
-										"header": [],
-										"body": {
-											"mode": "raw",
-											"raw": "{\n    \"email\": \"user@quizzmaker.com\",\n    \"username\":\"user\"\n}",
-											"options": {
-												"raw": {
-													"language": "json"
-												}
-											}
-										},
-										"url": {
-											"raw": "{{URL}}/api/quiz/signup",
-											"host": [
-												"{{URL}}"
-											],
-											"path": [
-												"api",
-												"quiz",
-												"signup"
-											]
-										}
-									},
-									"response": []
-								},
-								{
-									"name": "signup without username",
-									"event": [
-										{
-											"listen": "test",
-											"script": {
-												"exec": [
-													"pm.test(\"Test\", () => {",
-													"    pm.response.to.have.status(201);",
-													"    pm.expect(pm.response.code).eql(201);",
-													"",
-													"    pm.response.to.have.header('Content-Type');",
-													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
-													"    pm.response.to.be.withBody;",
-													"    pm.response.to.be.json;",
-													"",
-													"    const json = pm.response.json();",
-													"    pm.expect(json.id).a('number').eql(2);",
-													"    pm.expect(json.email).a('string').eql('user@quizzmaker.com');",
-													"    pm.expect(json.username).eql(null);",
-													"    pm.expect(json.roles).an('array');",
-													"    pm.expect(json.roles.length).eql(1);",
-													"    pm.expect(json.roles[0]).a('number').eql(1);",
-													"});"
-												],
-												"type": "text/javascript"
-											}
-										}
-									],
-									"request": {
-										"method": "POST",
-										"header": [],
-										"body": {
-											"mode": "raw",
-											"raw": "{\n    \"email\": \"user@quizzmaker.com\",\n    \"password\": \"user_password\"\n}",
-											"options": {
-												"raw": {
-													"language": "json"
-												}
-											}
-										},
-										"url": {
-											"raw": "{{URL}}/api/quiz/signup",
-											"host": [
-												"{{URL}}"
-											],
-											"path": [
-												"api",
-												"quiz",
-												"signup"
-											]
-										}
-									},
-									"response": []
-								},
-								{
-									"name": "edit username",
-									"event": [
-										{
-											"listen": "test",
-											"script": {
-												"exec": [
-													"pm.test(\"Test\", () => {",
-													"    pm.response.to.have.status(200);",
-													"    pm.expect(pm.response.code).eql(200);",
-													"",
-													"    pm.response.to.have.header('Content-Type');",
-													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
-													"    pm.response.to.be.withBody;",
-													"    pm.response.to.be.json;",
-													"",
-													"    const json = pm.response.json();",
-													"    pm.expect(json.id).a('number').eql(2);",
-													"    pm.expect(json.email).a('string').eql('user@quizzmaker.com');",
-													"    pm.expect(json.username).a('string').eql('user');",
-													"    pm.expect(json.roles).a('string').eql('1');",
-													"});"
-												],
-												"type": "text/javascript"
-											}
-										}
-									],
-									"request": {
-										"method": "PATCH",
-										"header": [],
-										"body": {
-											"mode": "raw",
-											"raw": "{\n    \"username\": \"user\"\n}",
-											"options": {
-												"raw": {
-													"language": "json"
-												}
-											}
-										},
-										"url": {
-											"raw": "{{URL}}/api/quiz/users/2",
-											"host": [
-												"{{URL}}"
-											],
-											"path": [
-												"api",
-												"quiz",
-												"users",
-												"2"
-											]
-										}
-									},
-									"response": []
-								},
-								{
-									"name": "list added",
-									"event": [
-										{
-											"listen": "test",
-											"script": {
-												"exec": [
-													"pm.test(\"Test\", () => {",
-													"    pm.response.to.have.status(200);",
-													"    pm.expect(pm.response.code).eql(200);",
-													"",
-													"    pm.response.to.have.header('Content-Type');",
-													"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
-													"    pm.response.to.be.withBody;",
-													"    pm.response.to.be.json;",
-													"",
-													"    const json = pm.response.json();",
-													"    pm.expect(json).an('array');",
-													"    pm.expect(json.length).eql(2);",
-													"    pm.expect(json[0].id).a('number').eql(1);",
-													"    pm.expect(json[0].email).a('string').eql('test@quizzmaker.com');",
-													"    pm.expect(json[0].username).a('string').eql('test');",
-													"    pm.expect(json[0].roles).a('string').eql('1,2,3');",
-													"    pm.expect(json[0].roles_names).a('string').eql('USER,MOD,ADMIN');",
-													"",
-													"    pm.expect(json[1].id).a('number').eql(2);",
-													"    pm.expect(json[1].email).a('string').eql('user@quizzmaker.com');",
-													"    pm.expect(json[1].username).a('string').eql('user');",
-													"    pm.expect(json[1].roles).a('string').eql('1');",
-													"    pm.expect(json[1].roles_names).a('string').eql('USER');",
-													"});"
-												],
-												"type": "text/javascript"
-											}
-										}
-									],
-									"request": {
-										"method": "GET",
-										"header": [],
-										"url": {
-											"raw": "{{URL}}/api/quiz/users",
-											"host": [
-												"{{URL}}"
-											],
-											"path": [
-												"api",
-												"quiz",
-												"users"
-											]
-										}
-									},
-									"response": []
-								},
-								{
-									"name": "delete",
-									"event": [
-										{
-											"listen": "test",
-											"script": {
-												"exec": [
-													"pm.test(\"Test\", () => {",
-													"    pm.response.to.have.status(204);",
-													"    pm.expect(pm.response.code).eql(204);",
-													"",
-													"    pm.response.to.not.have.header('Content-Type');",
-													"    pm.response.to.not.be.withBody;",
-													"});"
-												],
-												"type": "text/javascript"
-											}
-										}
-									],
-									"request": {
-										"method": "DELETE",
-										"header": [],
-										"body": {
-											"mode": "raw",
-											"raw": "{\n    \"email\": \"user@quizzmaker.com\",\n    \"password\": \"user_password\"\n}",
-											"options": {
-												"raw": {
-													"language": "json"
-												}
-											}
-										},
-										"url": {
-											"raw": "{{URL}}/api/quiz/users/2",
-											"host": [
-												"{{URL}}"
-											],
-											"path": [
-												"api",
-												"quiz",
-												"users",
-												"2"
-											]
-										}
-									},
-									"response": []
+									"listen": "test",
+									"script": {
+										"exec": [
+											" function parseJwt (token,part) {",
+											"   var base64Url = token.split('.')[part];",
+											"   var words = CryptoJS.enc.Base64.parse(base64Url);",
+											"   var jsonPayload = CryptoJS.enc.Utf8.stringify(words);",
+											"   return JSON.parse(jsonPayload);",
+											"};",
+											"",
+											"pm.test(\"Test\", () => {",
+											"    pm.response.to.have.status(200);",
+											"    pm.expect(pm.response.code).eql(200);",
+											"",
+											"    pm.response.to.have.header('Content-Type');",
+											"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
+											"    pm.response.to.be.withBody;",
+											"    pm.response.to.be.json;",
+											"",
+											"    const json = pm.response.json();",
+											"    pm.expect(json.token).a('string');",
+											"    pm.environment.set(\"token\", json.token);",
+											"",
+											"    const jwt = parseJwt(json.token, 1);",
+											"    roles = jwt.roles;",
+											"    pm.expect(roles).an('array');",
+											"    pm.expect(roles.length).eql(3);",
+											"    pm.expect(roles[0]).eql(1);",
+											"    pm.expect(roles[1]).eql(2);",
+											"    pm.expect(roles[2]).eql(3);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
 								}
-							]
+							],
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"email\": \"test@quizzmaker.com\",\n    \"password\": \"test_password\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{URL}}/api/quiz/users/signin",
+									"host": [
+										"{{URL}}"
+									],
+									"path": [
+										"api",
+										"quiz",
+										"users",
+										"signin"
+									]
+								}
+							},
+							"response": []
 						}
 					]
 				},
@@ -1747,8 +1818,58 @@
 					]
 				},
 				{
-					"name": "user (logout)",
+					"name": "users",
 					"item": [
+						{
+							"name": "delete",
+							"item": [
+								{
+									"name": "delete",
+									"event": [
+										{
+											"listen": "test",
+											"script": {
+												"exec": [
+													"pm.test(\"Test\", () => {",
+													"    pm.response.to.have.status(204);",
+													"    pm.expect(pm.response.code).eql(204);",
+													"",
+													"    pm.response.to.not.have.header('Content-Type');",
+													"    pm.response.to.not.be.withBody;",
+													"});"
+												],
+												"type": "text/javascript"
+											}
+										}
+									],
+									"request": {
+										"method": "DELETE",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"email\": \"user@quizzmaker.com\",\n    \"password\": \"user_password\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{URL}}/api/users/2",
+											"host": [
+												"{{URL}}"
+											],
+											"path": [
+												"api",
+												"users",
+												"2"
+											]
+										}
+									},
+									"response": []
+								}
+							]
+						},
 						{
 							"name": "logout",
 							"item": [
@@ -1769,13 +1890,13 @@
 										"method": "POST",
 										"header": [],
 										"url": {
-											"raw": "{{URL}}/api/quiz/refresh/signout",
+											"raw": "{{URL}}/api/users/refresh/signout",
 											"host": [
 												"{{URL}}"
 											],
 											"path": [
 												"api",
-												"quiz",
+												"users",
 												"refresh",
 												"signout"
 											]

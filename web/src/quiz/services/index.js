@@ -1,77 +1,11 @@
 import apiFetch from "../../hooks/apiFetch";
 
-export function signUp(email, username, password, onSuccess, onError) {
+export function quizSignIn(email, password, onSuccess, onError) {
     return apiFetch(
-        "/api/quiz/signup",
-        "POST",
-        undefined,
-        username.length === 0 ? { email, password } : { email, username, password },
-        onSuccess,
-        onError
-    );
-}
-
-export function signIn(email, password, onSuccess, onError) {
-    return apiFetch(
-        "/api/quiz/signin",
+        "/api/quiz/users/signin",
         "POST",
         undefined,
         { email, password },
-        onSuccess,
-        onError
-    );
-}
-
-export function activate(token, onSuccess, onError) {
-    return apiFetch(
-        `/api/quiz/activate/${token}`,
-        "POST",
-        undefined,
-        undefined,
-        onSuccess,
-        onError
-    );
-}
-
-export function forgotPassword(email, onSuccess, onError) {
-    return apiFetch(
-        "/api/quiz/forgot_password",
-        "POST",
-        undefined,
-        { email },
-        onSuccess,
-        onError
-    );
-}
-
-export function refreshToken(onSuccess, onError) {
-    return apiFetch(
-        "/api/quiz/refresh",
-        "POST",
-        undefined,
-        undefined,
-        onSuccess,
-        onError
-    );
-}
-
-export function beginResetPassword(token, onSuccess, onError) {
-    return apiFetch(
-        `/api/quiz/begin_reset_password/${token}`,
-        "POST",
-        undefined,
-        undefined,
-        onSuccess,
-        onError
-    );
-}
-
-export function resetPassword(resetToken, password, onSuccess, onError) {
-    return apiFetch(
-        `/api/quiz/reset_password/${resetToken}`,
-        "POST",
-        undefined,
-        { password },
         onSuccess,
         onError
     );
@@ -242,17 +176,6 @@ export function getUserRoles(token, userId, onSuccess, onError) {
     );
 }
 
-export function updateUser(token, userId, user, onSuccess, onError) {
-    return apiFetch(
-        `/api/quiz/users/${userId}`,
-        "PATCH",
-        token,
-        user,
-        onSuccess,
-        onError
-    );
-}
-
 export function createOrUpdateUserRole(token, userId, roleId, role, onSuccess, onError) {
     return apiFetch(
         roleId === 0 ? `/api/quiz/users/${userId}/roles` : `/api/quiz/users/${userId}/roles/${roleId}`,
@@ -268,17 +191,6 @@ export function deleteUserRole(token, userId, roleId, onSuccess, onError) {
     return apiFetch(
         `/api/quiz/users/${userId}/roles/${roleId}`,
         "DELETE",
-        token,
-        undefined,
-        onSuccess,
-        onError
-    );
-}
-
-export function getUsers(token, onSuccess, onError) {
-    return apiFetch(
-        `/api/quiz/users`,
-        "GET",
         token,
         undefined,
         onSuccess,
