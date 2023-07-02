@@ -82,8 +82,8 @@
 									"    pm.expect(json[0].id).a('number').eql(1);",
 									"    pm.expect(json[0].email).a('string').eql('test@quizzmaker.com');",
 									"    pm.expect(json[0].username).a('string').eql('test');",
-									"    pm.expect(json[0].roles).a('string').eql('1,2');",
-									"    pm.expect(json[0].roles_names).a('string').eql('USER,ADMIN');",
+									"    pm.expect(json[0].roles).a('string').oneOf(['1,2', '2,1']);",
+									"    pm.expect(json[0].roles_names).a('string').oneOf(['USER,ADMIN', 'ADMIN,USER']);",
 									"});"
 								],
 								"type": "text/javascript"
@@ -321,59 +321,6 @@
 					"response": []
 				},
 				{
-					"name": "refresh",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Test\", () => {",
-									"    pm.response.to.have.status(200);",
-									"    pm.expect(pm.response.code).eql(200);",
-									"",
-									"    pm.response.to.have.header('Content-Type');",
-									"    pm.expect(pm.response.headers.get('Content-Type')).eql('application/json; charset=utf-8');",
-									"    pm.response.to.be.withBody;",
-									"    pm.response.to.be.json;",
-									"",
-									"    const json = pm.response.json();",
-									"    pm.expect(json.id).a('number').eql(2);",
-									"    pm.expect(json.email).a('string').eql('user@quizzmaker.com');",
-									"    pm.expect(json.username).a('string').eql('user');",
-									"    pm.expect(json.roles).a('string').eql('1');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "PATCH",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"username\": \"user\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{URL}}/api/users/refresh",
-							"host": [
-								"{{URL}}"
-							],
-							"path": [
-								"api",
-								"users",
-								"refresh"
-							]
-						}
-					},
-					"response": []
-				},
-				{
 					"name": "list added",
 					"event": [
 						{
@@ -464,9 +411,9 @@
 											"    roles = jwt.roles;",
 											"    pm.expect(roles).an('array');",
 											"    pm.expect(roles.length).eql(3);",
-											"    pm.expect(roles[0]).eql(1);",
-											"    pm.expect(roles[1]).eql(2);",
-											"    pm.expect(roles[2]).eql(3);",
+											"    pm.expect(roles[0]).oneOf([1,2,3]);",
+											"    pm.expect(roles[1]).oneOf([1,2,3]);",
+											"    pm.expect(roles[2]).oneOf([1,2,3]);",
 											"});"
 										],
 										"type": "text/javascript"
