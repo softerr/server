@@ -114,7 +114,8 @@ class UserController
         $user = $userRepo->insert($roles, $dto);
         $activateTokenRepo = new ActivateTokenRepo($db);
         $activateToken = $activateTokenRepo->getTokenById($activateTokenRepo->insert($user->id));
-        $url = "http://localhost:3000/activate/$activateToken";
+        $host = $_SERVER['HTTP_HOST'];
+        $url = "http://$host/activate/$activateToken";
 
         $headers = "MIME-Version: 1.0" . "\r\n";
         $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";

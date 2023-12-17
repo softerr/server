@@ -29,6 +29,9 @@ class Router
         }
 
         $method = Utils::get_method();
+        if ($method == 'OPTIONS') {
+            throw new OptionsResponse();
+        }
         if (!array_key_exists($method, $methods)) {
             throw new MethodNotAllowed(ERR_METHOD_NOT_ALLOWED, array_keys($methods));
         }

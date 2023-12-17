@@ -17,4 +17,4 @@ GRANT SELECT, UPDATE, INSERT, DELETE ON quiz.* TO 'php'@'localhost';
 "
 
 mysql < ./config/db.sql
-mysql < ./config/test.sql
+mysql < ./config/init.sql

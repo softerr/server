@@ -51,6 +51,6 @@ const QuizApp = () => {
             </Routes>
         </Fragment>
     );
-}
+};
 
 export default QuizApp;
