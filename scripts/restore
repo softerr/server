@@ -1,0 +1,28 @@
+#!/bin/sh
+
+if [ "$#" -ne 2 ]; then
+	echo "Usage: $0 {prod|dev} <backup_path>"
+	exit 1
+fi
+
+config=$1
+backupPath=$2
+
+if [ "$config" != "prod" ] && [ "$config" != "dev" ]; then
+	echo "Usage: $0 {prod|dev} <backup_path>"
+	exit 1
+fi
+
+CD=$(pwd)
+
+dbDataFile="db.sql"
+
+echo "Restoring db"
+backupExtPath="$CD/backup/restore"
+dbDataPath="$backupExtPath/$dbDataFile"
+
+rm -rf "$backupExtPath"
+unzip "$backupPath" -d "$backupExtPath"
+mysql --defaults-extra-file={mysqlRestoreConfFile} -e "SET GLOBAL log_bin_trust_function_creators = 1;source "{dbCreateFile}";SET GLOBAL log_bin_trust_function_creators = 0;SET foreign_key_checks = 0;SET @TRIGGER_CHECKS = FALSE;source $dbDataPath;SET @TRIGGER_CHECKS = TRUE;SET foreign_key_checks = 0;"
+
+echo "Restored successfully"

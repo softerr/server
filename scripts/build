@@ -1,0 +1,19 @@
+#!/bin/sh
+
+CD=$(pwd)
+
+buildPath="$CD/build"
+srcPath="$CD%/src"
+
+webPath=$srcPath/web
+
+rm -rf "$buildPath"
+mkdir -p "$buildPath"
+
+cp -r "$srcPath/api" "$buildPath/api"
+
+echo "Building npm project"
+(cd "$webPath" && npm ci && npm run build)
+cp -r "$webPath/build" "$buildPath/web"
+
+echo "Built successfully"

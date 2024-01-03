@@ -28,6 +28,8 @@ if "%config%" == "prod" (
 echo Restoring db
 set backupExtPath=%CD%\backup\restore
 set dbDataPath=%backupExtPath%\%dbDataFile%
+
+if exist "%backupExtPath%" mdir /s /q "%backupExtPath%"
 powershell Expand-Archive -Path "%backupPath%" -DestinationPath "%backupExtPath%" -Force
 "{mysql}" --defaults-extra-file=%mysqlRestoreConfFile% -e "source "{dbCreateFile}";SET foreign_key_checks = 0;SET @TRIGGER_CHECKS = FALSE;source "%dbDataPath:\=/%";SET @TRIGGER_CHECKS = TRUE;SET foreign_key_checks = 0;"
 

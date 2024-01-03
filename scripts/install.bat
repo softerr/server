@@ -46,7 +46,7 @@ set downloadPath=%CD%\dl
 set serverPath=%CD%\server
 set scriptsPath=%CD%\scripts
 set srcPath=%CD%\src
-
+set buildPath=%CD%\build
 set webPath=%srcPath%\web
 
 set dbCreateFile=%configPath%\db.sql
@@ -57,7 +57,7 @@ set tmplHttpdConfFile=%configPath%\win\httpd.conf
 set tmplSitesConfFileProd=%configPath%\win\sites.conf
 set tmplSitesConfFileDev=%configPath%\win\sites-dev.conf
 set tmplMysqlConfFile=%configPath%\win\my.ini
-set tmplMysqlClientConfFile=%configPath%\win\client.ini
+set tmplMysqlClientConfFile=%configPath%\client.ini
 set tmplPhpConfFile=%configPath%\win\php-dev.ini
 set tmplConfigPhpFile=%configPath%\config.php
 set tmplPhpmyadminConfFile=%configPath%\win\config.inc.php
@@ -76,10 +76,7 @@ set httpdConfFileProd=conf\httpd.conf
 set httpdConfFileDev=conf\httpd-dev.conf
 set httpdPidFileProd=logs\httpd.pid
 set httpdPidFileDev=logs\httpd-dev.pid
-set httpdLogErrorFileProd=logs\error.log
-set httpdLogErrorFileDev=logs\error-dev.log
-set httpdLogAccessFileProd=logs\access.log
-set httpdLogAccessFileDev=logs\access-dev.log
+set httpdLogPath=logs
 set sitesConfFileProd=conf\sites.conf
 set sitesConfFileDev=conf\sites-dev.conf
 set wwwPathProd=%httpdPath%\www
@@ -117,9 +114,6 @@ set mysqlSocketFileDev=%mysqlPath%\mysql-dev.sock
 set mysql=%mysqlPath%\bin\mysql
 set mysqldump=%mysqlPath%\bin\mysqldump
 
-set adminFileProd=%serverPath%\admin.txt
-set adminFileDev=%serverPath%\admin-dev.txt
-
 rem https://www.phpmyadmin.net/downloads/
 set phpmyadminUrl=https://files.phpmyadmin.net/phpMyAdmin/%phpmyadminVersion%/phpMyAdmin-%phpmyadminVersion%-english.zip
 set phpmyadminZip=%downloadPath%\phpmyadmin-%phpmyadminVersion%.zip
@@ -147,8 +141,6 @@ if "%config%" == "prod" (
 	set httpdPort=%httpdPortProd%
 	set httpdConfFile=%httpdConfFileProd%
 	set httpdPidFile=%httpdPidFileProd%
-	set httpdLogErrorFile=%httpdLogErrorFileProd%
-	set httpdLogAccessFile=%httpdLogAccessFileProd%
 	set tmplSitesConfFile=%tmplSitesConfFileProd%
 	set sitesConfFile=%sitesConfFileProd%
 	set wwwPath=%wwwPathProd%
@@ -173,8 +165,6 @@ if "%config%" == "prod" (
 	set httpdPort=%httpdPortDev%
 	set httpdConfFile=%httpdConfFileDev%
 	set httpdPidFile=%httpdPidFileDev%
-	set httpdLogErrorFile=%httpdLogErrorFileDev%
-	set httpdLogAccessFile=%httpdLogAccessFileDev%
 	set tmplSitesConfFile=%tmplSitesConfFileDev%
 	set sitesConfFile=%sitesConfFileDev%
 	set wwwPath=%wwwPathDev%
@@ -194,6 +184,22 @@ if "%config%" == "prod" (
 )
 
 set configPhpFile=%wwwPath%\config\config.php
+
+set httpd=%httpdPath%\bin\%httpdExe%
+set php=%phpPath%\php
+set mysqld=%mysqlPath%\bin\%mysqldExe%
+
+echo.
+echo ---------------------APACHE----------------------
+"%httpd%" -v
+echo.
+echo -----------------------PHP-----------------------
+"%php%" -v
+echo.
+echo ----------------------MYSQL----------------------
+"%mysqld%" -V
+echo .
+echo -------------------------------------------------
 
 rem backup
 if exist "%mysqlDataPath%" (
@@ -225,9 +231,6 @@ if not exist "%phpmyadminExt%" powershell -command "Expand-Archive -Path '%phpmy
 if not exist "%smtpExt%" powershell -command "Expand-Archive -Path '%smtpZip%' -DestinationPath '%smtpExt%' -Force"
 
 echo Generating server files
-set httpd=%httpdPath%\bin\%httpdExe%
-set mysqld=%mysqlPath%\bin\%mysqldExe%
-
 rem copy
 if not exist "%httpdPath%" xcopy "%httpdExt%\Apache24" "%httpdPath%" /E /I /Q /Y
 if not exist "%phpPath%" xcopy "%phpExt%" "%phpPath%" /E /I /Q /Y
@@ -238,13 +241,13 @@ if not exist "%httpd%.exe" copy "%httpdPath%\bin\httpd.exe" "%httpd%.exe"
 if not exist "%mysqld%.exe" copy "%mysqlPath%\bin\mysqld.exe" "%mysqld%.exe"
 
 rem config
+echo Configuring HTTP server
 powershell -command (gc %tmplHttpdConfFile%)^
 -replace '{serverPath}', '%serverPath:\=/%'^
 -replace '{serverPort}', '%httpdPort:\=/%'^
 -replace '{serverWww}', '%wwwPath:\=/%'^
 -replace '{pidFile}', '%httpdPidFile:\=/%'^
--replace '{logErrorFile}', '%httpdLogErrorFile:\=/%'^
--replace '{logAccessFile}', '%httpdLogAccessFile:\=/%'^
+-replace '{logPath}', '%httpdLogPath:\=/%'^
 -replace '{sitesConfFile}', '%sitesConfFile:\=/%'^
 | Out-File -encoding ASCII %httpdPath%\%httpdConfFile%
 
@@ -276,6 +279,7 @@ powershell -command (gc %tmplMysqlClientConfFile%)^
 -replace '{port}', '%mysqlPort%'^
 | Out-File -encoding ASCII %mysqlRestoreConfFile%
 
+echo Configuring Mail server
 powershell -command (gc %tmplSmtpConfFile%)^
 -replace '{email}', '%2'^
 -replace '{pass}', '%3'^
@@ -284,14 +288,10 @@ powershell -command (gc %tmplSmtpConfFile%)^
 rem www
 echo Generating www
 if exist "%wwwPath%" rmdir /s /q "%wwwPath%"
-mkdir "%wwwPath%"
-xcopy "src\api" "%wwwPath%\api" /E /I /Q /Y
+xcopy "%buildPath%" "%wwwPath%" /E /I /Q /Y
 xcopy "src\phpinfo" "%wwwPath%\phpinfo" /E /I /Q /Y
-set mysqlAdminLogin=%mysqlAdminUser%'@'%mysqlAdminHost%
-set mysqlBackupLogin=%mysqlBackupUser%'@'%mysqlBackupHost%
-set mysqlRestoreLogin=%mysqlRestoreUser%'@'%mysqlRestoreHost%
-set mysqlPhpLogin=%mysqlPhpUser%'@'%mysqlPhpHost%
 
+echo "Configuring API"
 mkdir "%wwwPath%\config"
 powershell -command (gc %tmplConfigPhpFile%)^
 -replace '{mysqlPhpHost}', '%mysqlPhpHost%'^
@@ -300,31 +300,19 @@ powershell -command (gc %tmplConfigPhpFile%)^
 -replace '{mysqlPhpPort}', '%mysqlPort%'^
 | Out-File -encoding ASCII %configPhpFile%
 
-if "%config%" == "prod" (
-	echo Building npm project
-	setlocal
-		cd %webPath%
-		call npm ci
-		call npm run build
-	endlocal
-	xcopy "%webPath%\build" "%wwwPath%\web" /E /I /Q /Y
-) else (
+if "%config%" == "dev" (
 	echo Preparing npm project
 	setlocal
 		cd %webPath%
 		call npm install
 	endlocal
-)
 
-if "%config%" == "dev" (
 	set phpmyadminPath=%wwwPath%\phpmyadmin
 	xcopy "%phpmyadminExt%\phpMyAdmin-%phpmyadminVersion%-english" "!phpmyadminPath!" /E /I /Q /Y
 	powershell -command "(gc %tmplPhpmyadminConfFile%) -replace '{port}', '%mysqlPort%' | Out-File -encoding ASCII %phpmyadminConfFile%"
 )
 
 rem scripts
-copy "%scriptsPath%\restore.bat" "%restore%"
-
 set "httpdFlags=-f %httpdConfFile:\=/%"
 set "mysqldFlags=--defaults-file=%mysqlConfFile:\=/%"
 (
@@ -378,12 +366,18 @@ if exist "%mysqlDataPath%" rmdir /s /q "%mysqlDataPath%"
 if not exist "%mysqlLogsPath%" mkdir "%mysqlLogsPath%"
 if not exist "%mysqlTmpPath%" mkdir "%mysqlTmpPath%"
 "%mysqld%" %mysqldFlags% --initialize-insecure
+
 call %start%
 
 if not exist "%backupPath%" (
 	echo Creating db
 	"%mysql%" -u root -P %mysqlPort% -e "source "%dbCreateFile:\=/%";source "%dbInitFile:\=/%";"
 )
+
+set mysqlAdminLogin=%mysqlAdminUser%'@'%mysqlAdminHost%
+set mysqlBackupLogin=%mysqlBackupUser%'@'%mysqlBackupHost%
+set mysqlRestoreLogin=%mysqlRestoreUser%'@'%mysqlRestoreHost%
+set mysqlPhpLogin=%mysqlPhpUser%'@'%mysqlPhpHost%
 
 set sql=^
 ALTER USER 'root'@'localhost' IDENTIFIED BY '%4';^

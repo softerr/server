@@ -1,0 +1,18 @@
+#!/bin/sh
+
+fullstamp=$(date "+%Y%m%d%H%M%S")
+
+backupPath="{backupPath}/$fullstamp"
+backupPathZip="$backupPath.zip"
+ 
+mysqlBackupFile="$backupPath/db.sql"
+
+mkdir -p "$backupPath"
+
+if [ -d "{mysqlDataPath}" ]; then
+	mysqldump --defaults-extra-file={mysqlBackupConfFile} --no-create-info --no-create-db --skip-triggers --skip-tz-utc --compact --databases user quiz > "$mysqlBackupFile"
+fi
+
+zip -jqr "$backupPathZip" "$backupPath"
+ 
+echo "$backupPathZip"
