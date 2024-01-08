@@ -3,7 +3,7 @@
 CD=$(pwd)
 
 buildPath="$CD/build"
-srcPath="$CD%/src"
+srcPath="$CD/src"
 
 webPath=$srcPath/web
 
