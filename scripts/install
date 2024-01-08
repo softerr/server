@@ -2,8 +2,8 @@
 
 config="$1"
 
-if [ "$#" -ne 8 ] || { [ "$config" != "prod" ] && [ "$config" != "dev" ]; }; then
-	echo "Usage: $0 {prod|dev} <email> <pass> <root_pass> <admin_pass> <backup_pass> <restore_pass> <php_pass>"
+if [ "$#" -ne 9 ] || { [ "$config" != "prod" ] && [ "$config" != "dev" ]; }; then
+	echo "Usage: $0 {prod|dev} <email> <pass> <root_pass> <admin_pass> <backup_pass> <restore_pass> <php_pass> <email_status>"
 	exit 1
 fi
 
@@ -213,5 +213,8 @@ if [ -e "$backupPath" ]; then
 	$restore "$config" "$backupPath"
 fi
 
-echo "Installed successfully"
+echo "Sending email"
+echo "Subject: Done" | sudo sendmail -v "$9"
+
+echo "Done"
 
