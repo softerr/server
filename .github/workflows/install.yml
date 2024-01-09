@@ -3,11 +3,6 @@ run-name: install
 
 on:
   workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Branch to run the workflow on'
-        required: true
-        default: 'install'
 
 jobs:
   Install:
