@@ -1,0 +1,18 @@
+name: install
+run-name: install
+
+on:
+  workflow_dispatch:
+
+jobs:
+  Install:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install
+        run: |
+          sudo ./scripts/prepare
+          ./scripts/build
+          sudo ./scripts/install prod ${{secrets.EMAIL}} ${{secrets.EMAIL_PASS}} ${{secrets.ROOT_PASS}} ${{secrets.ADMIN_PASS}} ${{secrets.BACKUP_PASS}} ${{secrets.RESTORE_PASS}} ${{secrets.PHP_PASS}} ${{secrets.EMAIL_STATUS}}
