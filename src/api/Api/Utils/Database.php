@@ -1,6 +1,7 @@
 <?php
 require_once('Response.php');
 require_once('Utils.php');
+require_once('../config/config.php');
 
 class Database
 {
@@ -8,9 +9,8 @@ class Database
 
     public function __construct(string $db)
     {
-        $cs = explode(':', Utils::read_file("/home/.mysql"));
         try {
-            $conn = mysqli_connect($cs[0], $cs[1], $cs[2], $db, intval($cs[3]));
+            $conn = mysqli_connect(MYSQL_PHP_HOST, MYSQL_PHP_USER, MYSQL_PHP_PASS, $db, MYSQL_PHP_PORT);
             if (!$conn) {
                 throw new InternalServerError(ERR_DB_CONNECT, mysqli_connect_error());
             }

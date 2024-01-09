@@ -76,8 +76,8 @@ class MethodErrorResponseBody extends ErrorResponseBody
 
 abstract class Response extends Exception
 {
-    private int $response_code;
-    private $body;
+    protected int $response_code;
+    protected $body;
 
     public function __construct(int $response_code, $body)
     {
@@ -87,9 +87,24 @@ abstract class Response extends Exception
 
     public function show(): void
     {
+        header('Access-Control-Allow-Origin: *');
         header("Content-Type: application/json; charset=utf-8");
         http_response_code($this->response_code);
         echo json_encode($this->body);
+    }
+}
+class OptionsResponse extends Response
+{
+    public function __construct()
+    {
+        parent::__construct(200, null);
+    }
+
+    public function show(): void
+    {
+        header('Access-Control-Allow-Headers: *');
+        header('Access-Control-Allow-Origin: *');
+        http_response_code(200);
     }
 }
 class Ok extends Response

@@ -1,0 +1,221 @@
+#!/bin/sh
+
+config="$1"
+
+if [ "$#" -ne 9 ] || { [ "$config" != "prod" ] && [ "$config" != "dev" ]; }; then
+	echo "Usage: $0 {prod|dev} <email> <pass> <root_pass> <admin_pass> <backup_pass> <restore_pass> <php_pass> <email_status>"
+	exit 1
+fi
+
+if [ "$config" != "prod" ]; then
+	echo "Only prod config is supported"
+	exit 1
+fi
+
+CD=$(pwd)
+
+mysqlAdminHost="localhost"
+mysqlAdminUser="admin"
+mysqlBackupHost="localhost"
+mysqlBackupUser="backup"
+mysqlRestoreHost="localhost"
+mysqlRestoreUser="restore"
+mysqlPhpHost="localhost"
+mysqlPhpUser="php"
+
+configPath="$CD/config"
+serverPath="$CD/server"
+scriptsPath="$CD/scripts"
+buildPath="$CD/build"
+
+dbCreateFile=$configPath/db.sql
+dbInitFile=$configPath/init.sql
+tmplSitesConfFile="$configPath/sites.conf"
+tmplConfigPhpFile="$configPath/config.php"
+tmplMysqlConfFile="$configPath/linux/my.ini"
+tmplMysqlClientConfFile="$configPath/client.ini"
+tmplBackup="$scriptsPath/backup"
+tmplRestore="$scriptsPath/restore"
+
+sitesConfFile="/etc/apache2/sites-available/000-default.conf"
+
+mysqlPort=3306
+mysqlPath="/etc/mysql"
+mysqlConfFile="$mysqlPath/mysql.conf"
+mysqlBackupConfFile="$mysqlPath/backup.conf"
+mysqlRestoreConfFile="$mysqlPath/restore.conf"
+mysqlDataPath="/var/lib/mysql"
+
+backup="$serverPath/backup"
+restore="$serverPath/restore"
+start=$serverPath/start
+stop=$serverPath/stop
+
+wwwPath="/var/www"
+configPhpFile=$wwwPath/config/config.php
+
+echo "Installing packages"
+apt update
+apt install apache2 php libapache2-mod-php8.1 mysql-server php-mysqli sendmail mailutils zip -y
+
+printf "\n---------------------APACHE----------------------\n"
+apache2 -v
+if systemctl is-active --quiet apache2; then
+        echo "State: running"
+else
+        echo "State: stopped"
+fi
+
+
+printf "\n-----------------------PHP-----------------------\n"
+php -vi
+
+printf "\n----------------------MYSQL----------------------\n"
+mysql -V
+if systemctl is-active --quiet mysql; then
+	echo "State: running"
+else
+	echo "State: stopped"
+fi
+
+printf "\n-----------------------SMTP----------------------\n"
+if systemctl is-active --quiet sendmail; then
+        echo "State: running"
+else
+        echo "State: stopped"
+fi
+
+printf "\n-------------------------------------------------\n"
+
+#backup
+if [ -d "$mysqlDataPath" ] && systemctl is-active --quiet mysql; then
+	echo "Creating backup"
+	backupPath=$("$backup")
+	echo "Backup: $backupPath"
+fi
+
+$stop
+
+mkdir -p "$serverPath"
+
+#config
+echo "Configuring HTTP server"
+cp "$tmplSitesConfFile" "$sitesConfFile"
+sed -i "s;\${SRVWWW};$wwwPath;g" "$sitesConfFile"
+a2enmod rewrite
+a2enmod php8.1
+
+echo "Configuring MySQL server"
+cp "$tmplMysqlConfFile" "$mysqlConfFile"
+sed -i "s;{port};$mysqlPort;g" "$mysqlConfFile"
+sed -i "s;{dataPath};$mysqlDataPath;g" "$mysqlConfFile"
+
+cp "$tmplMysqlClientConfFile" "$mysqlBackupConfFile"
+sed -i "s;{user};$mysqlBackupUser;g" "$mysqlBackupConfFile"
+sed -i "s;{pass};$6;g" "$mysqlBackupConfFile"
+sed -i "s;{port};$mysqlPort;g" "$mysqlBackupConfFile"
+
+cp "$tmplMysqlClientConfFile" "$mysqlRestoreConfFile"
+sed -i "s;{user};$mysqlRestoreUser;g" "$mysqlRestoreConfFile"
+sed -i "s;{pass};$6;g" "$mysqlRestoreConfFile"
+sed -i "s;{port};$mysqlPort;g" "$mysqlRestoreConfFile"
+
+#sendmail
+echo "Configuring Mail server"
+echo "AuthInfo:smtp.gmail.com \"U:$2\" \"P:$3\" \"M:PLAIN\"" >/etc/mail/authinfo
+makemap hash /etc/mail/authinfo </etc/mail/authinfo
+make -C /etc/mail
+
+#www
+echo "Generating www"
+rm -rf "$wwwPath"
+cp -r "$buildPath" "$wwwPath"
+
+echo "Configuring API"
+mkdir -p "$wwwPath/config"
+cp "$tmplConfigPhpFile" "$configPhpFile"
+sed -i "s;{mysqlPhpHost};$mysqlPhpHost;g" "$configPhpFile"
+sed -i "s;{mysqlPhpUser};$mysqlPhpUser;g" "$configPhpFile"
+sed -i "s;{mysqlPhpPass};$8;g" "$configPhpFile"
+sed -i "s;{mysqlPhpPort};$mysqlPort;g" "$configPhpFile"
+
+#scripts
+printf "#!/bin/sh
+echo \"Starting HTTP server\"
+systemctl start apache2
+echo \"Starting MySQL server\"
+systemctl start mysql
+echo \"Starting Mail server\"
+systemctl start sendmail" >"$start"
+chmod +x "$start"
+
+printf "#!/bin/sh
+echo \"Stopping HTTP server\"
+systemctl stop apache2
+echo \"Stopping MySQL server\"
+systemctl stop mysql
+echo \"Stopping Mail server\"
+systemctl stop sendmail" >"$stop"
+chmod +x "$stop"
+
+cp "$tmplBackup" "$backup"
+sed -i "s;{backupPath};$CD/backup;g" "$backup"
+sed -i "s;{mysqlDataPath};$mysqlDataPath;g" "$backup"
+sed -i "s;{mysqlBackupConfFile};$mysqlBackupConfFile;g" "$backup"
+chmod +x "$backup"
+
+cp "$tmplRestore" "$restore"
+sed -i "s;{dbCreateFile};$dbCreateFile;g" "$restore"
+sed -i "s;{mysqlRestoreConfFile};$mysqlRestoreConfFile;g" "$restore"
+chmod +x "$restore"
+
+#database
+echo "Initializing db"
+rm -rf "$mysqlDataPath"
+mkdir -m 700 "$mysqlDataPath"
+chown -R mysql:mysql "$mysqlDataPath"
+sudo -u mysql mysqld --initialize-insecure
+
+"$start"
+
+if [ ! -e "$backupPath" ]; then
+	echo "Creating db"
+	mysql -u root -P $mysqlPort -e "source $dbCreateFile;source $dbInitFile;"
+fi
+
+mysqlAdminLogin="$mysqlAdminUser'@'$mysqlAdminHost"
+mysqlBackupLogin="$mysqlBackupUser'@'$mysqlBackupHost"
+mysqlRestoreLogin="$mysqlRestoreUser'@'$mysqlRestoreHost"
+mysqlPhpLogin="$mysqlPhpUser'@'$mysqlPhpHost"
+
+sql="
+ALTER USER 'root'@'localhost' IDENTIFIED BY '$4';
+CREATE USER '$mysqlAdminLogin' IDENTIFIED BY '$5';
+CREATE USER '$mysqlBackupLogin' IDENTIFIED BY '$6';
+CREATE USER '$mysqlRestoreLogin' IDENTIFIED BY '$7';
+CREATE USER '$mysqlPhpLogin' IDENTIFIED BY '$8';
+GRANT PROCESS ON *.* TO '$mysqlAdminLogin';
+GRANT SELECT, UPDATE, INSERT, DELETE, LOCK TABLES ON user.* TO '$mysqlAdminLogin';
+GRANT SELECT, UPDATE, INSERT, DELETE, LOCK TABLES ON quiz.* TO '$mysqlAdminLogin';
+GRANT PROCESS ON *.* TO '$mysqlBackupLogin';
+GRANT SELECT, LOCK TABLES ON user.* TO '$mysqlBackupLogin';
+GRANT SELECT, LOCK TABLES ON quiz.* TO '$mysqlBackupLogin';
+GRANT CREATE, SYSTEM_VARIABLES_ADMIN ON *.* TO '$mysqlRestoreLogin';
+GRANT SELECT, UPDATE, INSERT, DELETE, TRIGGER, REFERENCES, DROP ON user.* TO '$mysqlRestoreLogin';
+GRANT SELECT, UPDATE, INSERT, DELETE, TRIGGER, REFERENCES, DROP ON quiz.* TO '$mysqlRestoreLogin';
+GRANT SELECT, UPDATE, INSERT, DELETE ON user.* TO '$mysqlPhpLogin';
+GRANT SELECT, UPDATE, INSERT, DELETE ON quiz.* TO '$mysqlPhpLogin';"
+
+echo "Creating MySQL users"
+mysql -u root -P $mysqlPort -e "$sql"
+
+if [ -e "$backupPath" ]; then
+	echo "Calling restore"
+	$restore "$config" "$backupPath"
+fi
+
+echo "Sending email"
+echo "Subject: Done" | sudo sendmail -v "$9"
+
+echo "Done"
+
