@@ -55,6 +55,7 @@ wwwPath="/var/www"
 configPhpFile=$wwwPath/config/config.php
 
 echo "Installing packages"
+apt update
 apt install apache2 php libapache2-mod-php8.1 mysql-server php-mysqli sendmail mailutils zip -y
 
 printf "\n---------------------APACHE----------------------\n"
