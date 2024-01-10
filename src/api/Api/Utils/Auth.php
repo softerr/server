@@ -3,6 +3,7 @@
 require_once('Utils.php');
 require_once('Response.php');
 require_once('Lib/jwt.php');
+require_once('../config/config.php');
 
 class AuthData
 {
@@ -36,7 +37,7 @@ class Auth
             'username' => $username,
             'roles' => $roles
         ];
-        return JWT::encode($payload, Utils::read_file("/home/.jwt"), 'HS256');
+        return JWT::encode($payload, JWT_KEY, 'HS256');
     }
 
     public static function authenticate(): AuthData
@@ -47,7 +48,7 @@ class Auth
         }
 
         try {
-            $payload = JWT::decode($token, Utils::read_file("/home/.jwt"), ['HS256']);
+            $payload = JWT::decode($token, JWT_KEY, ['HS256']);
         } catch (ExpiredException $e) {
             throw new Unauthorized(ERR_EXPIRED_TOKEN);
         } catch (Exception $e) {
