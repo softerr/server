@@ -1,0 +1,29 @@
+#!/bin/sh
+
+CD=$(pwd)
+
+scriptsPath="/scripts"
+buildPath="$CD/build"
+
+backup="$scriptsPath/backup"
+restore="$scriptsPath/restore"
+
+wwwPath="/var/www"
+
+echo "Deleting old files"
+
+rm -rf "$wwwPath/api"
+rm -rf "$wwwPath/web"
+
+echo "Copying new files"
+
+cp -r "$buildPath/"* "$wwwPath"
+
+echo "Creating backup"
+backupPath=$("$backup")
+echo "Backup: $backupPath"
+
+echo "Restoring backup"
+$restore prod "$backupPath"
+
+echo "Done"

@@ -24,9 +24,9 @@ mysqlPhpHost="localhost"
 mysqlPhpUser="php"
 
 configPath="$CD/config"
-serverPath="$CD/server"
-scriptsPath="$CD/scripts"
-buildPath="$CD/build"
+
+backupsPath="/backup"
+scriptsPath="/scripts"
 
 dbCreateFile=$configPath/db.sql
 dbInitFile=$configPath/init.sql
@@ -34,8 +34,9 @@ tmplSitesConfFile="$configPath/sites.conf"
 tmplConfigPhpFile="$configPath/config.php"
 tmplMysqlConfFile="$configPath/linux/my.ini"
 tmplMysqlClientConfFile="$configPath/client.ini"
-tmplBackup="$scriptsPath/backup"
-tmplRestore="$scriptsPath/restore"
+tmplBackup="$CD/scripts/backup"
+tmplRestore="$CD/scripts/restore"
+tmplDeploy="$CD/scripts/deploy"
 
 sitesConfFile="/etc/apache2/sites-available/000-default.conf"
 
@@ -46,10 +47,11 @@ mysqlBackupConfFile="$mysqlPath/backup.conf"
 mysqlRestoreConfFile="$mysqlPath/restore.conf"
 mysqlDataPath="/var/lib/mysql"
 
-backup="$serverPath/backup"
-restore="$serverPath/restore"
-start=$serverPath/start
-stop=$serverPath/stop
+backup="$scriptsPath/backup"
+restore="$scriptsPath/restore"
+start="$scriptsPath/start"
+stop="$scriptsPath/stop"
+deploy="$scriptsPath/deploy"
 
 wwwPath="/var/www"
 configPhpFile=$wwwPath/config/config.php
@@ -58,7 +60,7 @@ echo "Installing packages"
 apt update
 apt install apache2 php libapache2-mod-php8.1 mysql-server php-mysqli sendmail mailutils zip -y
 
-printf "\n---------------------APACHE----------------------\n"
+printf "\n-----------------------HTTP----------------------\n"
 apache2 -v
 if systemctl is-active --quiet apache2; then
         echo "State: running"
@@ -66,11 +68,10 @@ else
         echo "State: stopped"
 fi
 
-
 printf "\n-----------------------PHP-----------------------\n"
 php -vi
 
-printf "\n----------------------MYSQL----------------------\n"
+printf "\n------------------------DB-----------------------\n"
 mysql -V
 if systemctl is-active --quiet mysql; then
 	echo "State: running"
@@ -87,16 +88,36 @@ fi
 
 printf "\n-------------------------------------------------\n"
 
+mkdir -p -m 777 "$backupsPath"
+mkdir -p -m 755 "$scriptsPath"
+
+#scripts
+printf "#!/bin/sh
+echo \"Starting HTTP server\"
+systemctl start apache2
+echo \"Starting MySQL server\"
+systemctl start mysql
+echo \"Starting Mail server\"
+systemctl start sendmail" >"$start"
+chmod +x "$start"
+
+printf "#!/bin/sh
+echo \"Stopping HTTP server\"
+systemctl stop apache2
+echo \"Stopping MySQL server\"
+systemctl stop mysql
+echo \"Stopping Mail server\"
+systemctl stop sendmail" >"$stop"
+chmod +x "$stop"
+
 #backup
-if [ -d "$mysqlDataPath" ] && systemctl is-active --quiet mysql; then
+if [ -d "$mysqlDataPath" ] && [ -e "$backup" ] && systemctl is-active --quiet mysql; then
 	echo "Creating backup"
 	backupPath=$("$backup")
 	echo "Backup: $backupPath"
 fi
 
 $stop
-
-mkdir -p "$serverPath"
 
 #config
 echo "Configuring HTTP server"
@@ -128,8 +149,10 @@ make -C /etc/mail
 
 #www
 echo "Generating www"
-rm -rf "$wwwPath"
-cp -r "$buildPath" "$wwwPath"
+rm -rf "${wwwPath:?}/"*
+mkdir -p "$wwwPath/api"
+mkdir -p "$wwwPath/web"
+chmod -R og+w "$wwwPath"
 
 echo "Configuring API"
 mkdir -p "$wwwPath/config"
@@ -140,26 +163,8 @@ sed -i "s;{mysqlPhpPass};$8;g" "$configPhpFile"
 sed -i "s;{mysqlPhpPort};$mysqlPort;g" "$configPhpFile"
 
 #scripts
-printf "#!/bin/sh
-echo \"Starting HTTP server\"
-systemctl start apache2
-echo \"Starting MySQL server\"
-systemctl start mysql
-echo \"Starting Mail server\"
-systemctl start sendmail" >"$start"
-chmod +x "$start"
-
-printf "#!/bin/sh
-echo \"Stopping HTTP server\"
-systemctl stop apache2
-echo \"Stopping MySQL server\"
-systemctl stop mysql
-echo \"Stopping Mail server\"
-systemctl stop sendmail" >"$stop"
-chmod +x "$stop"
-
 cp "$tmplBackup" "$backup"
-sed -i "s;{backupPath};$CD/backup;g" "$backup"
+sed -i "s;{backupPath};$backupsPath;g" "$backup"
 sed -i "s;{mysqlDataPath};$mysqlDataPath;g" "$backup"
 sed -i "s;{mysqlBackupConfFile};$mysqlBackupConfFile;g" "$backup"
 chmod +x "$backup"
@@ -168,6 +173,8 @@ cp "$tmplRestore" "$restore"
 sed -i "s;{dbCreateFile};$dbCreateFile;g" "$restore"
 sed -i "s;{mysqlRestoreConfFile};$mysqlRestoreConfFile;g" "$restore"
 chmod +x "$restore"
+
+cp "$tmplDeploy" "$deploy"
 
 #database
 echo "Initializing db"
@@ -218,4 +225,3 @@ echo "Sending email"
 echo "Subject: Done" | sudo sendmail -v "$9"
 
 echo "Done"
-
