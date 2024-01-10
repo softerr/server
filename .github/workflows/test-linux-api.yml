@@ -1,0 +1,36 @@
+name: test
+run-name: test-linux-api
+
+on:
+  workflow_run:
+    workflows: [build]
+    types: [completed]
+
+jobs:
+  Test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install
+        run: sudo ./scripts/install prod ${{secrets.EMAIL}} ${{secrets.EMAIL_PASS}} ${{secrets.ROOT_PASS}} ${{secrets.ADMIN_PASS}} ${{secrets.BACKUP_PASS}} ${{secrets.RESTORE_PASS}} ${{secrets.PHP_PASS}} ${{secrets.EMAIL_STATUS}}
+
+      - name: Download
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{secrets.PAT}}
+          run-id: ${{github.event.workflow_run.id}}
+          name: build
+          path: ./build
+
+      - name: Deploy
+        run: /scripts/deploy
+
+      - name: Setup Postman
+        run: |
+          curl -o- "https://dl-cli.pstmn.io/install/linux64.sh" | sh
+          postman login --with-api-key ${{secrets.POSTMAN_API_KEY}}
+
+      - name: Run
+        run: postman collection run ./tests/api.json -e ./tests/local.json
