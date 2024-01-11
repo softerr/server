@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install
-        run: sudo ./scripts/install prod ${{secrets.EMAIL}} ${{secrets.EMAIL_PASS}} ${{secrets.ROOT_PASS}} ${{secrets.ADMIN_PASS}} ${{secrets.BACKUP_PASS}} ${{secrets.RESTORE_PASS}} ${{secrets.PHP_PASS}} ${{secrets.EMAIL_STATUS}}
+        run: sudo ./scripts/install prod ${{secrets.EMAIL}} ${{secrets.EMAIL_PASS}} ${{secrets.ROOT_PASS}} ${{secrets.ADMIN_PASS}} ${{secrets.BACKUP_PASS}} ${{secrets.RESTORE_PASS}} ${{secrets.PHP_PASS}} ${{secrets.JWT_KEY}} ${{secrets.EMAIL_STATUS}}
 
       - name: Download
         uses: actions/download-artifact@v4

@@ -17,10 +17,10 @@ jobs:
         node-version: [18.x, 20.x]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install
-        run: sudo ./scripts/install prod ${{secrets.EMAIL}} ${{secrets.EMAIL_PASS}} ${{secrets.ROOT_PASS}} ${{secrets.ADMIN_PASS}} ${{secrets.BACKUP_PASS}} ${{secrets.RESTORE_PASS}} ${{secrets.PHP_PASS}} ${{secrets.EMAIL_STATUS}}
+        run: sudo ./scripts/install prod ${{secrets.EMAIL}} ${{secrets.EMAIL_PASS}} ${{secrets.ROOT_PASS}} ${{secrets.ADMIN_PASS}} ${{secrets.BACKUP_PASS}} ${{secrets.RESTORE_PASS}} ${{secrets.PHP_PASS}} ${{secrets.JWT_KEY}} ${{secrets.EMAIL_STATUS}}
 
       - name: Download
         uses: actions/download-artifact@v4
@@ -34,15 +34,15 @@ jobs:
         run: /scripts/deploy
 
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
-          cache-dependency-path: ./web/package-lock.json
+          cache-dependency-path: ./src/web/package-lock.json
 
-      - name: Run Tests
-        working-directory: ./web/
+      - name: Run
+        working-directory: ./src/web/
         run: |
           npm ci
-          npm run build --if-present
+          npm run build
           npm test
