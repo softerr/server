@@ -65,7 +65,7 @@ export function getUserRoles(token, userId, onSuccess, onError) {
 }
 
 export function updateUser(token, userId, user, onSuccess, onError) {
-    return apiFetch(`/api/quiz/users/${userId}`, "PATCH", token, user, onSuccess, onError);
+    return apiFetch(`/api/users/${userId}`, "PATCH", token, user, onSuccess, onError);
 }
 
 export function createOrUpdateUserRole(token, userId, roleId, role, onSuccess, onError) {
@@ -77,5 +77,5 @@ export function deleteUserRole(token, userId, roleId, onSuccess, onError) {
 }
 
 export function getUsers(token, onSuccess, onError) {
-    return apiFetch(`/api/quiz/users`, "GET", token, undefined, onSuccess, onError);
+    return apiFetch(`/api/users`, "GET", token, undefined, onSuccess, onError);
 }

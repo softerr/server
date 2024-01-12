@@ -28,7 +28,7 @@ class PasswordTokenRepo
                 LEFT JOIN `user_role` ON `user`.`id`=`user_role`.`user_id` 
                 INNER JOIN `password_token` ON `user`.`id`=`password_token`.`user_id` 
             WHERE `password_token`.`token`=? AND `password_token`.`expired`=0 AND utc_timestamp() BETWEEN `password_token`.`created` AND `password_token`.`expires` 
-            GROUP BY `user`.`id`',
+            GROUP BY `user`.`id`, `password_token`.`id`',
             's',
             $token
         );

@@ -1,4 +1,5 @@
-backup/
-build/
-dl/
-server/
+/backup/
+/build/
+/dl/
+/server/
+/src/config/

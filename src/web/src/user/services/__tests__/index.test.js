@@ -1,87 +1,107 @@
-import { userSignUp, userSignIn, userActivate, userForgotPassword, userRefreshToken, userBeginResetPassword, userResetPassword } from "../index"
+import { userSignUp, userSignIn, userActivate, userForgotPassword, userRefreshToken, userBeginResetPassword, userResetPassword } from "../index";
+import mockAxios from "axios";
+const mockConfig = require("../../../../../config/config.json");
 
 jest.mock("../../../hooks/apiFetch", () => {
     return async (url, method, token, body, onSuccess, onError) => {
-        return fetch(url, {
+        return mockAxios({
             method,
+            url: `http://localhost:${mockConfig.apiPort}${url}`,
             headers: {
-                Authorization: token ? "Bearer " + token : "",
+                Authorization: token ? `Bearer ${token}` : "",
                 Accept: "application/json",
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify(body),
-        }).then(async res => {
-            if (res.ok) {
-                onSuccess(res.status === 204 ? undefined : await res.json());
-            } else {
-                onError(await res.json());
-            }
-        });
+            data: body,
+        })
+            .then(res => {
+                if (res.status === 204) {
+                    onSuccess(undefined);
+                } else {
+                    onSuccess(res.data);
+                }
+            })
+            .catch(error => {
+                if (mockAxios.isCancel(error)) {
+                    console.log("Request canceled:", error.message);
+                } else {
+                    onError(error.response ? error.response.data : error.message);
+                }
+            });
     };
-})
-
+});
 describe("User API", () => {
     describe("Account", () => {
         test("Sign Up Without Username", async () => {
-            return userSignUp("", "", "",
+            return userSignUp(
+                "",
+                "",
+                "",
                 data => {
                     expect(data).toBe(0);
                 },
                 res => {
                     expect(res).toMatchObject({
-                        status: 400
+                        status: 400,
                     });
                 }
             );
         });
 
         test("Sign Up With Username", async () => {
-            return userSignUp("", "a", "",
+            return userSignUp(
+                "",
+                "a",
+                "",
                 data => {
                     expect(data).toBe(0);
                 },
                 res => {
                     expect(res).toMatchObject({
-                        status: 400
+                        status: 400,
                     });
                 }
             );
         });
 
         test("Sign In", () => {
-            return userSignIn("", "",
+            return userSignIn(
+                "",
+                "",
                 data => {
                     expect(data).toBe(0);
                 },
                 res => {
                     expect(res).toMatchObject({
-                        status: 400
+                        status: 400,
                     });
                 }
             );
         });
 
         test("Activate", () => {
-            return userActivate("a",
+            return userActivate(
+                "a",
                 data => {
                     expect(data).toBe(0);
                 },
                 res => {
                     expect(res).toMatchObject({
-                        status: 400
+                        status: 400,
                     });
                 }
             );
         });
 
         test("Forgot Password", () => {
-            return userForgotPassword("",
+            return userForgotPassword(
+                "",
                 data => {
                     expect(data).toBe(0);
                 },
                 res => {
                     expect(res).toMatchObject({
-                        status: 400
+                        status: 400,
                     });
                 }
             );
@@ -94,33 +114,36 @@ describe("User API", () => {
                 },
                 res => {
                     expect(res).toMatchObject({
-                        status: 401
+                        status: 401,
                     });
                 }
             );
         });
 
         test("Begin Reset Password", () => {
-            return userBeginResetPassword("a",
+            return userBeginResetPassword(
+                "a",
                 data => {
                     expect(data).toBe(0);
                 },
                 res => {
                     expect(res).toMatchObject({
-                        status: 400
+                        status: 400,
                     });
                 }
             );
         });
 
         test("Reset Password", () => {
-            return userResetPassword("a", "",
+            return userResetPassword(
+                "a",
+                "",
                 data => {
                     expect(data).toBe(0);
                 },
                 res => {
                     expect(res).toMatchObject({
-                        status: 400
+                        status: 400,
                     });
                 }
             );

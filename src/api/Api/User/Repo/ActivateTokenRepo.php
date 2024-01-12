@@ -28,7 +28,7 @@ class ActivateTokenRepo
                 LEFT JOIN `user_role` ON `user`.`id`=`user_role`.`user_id` 
                 INNER JOIN `activate_token` ON `user`.`id`=`activate_token`.`user_id` 
             WHERE `activate_token`.`token`=? AND `activate_token`.`expired`=0 AND utc_timestamp() >= `activate_token`.`created`
-            GROUP BY `user`.`id`',
+            GROUP BY `user`.`id`, `activate_token`.`id`',
             's',
             $token
         );

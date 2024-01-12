@@ -7,11 +7,6 @@ if [ "$#" -ne 10 ] || { [ "$config" != "prod" ] && [ "$config" != "dev" ]; }; th
 	exit 1
 fi
 
-if [ "$config" != "prod" ]; then
-	echo "Only prod config is supported"
-	exit 1
-fi
-
 CD=$(pwd)
 
 mysqlAdminHost="localhost"
@@ -27,19 +22,31 @@ configPath="$CD/config"
 
 backupsPath="/backup"
 scriptsPath="/scripts"
+srcPath="$CD/src"
+srcApiPath="$srcPath/api"
+srcWebPath="$srcPath/web"
 
 dbCreateFile=$configPath/db.sql
 dbInitFile=$configPath/init.sql
-tmplSitesConfFile="$configPath/sites.conf"
-tmplConfigPhpFile="$configPath/config.php"
+tmplSitesConfFileProd="$configPath/sites.conf"
+tmplSitesConfFileDev="$configPath/sites-dev.conf"
+tmplApiConfigFile="$configPath/config.php"
+tmplWebConfigFile="$configPath/config.json"
 tmplMysqlConfFile="$configPath/linux/my.ini"
 tmplMysqlClientConfFile="$configPath/client.ini"
 tmplBackup="$CD/scripts/backup"
 tmplRestore="$CD/scripts/restore"
 tmplDeploy="$CD/scripts/deploy"
 
+#httpd
+httpdPortProd=80
+httpdPortDev=8080
 sitesConfFile="/etc/apache2/sites-available/000-default.conf"
+wwwPath="/var/www"
+apiPathProd="\${SRVWWW}/api"
+apiPathDev="$srcApiPath"
 
+#mysql
 mysqlPort=3306
 mysqlPath="/etc/mysql"
 mysqlConfFile="$mysqlPath/mysql.conf"
@@ -47,14 +54,40 @@ mysqlBackupConfFile="$mysqlPath/backup.conf"
 mysqlRestoreConfFile="$mysqlPath/restore.conf"
 mysqlDataPath="/var/lib/mysql"
 
+apiConfigFileProd="$wwwPath/config/config.php"
+apiConfigFileDev="$srcPath/config/config.php"
+webConfigFileProd="$wwwPath/config/config.json"
+webConfigFileDev="$srcPath/config/config.json"
+
 backup="$scriptsPath/backup"
 restore="$scriptsPath/restore"
-start="$scriptsPath/start"
-stop="$scriptsPath/stop"
+startProd="$scriptsPath/start"
+stopProd="$scriptsPath/stop"
+startDev="$scriptsPath/start-dev"
+stopDev="$scriptsPath/stop-dev"
 deploy="$scriptsPath/deploy"
 
-wwwPath="/var/www"
-configPhpFile=$wwwPath/config/config.php
+if [ "$config" = "prod" ]; then
+	httpdPort="$httpdPortProd"
+	tmplSitesConfFile="$tmplSitesConfFileProd"
+	apiPath="$apiPathProd"
+
+        apiConfigFile="$apiConfigFileProd"
+        webConfigFIle="$webConfigFileProd"
+
+	start="$startProd"
+	stop="$stopProd"
+else
+	httpdPort="$httpdPortDev"
+	tmplSitesConfFile="$tmplSitesConfFileDev"
+	apiPath="$apiPathDev"
+
+        apiConfigFile="$apiConfigFileDev"
+        webConfigFile="$webConfigFileDev"
+
+	start="$startDev"
+	stop="$stopDev"
+fi
 
 echo "Installing packages"
 apt update
@@ -98,7 +131,12 @@ systemctl start apache2
 echo \"Starting MySQL server\"
 systemctl start mysql
 echo \"Starting Mail server\"
-systemctl start sendmail" >"$start"
+systemctl start sendmail
+" >"$start"
+if [ "$config" = "dev" ]; then
+	printf "gnome-terminal --working-directory=$srcWebPath -- \"npm start\"
+" >>"$start"
+fi
 chmod +x "$start"
 
 printf "#!/bin/sh
@@ -122,6 +160,7 @@ $stop
 #config
 echo "Configuring HTTP server"
 cp "$tmplSitesConfFile" "$sitesConfFile"
+sed -i "s;\${APIPATH};$apiPath;g" "$sitesConfFile"
 sed -i "s;\${SRVWWW};$wwwPath;g" "$sitesConfFile"
 a2enmod rewrite
 a2enmod php8.1
@@ -150,18 +189,49 @@ make -C /etc/mail
 #www
 echo "Generating www"
 rm -rf "${wwwPath:?}/"*
-mkdir -p "$wwwPath/api"
-mkdir -p "$wwwPath/web"
+if [ "$config" = "prod" ]; then
+	mkdir -p "$wwwPath/api"
+	mkdir -p "$wwwPath/web"
+else
+	cp -r "$srcPath/phpinfo" "$wwwPath/phpinfo"
+fi
 chmod -R og+w "$wwwPath"
 
 echo "Configuring API"
-mkdir -p "$wwwPath/config"
-cp "$tmplConfigPhpFile" "$configPhpFile"
-sed -i "s;{mysqlPhpHost};$mysqlPhpHost;g" "$configPhpFile"
-sed -i "s;{mysqlPhpUser};$mysqlPhpUser;g" "$configPhpFile"
-sed -i "s;{mysqlPhpPass};$8;g" "$configPhpFile"
-sed -i "s;{mysqlPhpPort};$mysqlPort;g" "$configPhpFile"
-sed -i "s;{jwtKey};$9;g" "$configPhpFile"
+
+if [ "$config" = "prod" ]; then
+	mkdir -p "$wwwPath/config"
+
+	cp "$tmplApiConfigFile" "$apiConfigFile"
+	sed -i "s;{mysqlPhpHost};$mysqlPhpHost;g" "$apiConfigFile"
+	sed -i "s;{mysqlPhpUser};$mysqlPhpUser;g" "$apiConfigFile"
+	sed -i "s;{mysqlPhpPass};$8;g" "$apiConfigFile"
+	sed -i "s;{mysqlPhpPort};$mysqlPort;g" "$apiConfigFile"
+	sed -i "s;{jwtKey};$9;g" "$apiConfigFile"
+
+	cp "$tmplWebConfigFile" "$webConfigFile"
+	sed -i "s;{apiPort};$httpdPort;g" "$webConfigFile"
+fi
+
+mkdir -p "$srcPath/config"
+
+cp "$tmplApiConfigFile" "$apiConfigFileDev"
+sed -i "s;{mysqlPhpHost};$mysqlPhpHost;g" "$apiConfigFileDev"
+sed -i "s;{mysqlPhpUser};$mysqlPhpUser;g" "$apiConfigFileDev"
+sed -i "s;{mysqlPhpPass};$8;g" "$apiConfigFileDev"
+sed -i "s;{mysqlPhpPort};$mysqlPort;g" "$apiConfigFileDev"
+sed -i "s;{jwtKey};$9;g" "$apiConfigFileDev"
+
+cp "$tmplWebConfigFile" "$webConfigFileDev"
+sed -i "s;{apiPort};$httpdPort;g" "$webConfigFileDev"
+
+if [ "$config" = "dev" ]; then
+	cd "$srcWebPath" && npm install
+
+	phpmyadminPath="$wwwPath/phpmyadmin"
+	#TODO: Copy actual phpmyadmin
+	mkdir -p "$phpmyadminPath"
+fi
 
 #scripts
 cp "$tmplBackup" "$backup"

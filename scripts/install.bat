@@ -1,15 +1,18 @@
 @echo off
 setlocal enabledelayedexpansion
 
-if "%~8"=="" (
+set program=%0
+shift
+set config=%0
+shift
+
+if "%8"=="" (
 	goto usage
 )
 
-if not "%~9"=="" (
+if not "%9"=="" (
 	goto usage
 )
-
-set config=%1
 
 if "!config!" neq "prod" if "!config!" neq "dev" (
 	goto usage
@@ -18,7 +21,7 @@ if "!config!" neq "prod" if "!config!" neq "dev" (
 goto continue
 
 :usage
-echo Usage: %0 {prod^|dev} ^<email^> ^<pass^> ^<root_pass^> ^<admin_pass^> ^<backup_pass^> ^<restore_pass^> ^<php_pass^>
+echo Usage: %program% {prod^|dev} ^<email^> ^<pass^> ^<root_pass^> ^<admin_pass^> ^<backup_pass^> ^<restore_pass^> ^<php_pass^> ^<jwt_key^> ^<email_status^>
 exit /b 1
 
 :continue
@@ -47,19 +50,21 @@ set serverPath=%CD%\server
 set scriptsPath=%CD%\scripts
 set srcPath=%CD%\src
 set buildPath=%CD%\build
-set webPath=%srcPath%\web
+set srcApiPath=%srcPath%\api
+set srcWebPath=%srcPath%\web
 
 set dbCreateFile=%configPath%\db.sql
 set dbInitFile=%configPath%\init.sql
 set dbDataFileProd=db.sql
 set dbDataFileDev=db-dev.sql
 set tmplHttpdConfFile=%configPath%\win\httpd.conf
-set tmplSitesConfFileProd=%configPath%\win\sites.conf
-set tmplSitesConfFileDev=%configPath%\win\sites-dev.conf
+set tmplSitesConfFileProd=%configPath%\sites.conf
+set tmplSitesConfFileDev=%configPath%\sites-dev.conf
 set tmplMysqlConfFile=%configPath%\win\my.ini
 set tmplMysqlClientConfFile=%configPath%\client.ini
 set tmplPhpConfFile=%configPath%\win\php-dev.ini
 set tmplConfigPhpFile=%configPath%\config.php
+set tmplConfigJsonFile=%configPath%\config.json
 set tmplPhpmyadminConfFile=%configPath%\win\config.inc.php
 set tmplSmtpConfFile=%configPath%\win\sendmail.ini
 set tmplBackup=%scriptsPath%\backup.bat
@@ -81,6 +86,8 @@ set sitesConfFileProd=conf\sites.conf
 set sitesConfFileDev=conf\sites-dev.conf
 set wwwPathProd=%httpdPath%\www
 set wwwPathDev=%httpdPath%\www-dev
+set apiPathProd=${SRVWWW}/api
+set apiPathDev=%srcApiPath%
 
 rem https://windows.php.net/download
 set phpUrl=https://windows.php.net/downloads/releases/php-%phpVersion%-Win32-%phpVSVersion%-x64.zip
@@ -144,6 +151,7 @@ if "%config%" == "prod" (
 	set tmplSitesConfFile=%tmplSitesConfFileProd%
 	set sitesConfFile=%sitesConfFileProd%
 	set wwwPath=%wwwPathProd%
+	set apiPath=%apiPathProd%
 
 	set mysqldExe=mysqld
 	set mysqlPort=%mysqlPortProd%
@@ -157,6 +165,8 @@ if "%config%" == "prod" (
 
 	set start=%startProd%
 	set stop=%stopProd%
+
+	set wwwConfigPath=%wwwPath%\config
 ) else (
 	set backupDataFile=%backupDataFileDev%
 	set dbDataFile=%dbDataFileDev%
@@ -168,6 +178,7 @@ if "%config%" == "prod" (
 	set tmplSitesConfFile=%tmplSitesConfFileDev%
 	set sitesConfFile=%sitesConfFileDev%
 	set wwwPath=%wwwPathDev%
+	set apiPath=%apiPathDev%
 
 	set mysqldExe=mysqld-dev
 	set mysqlPort=%mysqlPortDev%
@@ -181,9 +192,9 @@ if "%config%" == "prod" (
 
 	set start=%startDev%
 	set stop=%stopDev%
-)
 
-set configPhpFile=%wwwPath%\config\config.php
+	set wwwConfigPath=%srcPath%\config
+)
 
 set httpd=%httpdPath%\bin\%httpdExe%
 set php=%phpPath%\php
@@ -246,6 +257,7 @@ powershell -command (gc %tmplHttpdConfFile%)^
 -replace '{serverPath}', '%serverPath:\=/%'^
 -replace '{serverPort}', '%httpdPort:\=/%'^
 -replace '{serverWww}', '%wwwPath:\=/%'^
+-replace '{apiPath}', '%apiPath:\=/%'^
 -replace '{pidFile}', '%httpdPidFile:\=/%'^
 -replace '{logPath}', '%httpdLogPath:\=/%'^
 -replace '{sitesConfFile}', '%sitesConfFile:\=/%'^
@@ -269,41 +281,50 @@ powershell -command (gc %tmplMysqlConfFile%)^
 
 powershell -command (gc %tmplMysqlClientConfFile%)^
 -replace '{user}', '%mysqlBackupUser%'^
--replace '{pass}', '%6'^
+-replace '{pass}', '%4'^
 -replace '{port}', '%mysqlPort%'^
 | Out-File -encoding ASCII %mysqlBackupConfFile%
 
 powershell -command (gc %tmplMysqlClientConfFile%)^
 -replace '{user}', '%mysqlRestoreUser%'^
--replace '{pass}', '%7'^
+-replace '{pass}', '%5'^
 -replace '{port}', '%mysqlPort%'^
 | Out-File -encoding ASCII %mysqlRestoreConfFile%
 
 echo Configuring Mail server
 powershell -command (gc %tmplSmtpConfFile%)^
--replace '{email}', '%2'^
--replace '{pass}', '%3'^
+-replace '{email}', '%0'^
+-replace '{pass}', '%1'^
 | Out-File -encoding ASCII %smtpConfFile%
 
 rem www
 echo Generating www
 if exist "%wwwPath%" rmdir /s /q "%wwwPath%"
-xcopy "%buildPath%" "%wwwPath%" /E /I /Q /Y
-xcopy "src\phpinfo" "%wwwPath%\phpinfo" /E /I /Q /Y
+if "%config%" == "prod" (
+	mkdir "%wwwPath%\api"
+	mkdir "%wwwPath%\web"
+) else (
+	xcopy "src\phpinfo" "%wwwPath%\phpinfo" /E /I /Q /Y
+)
 
-echo "Configuring API"
-mkdir "%wwwPath%\config"
+echo Configuring API
+mkdir "%wwwConfigPath%"
 powershell -command (gc %tmplConfigPhpFile%)^
 -replace '{mysqlPhpHost}', '%mysqlPhpHost%'^
 -replace '{mysqlPhpUser}', '%mysqlPhpUser%'^
--replace '{mysqlPhpPass}', '%8'^
+-replace '{mysqlPhpPass}', '%6'^
 -replace '{mysqlPhpPort}', '%mysqlPort%'^
-| Out-File -encoding ASCII %configPhpFile%
+-replace '{jwtKey}', '%7'^
+| Out-File -encoding ASCII %wwwConfigPath%\config.php
+
+powershell -command (gc %tmplConfigJsonFile%)^
+-replace '{apiPort}', '%httpdPort%'^
+| Out-File -encoding ASCII %wwwConfigPath%\config.json
 
 if "%config%" == "dev" (
 	echo Preparing npm project
 	setlocal
-		cd %webPath%
+		cd %srcWebPath%
 		call npm install
 	endlocal
 
@@ -323,14 +344,14 @@ set "mysqldFlags=--defaults-file=%mysqlConfFile:\=/%"
 	echo start %httpd% %httpdFlags%
 	echo echo Starting MySQL server
 	echo start %mysqld% %mysqldFlags%
-	echo echo Starting npm server
 	if "%config%" == "dev" (
+		echo echo Starting npm server
 		echo setlocal
-		echo 	cd %webPath%
+		echo 	cd %srcWebPath%
 		echo 	start npm run start
 		echo endlocal
 	)
-	echo echo Started successfully
+	echo echo Done
 ) > %start%
 
 (
@@ -341,7 +362,7 @@ set "mysqldFlags=--defaults-file=%mysqlConfFile:\=/%"
 	echo taskkill /F /IM "%httpdExe%.exe"
 	echo echo Stopping MySQL server
 	echo taskkill /F /IM "%mysqldExe%.exe"
-	echo echo Stopped successfully
+	echo echo Done
 ) > %stop%
 
 powershell -command (gc %tmplBackup%)^
@@ -380,11 +401,11 @@ set mysqlRestoreLogin=%mysqlRestoreUser%'@'%mysqlRestoreHost%
 set mysqlPhpLogin=%mysqlPhpUser%'@'%mysqlPhpHost%
 
 set sql=^
-ALTER USER 'root'@'localhost' IDENTIFIED BY '%4';^
-CREATE USER '%mysqlAdminLogin%' IDENTIFIED BY '%5';^
-CREATE USER '%mysqlBackupLogin%' IDENTIFIED BY '%6';^
-CREATE USER '%mysqlRestoreLogin%' IDENTIFIED BY '%7';^
-CREATE USER '%mysqlPhpLogin%' IDENTIFIED BY '%8';^
+ALTER USER 'root'@'localhost' IDENTIFIED BY '%2';^
+CREATE USER '%mysqlAdminLogin%' IDENTIFIED BY '%3';^
+CREATE USER '%mysqlBackupLogin%' IDENTIFIED BY '%4';^
+CREATE USER '%mysqlRestoreLogin%' IDENTIFIED BY '%5';^
+CREATE USER '%mysqlPhpLogin%' IDENTIFIED BY '%6';^
 GRANT PROCESS ON *.* TO '%mysqlAdminLogin%';^
 GRANT SELECT, UPDATE, INSERT, DELETE, LOCK TABLES ON user.* TO '%mysqlAdminLogin%';^
 GRANT SELECT, UPDATE, INSERT, DELETE, LOCK TABLES ON quiz.* TO '%mysqlAdminLogin%';^
@@ -404,4 +425,4 @@ if exist "%backupPath%" (
 	call %restore% %config% %backupPath%
 )
 
-echo Installed successfully
+echo Done
