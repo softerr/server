@@ -160,6 +160,11 @@ $stop
 #config
 echo "Configuring HTTP server"
 cp "$tmplSitesConfFile" "$sitesConfFile"
+if [ "$config" = "prod" ]; then
+	sed -i "s;{listen};;g" "$sitesConfFile"
+else
+	sed -i "s;{listen};Listen $httpdPort;g" "$sitesConfFile"
+fi
 sed -i "s;\${APIPATH};$apiPath;g" "$sitesConfFile"
 sed -i "s;\${SRVWWW};$wwwPath;g" "$sitesConfFile"
 a2enmod rewrite

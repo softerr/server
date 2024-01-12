@@ -49,7 +49,6 @@ set downloadPath=%CD%\dl
 set serverPath=%CD%\server
 set scriptsPath=%CD%\scripts
 set srcPath=%CD%\src
-set buildPath=%CD%\build
 set srcApiPath=%srcPath%\api
 set srcWebPath=%srcPath%\web
 
@@ -63,12 +62,13 @@ set tmplSitesConfFileDev=%configPath%\sites-dev.conf
 set tmplMysqlConfFile=%configPath%\win\my.ini
 set tmplMysqlClientConfFile=%configPath%\client.ini
 set tmplPhpConfFile=%configPath%\win\php-dev.ini
-set tmplConfigPhpFile=%configPath%\config.php
-set tmplConfigJsonFile=%configPath%\config.json
+set tmplApiConfigFile=%configPath%\config.php
+set tmplWebConfigFile=%configPath%\config.json
 set tmplPhpmyadminConfFile=%configPath%\win\config.inc.php
 set tmplSmtpConfFile=%configPath%\win\sendmail.ini
 set tmplBackup=%scriptsPath%\backup.bat
 set tmplRestore=%scriptsPath%\restore.bat
+set tmplDeploy=%scriptsPath%\deploy.bat
 
 rem https://www.apachelounge.com/download/
 set httpdUrl=https://www.apachelounge.com/download/%httpdVSVersion%/binaries/httpd-%httpdVersion%-win64-%httpdVSVersion%.zip
@@ -133,12 +133,18 @@ set smtpExt=%downloadPath%\sendmail-%smtpVersion%
 set smtpPath=%serverPath%\sendmail
 set smtpConfFile=%smtpPath%\sendmail.ini
 
+set apiConfigFileProd=%wwwPathProd%/config/config.php
+set apiConfigFileDev=%srcPath%/config/config.php
+set webConfigFileProd=%wwwPathProd%/config/config.json
+set webConfigFileDev=%srcPath%/config/config.json
+
 set backup=%serverPath%\backup.bat
 set restore=%serverPath%\restore.bat
 set startProd=%serverPath%\start.bat
 set stopProd=%serverPath%\stop.bat
 set startDev=%serverPath%\start-dev.bat
 set stopDev=%serverPath%\stop-dev.bat
+set deploy=%serverPath%\deploy.bat
 
 if "%config%" == "prod" (
 	set backupDataFile=%backupDataFileProd%
@@ -163,10 +169,11 @@ if "%config%" == "prod" (
 	set mysqlTmpPath=%mysqlTmpPathProd%
 	set mysqlSocketFile=%mysqlSocketFileProd%
 
+    set apiConfigFile=%apiConfigFileProd%
+    set webConfigFIle=%webConfigFileProd%
+
 	set start=%startProd%
 	set stop=%stopProd%
-
-	set wwwConfigPath=%wwwPath%\config
 ) else (
 	set backupDataFile=%backupDataFileDev%
 	set dbDataFile=%dbDataFileDev%
@@ -190,10 +197,11 @@ if "%config%" == "prod" (
 	set mysqlTmpPath=%mysqlTmpPathDev%
 	set mysqlSocketFile=%mysqlSocketFileDev%
 
+    set apiConfigFile=%apiConfigFileDev%
+    set webConfigFIle=%webConfigFileDev%
+
 	set start=%startDev%
 	set stop=%stopDev%
-
-	set wwwConfigPath=%srcPath%\config
 )
 
 set httpd=%httpdPath%\bin\%httpdExe%
@@ -263,7 +271,9 @@ powershell -command (gc %tmplHttpdConfFile%)^
 -replace '{sitesConfFile}', '%sitesConfFile:\=/%'^
 | Out-File -encoding ASCII %httpdPath%\%httpdConfFile%
 
-copy "%tmplSitesConfFile%" "%httpdPath%"\%sitesConfFile%
+powershell -command (gc %tmplSitesConfFile%)^
+-replace '{listen}', 'Listen %httpdPort%'^
+| Out-File -encoding ASCII "%httpdPath%"\%sitesConfFile%
 
 powershell -command (gc %tmplPhpConfFile%)^
 -replace '{serverPath}', '%serverPath%'^
@@ -301,25 +311,48 @@ rem www
 echo Generating www
 if exist "%wwwPath%" rmdir /s /q "%wwwPath%"
 if "%config%" == "prod" (
-	mkdir "%wwwPath%\api"
-	mkdir "%wwwPath%\web"
+	if not exist "%wwwPath%\api" mkdir "%wwwPath%\api"
+	if not exist "%wwwPath%\web" mkdir "%wwwPath%\web"
 ) else (
-	xcopy "src\phpinfo" "%wwwPath%\phpinfo" /E /I /Q /Y
+	xcopy "%srcPath%\phpinfo" "%wwwPath%\phpinfo" /E /I /Q /Y
 )
 
 echo Configuring API
-mkdir "%wwwConfigPath%"
-powershell -command (gc %tmplConfigPhpFile%)^
+
+if not exist "%wwwPath%\config" mkdir "%wwwPath%\config"
+
+set cmd=(gc %tmplApiConfigFile%)^
 -replace '{mysqlPhpHost}', '%mysqlPhpHost%'^
 -replace '{mysqlPhpUser}', '%mysqlPhpUser%'^
 -replace '{mysqlPhpPass}', '%6'^
 -replace '{mysqlPhpPort}', '%mysqlPort%'^
 -replace '{jwtKey}', '%7'^
-| Out-File -encoding ASCII %wwwConfigPath%\config.php
+| Out-File -encoding ASCII %apiConfigFile%
 
-powershell -command (gc %tmplConfigJsonFile%)^
+set cmd0=(gc %tmplWebConfigFile%)^
 -replace '{apiPort}', '%httpdPort%'^
-| Out-File -encoding ASCII %wwwConfigPath%\config.json
+| Out-File -encoding ASCII %webConfigFile%
+
+if "%config%" == "prod" (
+    powershell -command "%cmd%"
+    powershell -command "%cmd0%"
+)
+
+if not exist "%srcPath%\config" mkdir "%srcPath%\config"
+
+set cmd=(gc %tmplApiConfigFile%)^
+-replace '{mysqlPhpHost}', '%mysqlPhpHost%'^
+-replace '{mysqlPhpUser}', '%mysqlPhpUser%'^
+-replace '{mysqlPhpPass}', '%6'^
+-replace '{mysqlPhpPort}', '%mysqlPort%'^
+-replace '{jwtKey}', '%7'^
+| Out-File -encoding ASCII %apiConfigFileDev%
+powershell -command "%cmd%"
+
+set cmd=(gc %tmplWebConfigFile%)^
+-replace '{apiPort}', '%httpdPort%'^
+| Out-File -encoding ASCII %webConfigFileDev%
+powershell -command "%cmd%"
 
 if "%config%" == "dev" (
 	echo Preparing npm project
@@ -380,6 +413,8 @@ powershell -command (gc %tmplRestore%)^
 -replace '{dbCreateFile}', '%dbCreateFile:\=/%'^
 -replace '{mysql}', '%mysql%'^
 | Out-File -encoding ASCII %restore%
+
+copy "%tmplDeploy%" "%deploy%"
 
 rem database
 echo Initializing database

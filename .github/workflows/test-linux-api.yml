@@ -33,4 +33,4 @@ jobs:
           postman login --with-api-key ${{secrets.POSTMAN_API_KEY}}
 
       - name: Run
-        run: postman collection run ./tests/api.json -e ./tests/local.json
+        run: postman collection run ./tests/api.json -e ./tests/local-prod.json

@@ -1,0 +1,21 @@
+{
+	"id": "ce1121f6-8b26-4f71-8a60-f1039a36f510",
+	"name": "local-dev",
+	"values": [
+		{
+			"key": "URL",
+			"value": "localhost:8080",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "any",
+			"enabled": true
+		}
+	],
+	"_postman_variable_scope": "environment",
+	"_postman_exported_at": "2024-01-12T11:59:06.068Z",
+	"_postman_exported_using": "Postman/10.21.14"
+}

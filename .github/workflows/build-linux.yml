@@ -5,12 +5,18 @@ on:
   push:
     branches: [ "main" ]
     paths:
+      - 'config/**'
+      - 'scripts/**'
       - 'src/**'
+      - 'tests/**'
 
   pull_request:
     branches: [ "main" ]
     paths:
+      - 'config/**'
+      - 'scripts/**'
       - 'src/**'
+      - 'tests/**'
 
   workflow_dispatch:
 
