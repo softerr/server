@@ -1,8 +1,0 @@
-#!/bin/sh
-
-apt install phpmyadmin
-
-sudo a2enconf phpmyadmin
-
-sudo service apache2 stop
-sudo service apache2 start
