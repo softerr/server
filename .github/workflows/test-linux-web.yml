@@ -2,47 +2,59 @@ name: test
 run-name: test-linux-web
 
 on:
-  workflow_run:
-    workflows: [build]
-    types: [completed]
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'config/**'
+      - 'scripts/**'
+      - 'src/**'
+      - 'tests/**'
+      - '!**/*.md'
+
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'config/**'
+      - 'scripts/**'
+      - 'src/**'
+      - 'tests/**'
+      - '!**/*.md'
 
   workflow_dispatch:
 
 jobs:
   Test:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
+        configuration: [prod, dev]
         node-version: [18.x, 20.x]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install
-        run: sudo ./scripts/install prod ${{secrets.EMAIL}} ${{secrets.EMAIL_PASS}} ${{secrets.ROOT_PASS}} ${{secrets.ADMIN_PASS}} ${{secrets.BACKUP_PASS}} ${{secrets.RESTORE_PASS}} ${{secrets.PHP_PASS}} ${{secrets.JWT_KEY}} ${{secrets.EMAIL_STATUS}}
-
-      - name: Download
-        uses: actions/download-artifact@v4
-        with:
-          github-token: ${{secrets.PAT}}
-          run-id: ${{github.event.workflow_run.id}}
-          name: build
-          path: ./build
-
-      - name: Deploy
-        run: /scripts/deploy
-
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: Use Node.js ${{matrix.node-version}}
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: ${{matrix.node-version}}
           cache: 'npm'
           cache-dependency-path: ./src/web/package-lock.json
+
+      - name: Prepare dev
+        if: matrix.configuration == 'dev'
+        run: ./scripts/prepare-dev
+
+      - name: Install
+        run: sudo ./scripts/install ${{matrix.configuration}} ${{secrets.EMAIL}} ${{secrets.EMAIL_PASS}} ${{secrets.ROOT_PASS}} ${{secrets.ADMIN_PASS}} ${{secrets.BACKUP_PASS}} ${{secrets.RESTORE_PASS}} ${{secrets.PHP_PASS}} ${{secrets.JWT_KEY}} ${{secrets.EMAIL_STATUS}}
+
+      - name: Build
+        if: matrix.configuration == 'prod'
+        run: |
+          ./scripts/build
+          /scripts/deploy
 
       - name: Run
         working-directory: ./src/web/
         run: |
           npm ci
-          npm run build
           npm test

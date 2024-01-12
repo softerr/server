@@ -231,11 +231,11 @@ cp "$tmplWebConfigFile" "$webConfigFileDev"
 sed -i "s;{apiPort};$httpdPort;g" "$webConfigFileDev"
 
 if [ "$config" = "dev" ]; then
-	cd "$srcWebPath" && npm install
-
 	phpmyadminPath="$wwwPath/phpmyadmin"
 	#TODO: Copy actual phpmyadmin
 	mkdir -p "$phpmyadminPath"
+
+	chmod -R o+rx /home
 fi
 
 #scripts

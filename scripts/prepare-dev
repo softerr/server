@@ -1,0 +1,8 @@
+#!/bin/sh
+
+CD=$(pwd)
+
+srcPath="$CD/src"
+srcWebPath="$srcPath/web"
+
+cd "$srcWebPath" && npm install
