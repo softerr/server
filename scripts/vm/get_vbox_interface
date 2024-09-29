@@ -1,0 +1,11 @@
+#!/bin/sh
+
+interfaces=$(VBoxManage list bridgedifs | grep '^Name:' | awk '{print $2}')
+for iface in $interfaces; do
+	if ip link show "$iface" | grep -q "state UP"; then
+		adapter=$iface
+		break
+	fi
+done
+
+echo "$adapter"

@@ -1,0 +1,87 @@
+#!/bin/sh
+
+VM_NAME="$(./scripts/vm/get_vbox_name)"
+VM_RAM=2048
+VM_CPUS=2
+VRAM_SIZE=16
+DISK_SIZE=20480
+
+CD=$(pwd)
+TMP="$CD/tmp"
+ISO="$TMP/vm/server.iso"
+
+sudo apt install virtualbox -y
+
+if VBoxManage list vms | grep -q "$VM_NAME"; then
+        echo "Deleting old VM"
+        VBoxManage unregistervm "$VM_NAME" --delete
+fi
+
+ADAPTER="$(./scripts/vm/get_vbox_interface)"
+
+echo "Creating VM"
+INFO=$(VBoxManage createvm --name "$VM_NAME" --ostype "Ubuntu22_LTS_64" --register)
+VBoxManage modifyvm "$VM_NAME" --memory $VM_RAM --cpus $VM_CPUS --vram $VRAM_SIZE --nic1 bridged --bridgeadapter1 "$ADAPTER" --graphicscontroller vmsvga
+echo "$INFO"
+
+VM_PATH=$(echo "$INFO" | grep "Settings file" | sed -n "s/Settings file: '\(.*\.vbox\)'/\1/p")
+VM_DIR=$(dirname "$VM_PATH")
+DISK_PATH="$VM_DIR/$VM_NAME.vdi"
+
+if [ -f "$DISK_PATH" ]; then
+        echo "Deleting old Disk"
+        VBoxManage closemedium disk "$DISK_PATH" --delete
+fi
+
+echo "Creating Disk"
+VBoxManage createhd --filename "$DISK_PATH" --size $DISK_SIZE
+VBoxManage storagectl "$VM_NAME" --name "SATA" --add sata --controller IntelAhci
+VBoxManage storageattach "$VM_NAME" --storagectl "SATA" --port 0 --device 0 --type hdd --medium "$DISK_PATH"
+
+echo "Attaching ISO"
+VBoxManage storagectl "$VM_NAME" --name "IDE" --add ide
+VBoxManage storageattach "$VM_NAME" --storagectl "IDE" --port 0 --device 0 --type dvddrive --medium "$ISO"
+
+VBoxManage modifyvm "$VM_NAME" --boot1 dvd --boot2 disk --boot3 none --boot4 none
+
+VBoxManage startvm "$VM_NAME" --type headless
+
+start_time=$(date +%s)
+
+check_vm_state() {
+  VBoxManage showvminfo "$VM_NAME" --machinereadable | grep -i 'VMState="poweroff"'
+}
+
+echo "Waiting for VM to shut down..."
+while true; do
+	if check_vm_state; then
+		echo "VM has shut down."
+		break
+	fi
+
+	current_time=$(date +%s)
+	elapsed_time=$((current_time - start_time))
+
+	printf "Elapsed Time: %02d:%02d:%02d\r" \
+		$((elapsed_time / 3600)) \
+		$(( (elapsed_time % 3600) / 60 )) \
+		$((elapsed_time % 60))
+
+	sleep 5
+done
+
+current_time=$(date +%s)
+elapsed_time=$((current_time - start_time))
+
+printf "Elapsed Time: %02d:%02d:%02d\n" \
+	$((elapsed_time / 3600)) \
+	$(( (elapsed_time % 3600) / 60 )) \
+	$((elapsed_time % 60))
+
+OVA="$TMP/vm/${VM_NAME%.iso}.ova"
+if [ -f "$OVA" ]; then
+	rm "$OVA"
+fi
+
+mkdir -p "$TMP/vm"
+VBoxManage export "$VM_NAME" --output "$OVA"

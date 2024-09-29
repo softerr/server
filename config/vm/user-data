@@ -1,0 +1,14 @@
+#cloud-config
+autoinstall:
+  version: 1
+  source:
+    id: ubuntu-server-minimal
+  identity:
+    hostname: server
+    password: $6$M2padGBPTAjH7u7Z$sKbkD8t8W/lVzU9CyCxVNPCskNOF0QM4AN9Kbb5Nsks4/A7pwIMUfH6LdEtHRm1LhoHgsbqtQpOvGMrNKNyrE.
+    username: server
+  late-commands:
+    - curtin in-target --target=/target -- lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
+    - curtin in-target --target=/target -- resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
+    - shutdown -h now
+  updates: all

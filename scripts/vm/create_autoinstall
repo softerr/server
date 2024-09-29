@@ -1,0 +1,65 @@
+#!/bin/sh
+
+ISO_NAME="ubuntu-22.04.5-live-server-amd64.iso"
+ISO_URL="https://releases.ubuntu.com/22.04.5/$ISO_NAME"
+
+CD=$(pwd)
+TMP="$CD/tmp"
+ISO_DIR="$TMP/dl"
+ISO="$ISO_DIR/$ISO_NAME"
+
+ISO_FILES="$TMP/autoinstall/iso"
+BOOT_DIR="$TMP/autoinstall/BOOT"
+mkdir -p "$TMP/autoinstall"
+
+AUTOINSTALL_ISO="$TMP/vm/server.iso"
+mkdir -p "$TMP/vm"
+
+sudo apt install xorriso whois -y
+
+if [ ! -d "$ISO_FILES" ]; then
+	if [ ! -f "$ISO" ]; then
+		mkdir -p "$ISO_DIR"
+		wget -O "$ISO" "$ISO_URL"
+	fi
+
+	sudo apt install p7zip-full -y
+	mkdir -p "$ISO_FILES"
+	7z -y x "$ISO" -o"$ISO_FILES"
+
+	if [ -d "$BOOT_DIR" ]; then
+		rm -r "$BOOT_DIR"
+	fi
+	mv "$ISO_FILES/[BOOT]" "$BOOT_DIR"
+fi
+
+GRUB_CFG="$ISO_FILES/boot/grub/grub.cfg"
+# Don't request user confirmation, set source directory
+sed -i 's/linux	\/casper\/vmlinuz  ---/linux	\/casper\/vmlinuz autoinstall ds=nocloud\\;s=\/cdrom\/server\/ ---/g' "$GRUB_CFG"
+# Show prompt only for 1 second before autoinstall
+sed -i 's/timeout=30/timeout=1/g' "$GRUB_CFG"
+
+mkdir "$ISO_FILES/server"
+touch "$ISO_FILES/server/meta-data"
+# https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html
+# mkpasswd --method=SHA-512 server
+cp "config/vm/user-data" "$ISO_FILES/server/user-data"
+
+cd "$ISO_FILES" || exit
+xorriso -as mkisofs -r \
+        -V 'Ubuntu 22.04 LTS AUTO (EFIBIOS)' \
+        -o "$AUTOINSTALL_ISO" \
+        --grub2-mbr "$BOOT_DIR/1-Boot-NoEmul.img" \
+        -partition_offset 16 \
+        --mbr-force-bootable \
+        -append_partition 2 28732ac11ff8d211ba4b00a0c93ec93b "$BOOT_DIR/2-Boot-NoEmul.img" \
+        -appended_part_as_gpt \
+        -iso_mbr_part_type a2a0d0ebe5b9334487c068b6b72699c7 \
+        -c '/boot.catalog' \
+        -b '/boot/grub/i386-pc/eltorito.img' \
+        -no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info \
+        -eltorito-alt-boot \
+        -e '--interval:appended_partition_2:::' \
+        -no-emul-boot \
+        .
+cd "$CD" || exit

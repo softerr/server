@@ -1,0 +1,13 @@
+#!/bin/sh
+
+sudo apt install arp-scan -qq -y > /dev/null 2>&1
+
+VM_NAME="$(./scripts/vm/get_vbox_name)"
+
+VM_MAC_RAW=$(VBoxManage showvminfo "$VM_NAME" | grep "NIC 1" | grep -oP 'MAC: \K[^\s,]+')
+VM_MAC=$(echo "$VM_MAC_RAW" | sed 's/../&:/g' | sed 's/:$//')
+
+INTERFACE="$(./scripts/vm/get_vbox_interface)"
+VM_IP=$(sudo arp-scan --interface="$INTERFACE" --localnet | grep -i "$VM_MAC" | awk '{print $1}')
+
+echo "$VM_IP"
