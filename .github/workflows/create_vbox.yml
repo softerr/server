@@ -1,0 +1,27 @@
+name: Create VBox
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create_vbox:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: tmp
+          key: ${{ runner.os }}-cache
+
+      - name: Create VBox
+        run: ./scripts/vm/create_vbox
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vbox
+          path: ./tmp/vm/Server.ova
