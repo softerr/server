@@ -1,0 +1,31 @@
+name: Create autoinstall
+
+on:
+  push:
+    paths:
+    - 'config/vm/user-data'
+
+  workflow_dispatch:
+
+jobs:
+  create_autoinstall:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Create autoinstall
+        run: ./scripts/vm/create_autoinstall
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: tmp
+          key: ${{ runner.os }}-cache
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: autoinstall
+          path: ./tmp/vm/server.iso
