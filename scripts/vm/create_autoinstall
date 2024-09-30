@@ -39,11 +39,26 @@ sed -i 's/linux	\/casper\/vmlinuz  ---/linux	\/casper\/vmlinuz autoinstall ds=no
 # Show prompt only for 1 second before autoinstall
 sed -i 's/timeout=30/timeout=1/g' "$GRUB_CFG"
 
-mkdir "$ISO_FILES/server"
+create_ssh() {
+	SSH_KEY_PATH="$1"
+	if [ -f "$SSH_KEY_PATH" ]; then
+		rm "$SSH_KEY_PATH" "$SSH_KEY_PATH".pub
+	fi
+	ssh-keygen -t rsa -b 4096 -C "" -f "$SSH_KEY_PATH" -N "" -q
+	cat "$SSH_KEY_PATH".pub
+}
+
+ROOT_SSH_KEY=$(create_ssh "$TMP/vm/root_rsa")
+USER_SSH_KEY=$(create_ssh "$TMP/vm/user_rsa")
+
+mkdir -p "$ISO_FILES/server"
 touch "$ISO_FILES/server/meta-data"
 # https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html
 # mkpasswd --method=SHA-512 server
-cp "config/vm/user-data" "$ISO_FILES/server/user-data"
+USERDATA="$ISO_FILES/server/user-data"
+cp "config/vm/user-data" "$USERDATA"
+sed -i "s;\${ROOT_SSH_KEY};$ROOT_SSH_KEY;g" "$USERDATA"
+sed -i "s;\${USER_SSH_KEY};$USER_SSH_KEY;g" "$USERDATA"
 
 cd "$ISO_FILES" || exit
 xorriso -as mkisofs -r \

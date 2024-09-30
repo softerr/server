@@ -1,0 +1,3 @@
+#!/bin/sh
+
+ssh user_ssh@localhost -i tmp/vm/user_rsa -p 2222 "$1"

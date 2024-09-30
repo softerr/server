@@ -7,6 +7,24 @@ autoinstall:
     hostname: server
     password: $6$M2padGBPTAjH7u7Z$sKbkD8t8W/lVzU9CyCxVNPCskNOF0QM4AN9Kbb5Nsks4/A7pwIMUfH6LdEtHRm1LhoHgsbqtQpOvGMrNKNyrE.
     username: server
+  ssh:
+    install-server: true
+    allow-pw: false
+  user-data:
+    users:
+      - name: root_ssh
+        homedir: /home/root_ssh
+        shell: /bin/bash
+        lock_passwd: true
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        ssh_authorized_keys:
+          - ${ROOT_SSH_KEY}
+      - name: user_ssh
+        homedir: /home/user_ssh
+        shell: /bin/bash
+        lock_passwd: true
+        ssh_authorized_keys:
+          - ${USER_SSH_KEY}
   late-commands:
     - curtin in-target --target=/target -- lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
     - curtin in-target --target=/target -- resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
