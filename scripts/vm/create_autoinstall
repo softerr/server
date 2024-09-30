@@ -13,14 +13,14 @@ BOOT_DIR="$AUTOINSTALL/BOOT"
 
 mkdir -p "$AUTOINSTALL"
 
-sudo apt install xorriso whois -y
+sudo apt-get install xorriso whois -y
 
 if [ ! -d "$ISO_FILES" ]; then
 	if [ ! -f "$ISO" ]; then
 		wget -O "$ISO" "$ISO_URL"
 	fi
 
-	sudo apt install p7zip-full -y
+	sudo apt-get install p7zip-full -y
 	mkdir -p "$ISO_FILES"
 	7z -y x "$ISO" -o"$ISO_FILES"
 

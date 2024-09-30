@@ -5,7 +5,7 @@ TMP="$CD/tmp"
 ISO="$TMP/server.iso"
 QCOW="$TMP/vm/disk.qcow"
 
-sudo apt install qemu -y
+sudo apt-get install qemu -y
 
 qemu-img create -f qcow2 "$QCOW" 20G
 
