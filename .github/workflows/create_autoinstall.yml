@@ -18,8 +18,8 @@ jobs:
       - name: Cache
         uses: actions/cache@v4
         with:
-          path: tmp
-          key: ${{ runner.os }}-cache
+          path: tmp/autoinstall
+          key: ${{ runner.os }}-autoinstall-cache
 
       - name: Create autoinstall
         run: ./scripts/vm/create_autoinstall
@@ -28,4 +28,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: autoinstall
-          path: ./tmp/vm/server.iso
+          path: |
+            ./tmp/vm/
+            ./tmp/server.iso

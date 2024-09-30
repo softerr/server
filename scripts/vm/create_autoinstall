@@ -5,21 +5,18 @@ ISO_URL="https://releases.ubuntu.com/22.04.5/$ISO_NAME"
 
 CD=$(pwd)
 TMP="$CD/tmp"
-ISO_DIR="$TMP/dl"
-ISO="$ISO_DIR/$ISO_NAME"
+AUTOINSTALL="$TMP/autoinstall"
+ISO="$AUTOINSTALL/$ISO_NAME"
 
-ISO_FILES="$TMP/autoinstall/iso"
-BOOT_DIR="$TMP/autoinstall/BOOT"
-mkdir -p "$TMP/autoinstall"
+ISO_FILES="$AUTOINSTALL/iso"
+BOOT_DIR="$AUTOINSTALL/BOOT"
 
-AUTOINSTALL_ISO="$TMP/vm/server.iso"
-mkdir -p "$TMP/vm"
+mkdir -p "$AUTOINSTALL"
 
 sudo apt install xorriso whois -y
 
 if [ ! -d "$ISO_FILES" ]; then
 	if [ ! -f "$ISO" ]; then
-		mkdir -p "$ISO_DIR"
 		wget -O "$ISO" "$ISO_URL"
 	fi
 
@@ -48,6 +45,7 @@ create_ssh() {
 	cat "$SSH_KEY_PATH".pub
 }
 
+mkdir -p "$TMP/vm"
 ROOT_SSH_KEY=$(create_ssh "$TMP/vm/root_rsa")
 USER_SSH_KEY=$(create_ssh "$TMP/vm/user_rsa")
 
@@ -63,7 +61,7 @@ sed -i "s;\${USER_SSH_KEY};$USER_SSH_KEY;g" "$USERDATA"
 cd "$ISO_FILES" || exit
 xorriso -as mkisofs -r \
         -V 'Ubuntu 22.04 LTS AUTO (EFIBIOS)' \
-        -o "$AUTOINSTALL_ISO" \
+        -o "$TMP/server.iso" \
         --grub2-mbr "$BOOT_DIR/1-Boot-NoEmul.img" \
         -partition_offset 16 \
         --mbr-force-bootable \

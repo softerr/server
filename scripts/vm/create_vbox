@@ -8,7 +8,7 @@ DISK_SIZE=20480
 
 CD=$(pwd)
 TMP="$CD/tmp"
-ISO="$TMP/vm/server.iso"
+ISO="$TMP/server.iso"
 
 sudo apt install virtualbox -y
 
