@@ -1,0 +1,12 @@
+#!/bin/sh
+
+CD=$(pwd)
+TMP="$CD/tmp"
+ISO="$TMP/vm/server.iso"
+QCOW="$TMP/vm/disk.qcow"
+
+sudo apt install qemu -y
+
+qemu-img create -f qcow2 "$QCOW" 20G
+
+qemu-system-x86_64 -enable-kvm -cdrom "$ISO" -drive file="$QCOW",format=qcow2 -m 2048
