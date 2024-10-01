@@ -1,10 +1,11 @@
-name: Create qemu
+name: Create VM
 
 on:
   workflow_dispatch:
 
 jobs:
-  create_qemu:
+  create_vm:
+    name: Create VM
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -15,20 +16,20 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Download autoinstall
+      - name: Download OS Image
         uses: martis99/download-artifact@v1
         with:
-          workflow: create-autoinstall
-          artifact: autoinstall
+          workflow: create-os-image
+          artifact: image
           dir: tmp
 
-      - name: Create qemu
-        run: ./scripts/vm/create_qemu
+      - name: Create VM
+        run: ./scripts/vm/create
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qemu
+          name: vm
           path: ./tmp/vm
 
       - name: Trigger install tests

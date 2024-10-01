@@ -5,6 +5,7 @@ on:
 
 jobs:
   check_ssh:
+    name: Check SSH
     runs-on: ubuntu-latest
 
     steps:
@@ -14,12 +15,12 @@ jobs:
       - name: Download VM
         uses: martis99/download-artifact@v1
         with:
-          workflow: create-qemu
-          artifact: qemu
+          workflow: create-vm
+          artifact: vm
           dir: tmp/vm
 
-      - name: Run VM
-        run: ./scripts/vm/run_qemu
+      - name: Start VM
+        run: ./scripts/vm/start
 
       - name: Check ssh
         run: ./scripts/vm/check_ssh

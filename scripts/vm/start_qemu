@@ -6,6 +6,5 @@ QCOW="$TMP/vm/disk.qcow"
 
 sudo apt install qemu-system
 
+echo "Starting VM..."
 sudo qemu-system-x86_64 -enable-kvm -display none -daemonize -drive file="$QCOW",format=qcow2 -m 2048 -net nic -net user,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:80
-
-sleep 26

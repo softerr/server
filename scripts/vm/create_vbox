@@ -54,29 +54,21 @@ check_vm_state() {
 
 echo "Waiting for VM to shut down..."
 while true; do
+	current_time=$(date +%s)
+	elapsed_time=$((current_time - start_time))
+
+	printf "Time: %02d:%02d:%02d\n" \
+		$((elapsed_time / 3600)) \
+		$(( (elapsed_time % 3600) / 60 )) \
+		$((elapsed_time % 60))
+
 	if check_vm_state; then
 		echo "VM has shut down."
 		break
 	fi
 
-	current_time=$(date +%s)
-	elapsed_time=$((current_time - start_time))
-
-	printf "Elapsed Time: %02d:%02d:%02d\r" \
-		$((elapsed_time / 3600)) \
-		$(( (elapsed_time % 3600) / 60 )) \
-		$((elapsed_time % 60))
-
 	sleep 5
 done
-
-current_time=$(date +%s)
-elapsed_time=$((current_time - start_time))
-
-printf "Elapsed Time: %02d:%02d:%02d\n" \
-	$((elapsed_time / 3600)) \
-	$(( (elapsed_time % 3600) / 60 )) \
-	$((elapsed_time % 60))
 
 OVA="$TMP/vm/${VM_NAME%.iso}.ova"
 if [ -f "$OVA" ]; then

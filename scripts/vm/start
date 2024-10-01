@@ -1,0 +1,26 @@
+#!/bin/sh
+
+HOSTNAME="[localhost]:2222"
+
+if [ -n "$(ssh-keygen -F "$HOSTNAME")" ]; then
+	ssh-keygen -f "$HOME/.ssh/known_hosts" -R "$HOSTNAME" -q
+fi
+
+./scripts/vm/start_qemu
+
+start_time=$(date +%s)
+
+while :
+do
+	current_time=$(date +%s)
+	elapsed_time=$((current_time - start_time))
+
+	printf "Time: %02d:%02d:%02d\n" \
+		$((elapsed_time / 3600)) \
+		$(( (elapsed_time % 3600) / 60 )) \
+		$((elapsed_time % 60))
+
+	if ssh-keyscan -H -T 5 -p 2222 localhost >> "$HOME/.ssh/known_hosts" 2>/dev/null; then
+		break
+	fi
+done

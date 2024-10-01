@@ -1,4 +1,4 @@
-name: Create autoinstall
+name: Create OS Image
 
 on:
   push:
@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  create_autoinstall:
+  create_os_image:
+    name: Create OS Image
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -25,18 +26,18 @@ jobs:
           path: tmp/autoinstall
           key: ${{ runner.os }}-autoinstall-cache
 
-      - name: Create autoinstall
-        run: ./scripts/vm/create_autoinstall
+      - name: Create OS Image
+        run: ./scripts/vm/create_os_image
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: autoinstall
+          name: image
           path: |
             ./tmp/vm/
             ./tmp/server.iso
 
-      - name: Trigger VM
+      - name: Create VM
         uses: martis99/trigger-workflow@main
         with:
-          workflow: create-qemu
+          workflow: create-vm
