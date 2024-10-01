@@ -9,4 +9,4 @@ sudo apt-get install qemu-system -y
 
 qemu-img create -f qcow2 "$QCOW" 20G
 
-sudo qemu-system-x86_64 -enable-kvm -cdrom "$ISO" -drive file="$QCOW",format=qcow2 -m 2048 -nographic
+sudo qemu-system-x86_64 -enable-kvm -display none -serial mon:stdio -cdrom "$ISO" -drive file="$QCOW",format=qcow2 -m 2048

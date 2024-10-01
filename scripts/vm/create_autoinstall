@@ -32,7 +32,7 @@ fi
 
 GRUB_CFG="$ISO_FILES/boot/grub/grub.cfg"
 # Don't request user confirmation, set source directory
-sed -i 's/linux	\/casper\/vmlinuz  ---/linux	\/casper\/vmlinuz autoinstall ds=nocloud\\;s=\/cdrom\/server\/ ---/g' "$GRUB_CFG"
+sed -i 's/linux	\/casper\/vmlinuz  ---/linux	\/casper\/vmlinuz autoinstall ds=nocloud\\;s=\/cdrom\/server\/ console=ttyS0 ---/g' "$GRUB_CFG"
 # Show prompt only for 1 second before autoinstall
 sed -i 's/timeout=30/timeout=1/g' "$GRUB_CFG"
 
