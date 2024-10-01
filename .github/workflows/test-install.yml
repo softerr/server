@@ -1,0 +1,22 @@
+name: Test install
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check_ssh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download VM
+        uses: martis99/download-artifact@v1
+        with:
+          workflow: create-qemu
+          artifact: qemu
+          dir: tmp/vm
+
+      - name: Check ssh
+        run: ./scripts/vm/check_ssh
