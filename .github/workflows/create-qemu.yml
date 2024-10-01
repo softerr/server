@@ -6,12 +6,14 @@ on:
 jobs:
   create_qemu:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Download artifact
+      - name: Download autoinstall
         uses: martis99/download-artifact@v1
         with:
           workflow: create-autoinstall
@@ -26,3 +28,8 @@ jobs:
         with:
           name: qemu
           path: ./tmp/vm
+
+      - name: Trigger install tests
+        uses: martis99/trigger-workflow@main
+        with:
+          workflow: test-install

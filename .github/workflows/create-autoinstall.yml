@@ -10,6 +10,8 @@ on:
 jobs:
   create_autoinstall:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
 
     steps:
       - name: Checkout repo
@@ -31,3 +33,8 @@ jobs:
           path: |
             ./tmp/vm/
             ./tmp/server.iso
+
+      - name: Trigger VM
+        uses: martis99/trigger-workflow@main
+        with:
+          workflow: create-qemu
