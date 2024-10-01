@@ -18,5 +18,8 @@ jobs:
           artifact: qemu
           dir: tmp/vm
 
+      - name: Run VM
+        run: ./scripts/vm/run_qemu
+
       - name: Check ssh
         run: ./scripts/vm/check_ssh
