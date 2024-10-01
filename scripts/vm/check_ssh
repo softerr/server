@@ -1,0 +1,33 @@
+#!/bin/sh
+
+if ! ./scripts/vm/root_ssh "sudo ls"; then
+	echo "Expected root_ssh to have sudo"
+	exit 1
+fi
+
+if ! ./scripts/vm/root_ssh "ls"; then
+	echo "Expected root_ssh to have no sudo"
+	exit 1
+fi
+
+home=$(./scripts/vm/root_ssh pwd)
+if [ "$home" != '/home/root_ssh' ]; then
+	echo "Expected root_ssh to have cwd '/home/root_ssh', got: '$home'"
+	exit 1
+fi
+
+if ./scripts/vm/user_ssh "sudo ls" >/dev/null 2>&1; then
+	echo "Expected user_ssh to not have sudo"
+	exit 1
+fi
+
+if ! ./scripts/vm/user_ssh "ls"; then
+	echo "Expected user_ssh to have no sudo"
+	exit 1
+fi
+
+home=$(./scripts/vm/user_ssh pwd)
+if [ "$home" != '/home/user_ssh' ]; then
+	echo "Expected user_ssh to have cwd '/home/user_ssh', got: '$home'"
+	exit 1
+fi
