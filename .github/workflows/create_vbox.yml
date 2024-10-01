@@ -7,6 +7,8 @@ jobs:
   create_vbox:
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
+      contents: read
       actions: write
 
     steps:
