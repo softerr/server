@@ -4,7 +4,7 @@ CD=$(pwd)
 TMP="$CD/tmp"
 QCOW="$TMP/vm/disk.qcow"
 
-sudo apt install qemu-system
+sudo apt-get install qemu-system -y
 
 echo "Starting VM..."
 sudo qemu-system-x86_64 -enable-kvm -display none -daemonize -drive file="$QCOW",format=qcow2 -m 2048 -net nic -net user,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:80

@@ -1,15 +1,21 @@
 #!/bin/sh
 
 HOSTNAME="[localhost]:2222"
+KNOWN_HOSTS="tmp/known_hosts"
 
-if [ -n "$(ssh-keygen -F "$HOSTNAME")" ]; then
-	ssh-keygen -f "$HOME/.ssh/known_hosts" -R "$HOSTNAME" -q
+mkdir -p tmp
+touch "$KNOWN_HOSTS"
+chmod 400 "tmp/vm/root_rsa"
+chmod 400 "tmp/vm/user_rsa"
+
+if [ -n "$(ssh-keygen -f "$KNOWN_HOSTS" -F "$HOSTNAME")" ]; then
+	ssh-keygen -f "$KNOWN_HOSTS" -R "$HOSTNAME" -q
 fi
 
 ./scripts/vm/start_qemu
 
 start_time=$(date +%s)
-
+i=0
 while :
 do
 	current_time=$(date +%s)
@@ -20,7 +26,19 @@ do
 		$(( (elapsed_time % 3600) / 60 )) \
 		$((elapsed_time % 60))
 
-	if ssh-keyscan -H -T 5 -p 2222 localhost >> "$HOME/.ssh/known_hosts" 2>/dev/null; then
+	ssh user_ssh@localhost -i tmp/vm/user_rsa -o UserKnownHostsFile=tmp/known_hosts -o StrictHostKeyChecking=no -o ConnectTimeout=1 -q -p 2222 ":" && break
+
+	sleep 4
+	i=$((i+1))
+
+	if [ "$i" = "24" ]; then
+		echo "Timeout"
 		break
 	fi
 done
+
+echo "Active VM connections:"
+sudo netstat -tulpn | grep "qemu"
+
+echo "Known Hosts:"
+cat "$KNOWN_HOSTS"

@@ -42,6 +42,7 @@ create_ssh() {
 		rm "$SSH_KEY_PATH" "$SSH_KEY_PATH".pub
 	fi
 	ssh-keygen -t rsa -b 4096 -C "" -f "$SSH_KEY_PATH" -N "" -q
+	chmod 400 "$SSH_KEY_PATH"
 	cat "$SSH_KEY_PATH".pub
 }
 
