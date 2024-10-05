@@ -1,5 +1,6 @@
 #!/bin/sh
 
+sudo apt-get update
 sudo apt-get install arp-scan -y -qq > /dev/null 2>&1
 
 VM_NAME="$(./scripts/vm/get_vbox_name)"

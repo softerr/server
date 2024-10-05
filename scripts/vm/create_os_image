@@ -13,6 +13,7 @@ BOOT_DIR="$AUTOINSTALL/BOOT"
 
 mkdir -p "$AUTOINSTALL"
 
+sudo apt-get update
 sudo apt-get install xorriso whois -y
 
 if [ ! -d "$ISO_FILES" ]; then

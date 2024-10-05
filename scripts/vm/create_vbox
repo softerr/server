@@ -10,6 +10,7 @@ CD=$(pwd)
 TMP="$CD/tmp"
 ISO="$TMP/server.iso"
 
+sudo apt-get update
 sudo apt-get install virtualbox -y
 
 if VBoxManage list vms | grep -q "$VM_NAME"; then

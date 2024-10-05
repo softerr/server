@@ -4,6 +4,7 @@ CD=$(pwd)
 TMP="$CD/tmp"
 QCOW="$TMP/vm/disk.qcow"
 
+sudo apt-get update
 sudo apt-get install qemu-system -y
 
 echo "Starting VM..."
