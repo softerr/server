@@ -1,0 +1,26 @@
+#!/bin/sh
+
+sudo apt-get update
+sudo apt-get install mysql-server -y
+
+echo "Users:"
+sudo mysql -e "SELECT Host,User FROM mysql.user"
+
+echo "Databases:"
+sudo mysql -e "SHOW DATABASES"
+
+echo "Privileges:"
+sudo mysql -e "SELECT Host,User,Db,
+Select_priv AS SEL,
+Insert_priv AS INS,
+Update_priv AS UPD,
+Delete_priv AS DEL,
+Create_priv AS CRT,
+Drop_priv AS DRP,
+Grant_priv AS GRN
+FROM mysql.db"
+
+sudo cat "config/mysql/secure.sql" | sudo mysql
+
+sudo systemctl enable mysql
+sudo systemctl status mysql

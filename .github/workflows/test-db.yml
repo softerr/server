@@ -1,11 +1,11 @@
-name: Test HTTP
+name: Test DB
 
 on:
   workflow_dispatch:
 
 jobs:
-  test_http:
-    name: Test HTTP
+  test_db:
+    name: Test DB
     runs-on: ubuntu-latest
 
     steps:
@@ -22,8 +22,8 @@ jobs:
       - name: Start VM
         run: ./scripts/vm/start
 
-      - name: Install HTTP
-        run: ./scripts/install/http vm
+      - name: Install DB
+        run: ./scripts/install/db vm
 
-      - name: Test HTTP
-        run: ./scripts/install/test_http vm
+      - name: Test DB
+        run: ./scripts/install/test_db vm

@@ -26,3 +26,6 @@ fi
 
 echo "API" | sudo tee "/var/www/api/index.html" > /dev/null
 echo "WEB" | sudo tee "/var/www/web/index.html" > /dev/null
+
+sudo systemctl enable apache2
+sudo systemctl status apache2
