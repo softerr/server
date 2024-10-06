@@ -1,0 +1,3 @@
+#!/bin/sh
+
+scp -i tmp/vm/root_rsa -o UserKnownHostsFile=tmp/known_hosts -o ConnectTimeout=5 -P 2222 -r "$1" "root_ssh@localhost:$2"

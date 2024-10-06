@@ -1,11 +1,11 @@
-name: Test install
+name: Test SSH
 
 on:
   workflow_dispatch:
 
 jobs:
-  check_ssh:
-    name: Check SSH
+  test_ssh:
+    name: Test SSH
     runs-on: ubuntu-latest
 
     steps:
@@ -22,5 +22,5 @@ jobs:
       - name: Start VM
         run: ./scripts/vm/start
 
-      - name: Check ssh
-        run: ./scripts/vm/check_ssh
+      - name: Test ssh
+        run: ./scripts/vm/test_ssh

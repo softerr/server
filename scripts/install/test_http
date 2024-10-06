@@ -1,0 +1,22 @@
+#!/bin/sh
+
+if [ "$1" = "local" ]; then
+	port="80"
+	ports="443"
+elif [ "$1" = "vm" ]; then
+	port="8080"
+	ports="8443"
+else
+	echo "Usage: $0 <local|vm>"
+	exit 1
+fi
+
+curl -I "localhost:$port"
+curl -I "localhost:$port/test"
+curl -I "localhost:$port/api/"
+curl -I "localhost:$port/api/test"
+
+curl -I -k "https://localhost:$ports"
+curl -I -k "https://localhost:$ports/test"
+curl -I -k "https://localhost:$ports/api/"
+curl -I -k "https://localhost:$ports/api/test"

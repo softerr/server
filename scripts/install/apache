@@ -1,0 +1,28 @@
+#!/bin/sh
+
+sudo apt-get update
+sudo apt-get install apache2 -y
+
+sudo rm -rf /var/www/api
+sudo rm -rf /var/www/web
+
+sudo mkdir -p /var/www/api
+sudo mkdir -p /var/www/web
+
+sudo mkdir -p /var/www/ssl
+
+sudo openssl req -x509 -nodes -days 1095 -newkey rsa:2048 -subj "/C=US/ST=State/L=City/O=Company/OU=Org/CN=localhost" -out /var/www/ssl/server.crt -keyout /var/www/ssl/server.key
+
+sudo cp config/apache/server.conf /etc/apache2/sites-available/server.conf
+
+sudo a2enmod rewrite ssl
+sudo a2ensite server.conf
+
+sudo apachectl configtest
+if ! sudo service apache2 reload; then
+	journalctl -u apache2.service -n 50 --no-pager
+	exit 1
+fi
+
+echo "API" | sudo tee "/var/www/api/index.html" > /dev/null
+echo "WEB" | sudo tee "/var/www/web/index.html" > /dev/null

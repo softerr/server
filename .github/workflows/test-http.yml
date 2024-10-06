@@ -1,0 +1,29 @@
+name: Test HTTP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test_ssh:
+    name: Test HTTP
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download VM
+        uses: martis99/download-artifact@v1
+        with:
+          workflow: create-vm
+          artifact: vm
+          dir: tmp/vm
+
+      - name: Start VM
+        run: ./scripts/vm/start
+
+      - name: Install HTTP
+        run: ./scripts/install/http vm
+
+      - name: Test HTTP
+        run: ./scripts/install/test_http vm

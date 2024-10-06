@@ -1,0 +1,15 @@
+#!/bin/sh
+
+if [ "$1" = "local" ]; then
+	./scripts/install/apache
+	exit
+fi
+
+if [ "$1" = "vm" ]; then
+	./scripts/vm/root_scp "config" "~"
+	./scripts/vm/root_ssh "bash -s" < "scripts/install/apache"
+	exit
+fi
+
+echo "Usage: $0 <local|vm>"
+exit 1
