@@ -1,0 +1,15 @@
+#!/bin/sh
+
+if [ "$2" = "local" ]; then
+	./scripts/install/"$1"
+	exit
+fi
+
+if [ "$2" = "vm" ]; then
+	./scripts/vm/root_scp "config" "~"
+	./scripts/vm/root_ssh "bash -s" < "scripts/install/$1"
+	exit
+fi
+
+echo "Usage: $0 <script> <local|vm>"
+exit 1
