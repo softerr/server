@@ -23,4 +23,4 @@ FROM mysql.db"
 sudo cat "config/mysql/secure.sql" | sudo mysql
 
 sudo systemctl enable mysql
-sudo systemctl status mysql
+sudo systemctl status mysql --no-pager -l

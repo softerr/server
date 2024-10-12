@@ -1,5 +1,16 @@
 #!/bin/sh
 
 sudo apt-get update
-sudo apt-get install php
+sudo apt-get install php8.1
 
+echo "<html>
+ <head>
+  <title>PHP Test</title>
+ </head>
+ <body>
+ <?php phpinfo(); ?> 
+ </body>
+</html>" | sudo tee "/var/www/api/index.html" > /dev/null
+
+sudo systemctl restart apache2.service
+echo "Done"

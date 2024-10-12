@@ -1,7 +1,7 @@
 #!/bin/sh
 
 sudo apt-get update
-sudo apt-get install apache2 -y
+sudo apt-get install apache2 libapache2-mod-php8.1 -y
 
 sudo rm -rf /var/www/api
 sudo rm -rf /var/www/web
@@ -15,17 +15,21 @@ sudo openssl req -x509 -nodes -days 1095 -newkey rsa:2048 -subj "/C=US/ST=State/
 
 sudo cp config/apache/server.conf /etc/apache2/sites-available/server.conf
 
-sudo a2enmod rewrite ssl
+sudo systemctl stop apache2
+
+sudo a2dismod php8.1 mpm_event
+sudo a2enmod rewrite ssl php8.1 || exit 1
 sudo a2ensite server.conf
 
 sudo apachectl configtest
-if ! sudo service apache2 reload; then
-	journalctl -u apache2.service -n 50 --no-pager
-	exit 1
-fi
 
 echo "API" | sudo tee "/var/www/api/index.html" > /dev/null
 echo "WEB" | sudo tee "/var/www/web/index.html" > /dev/null
 
 sudo systemctl enable apache2
-sudo systemctl status apache2
+if ! sudo service apache2 start; then
+	journalctl -u apache2.service -n 50 --no-pager
+	exit 1
+fi
+
+sudo systemctl status apache2 --no-pager -l
