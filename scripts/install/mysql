@@ -1,5 +1,10 @@
 #!/bin/sh
 
+if [ -z "$PHP_PASS" ]; then
+        echo 'ERROR: PHP_PASS not provided'
+        exit 1
+fi
+
 sudo apt-get update
 sudo apt-get install mysql-server -y
 
@@ -20,7 +25,12 @@ Drop_priv AS DRP,
 Grant_priv AS GRN
 FROM mysql.db"
 
-sudo cat "config/mysql/secure.sql" | sudo mysql
+tmp_sql="tmp.sql"
+cp "config/mysql/secure.sql" "$tmp_sql"
+sed -i "s;\${PHP_PASS};$PHP_PASS;g" "$tmp_sql"
+
+sudo cat "$tmp_sql" | sudo mysql
+rm "$tmp_sql"
 
 sudo systemctl enable mysql
 sudo systemctl status mysql --no-pager -l
