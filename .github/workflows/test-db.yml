@@ -23,7 +23,7 @@ jobs:
         run: ./scripts/vm/start
 
       - name: Install DB
-        run: ./scripts/install/db vm
+        run: ./scripts/install/install db vm
 
       - name: Test DB
-        run: ./scripts/install/test_db vm
+        run: ./scripts/install/install test_db vm

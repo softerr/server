@@ -1,0 +1,39 @@
+name: Test API
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test_api:
+    name: Test API
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download VM
+        uses: martis99/download-artifact@v1
+        with:
+          workflow: create-vm
+          artifact: vm
+          dir: tmp/vm
+
+      - name: Start VM
+        run: ./scripts/vm/start
+
+      - name: Install services
+        run: |
+          PHP_PASS=${{ secrets.PHP_PASS }} ./scripts/install/install mysql local
+          ./scripts/install/install apache vm
+          ./scripts/install/install php vm
+          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }} ADMIN_USER=${{ secrets.ADMIN_USER }} ADMIN_PASS="${{ secrets.ADMIN_PASS }}" ./scripts/install/install create_db vm
+          PHP_PASS=${{ secrets.PHP_PASS }} JWT_KEY=${{ secrets.JWT_KEY }} ./scripts/install/install api vm
+
+      - name: Setup Postman
+        run: |
+          curl -o- "https://dl-cli.pstmn.io/install/linux64.sh" | sh
+          postman login --with-api-key ${{ secrets.POSTMAN_API_KEY }}
+
+      - name: Test API
+        run: postman collection run ./test/api.json -e ./test/vm.json

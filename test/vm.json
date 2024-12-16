@@ -1,0 +1,15 @@
+{
+	"id": "16aca17f-9d79-49d0-b379-b6ab69c98384",
+	"name": "vm",
+	"values": [
+		{
+			"key": "base_url",
+			"value": "localhost:8080",
+			"type": "default",
+			"enabled": true
+		}
+	],
+	"_postman_variable_scope": "environment",
+	"_postman_exported_at": "2024-12-16T18:21:39.839Z",
+	"_postman_exported_using": "Postman/10.24.27"
+}
