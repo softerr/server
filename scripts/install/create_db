@@ -1,0 +1,10 @@
+#!/bin/sh
+
+tmp_sql="tmp.sql"
+cp "config/mysql/create.sql" "$tmp_sql"
+sed -i "s;\${ADMIN_EMAIL};$ADMIN_EMAIL;g" "$tmp_sql"
+sed -i "s;\${ADMIN_USER};$ADMIN_USER;g" "$tmp_sql"
+sed -i "s;\${ADMIN_PASS};$ADMIN_PASS;g" "$tmp_sql"
+
+sudo cat "$tmp_sql" | sudo mysql
+rm "$tmp_sql"
