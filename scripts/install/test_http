@@ -1,9 +1,9 @@
 #!/bin/sh
 
-if [ "$1" = "local" ]; then
+if [ "$2" = "local" ]; then
 	port="80"
 	ports="443"
-elif [ "$1" = "vm" ]; then
+elif [ "$2" = "vm" ]; then
 	port="8080"
 	ports="8443"
 else

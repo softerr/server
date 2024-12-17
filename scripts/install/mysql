@@ -1,37 +1,27 @@
 #!/bin/sh
 
-if [ -z "$PHP_PASS" ]; then
-        echo 'ERROR: PHP_PASS not provided'
-        exit 1
+CONFIG="$1/secure.sql"
+
+if [ ! -f "$CONFIG" ] || [ -n "$PHP_PASS" ]; then
+	if [ -z "$PHP_PASS" ]; then
+		echo "[$1] ERROR: PHP_PASS not provided"
+		exit 1
+	fi
+
+	cp config/mysql/secure.sql "$CONFIG"
+	sed -i "s;\${PHP_PASS};$PHP_PASS;g" "$CONFIG"
+
+else
+	echo "[$1] INFO: Leaving old config"
 fi
 
+cat > "$1/install" << EOF
+#!/bin/sh
 sudo apt-get update
 sudo apt-get install mysql-server -y
-
 sudo systemctl enable mysql
 sudo systemctl start mysql
 sudo systemctl status mysql --no-pager -l
-
-echo "Users:"
-sudo mysql -e "SELECT Host,User FROM mysql.user"
-
-echo "Databases:"
-sudo mysql -e "SHOW DATABASES"
-
-echo "Privileges:"
-sudo mysql -e "SELECT Host,User,Db,
-Select_priv AS SEL,
-Insert_priv AS INS,
-Update_priv AS UPD,
-Delete_priv AS DEL,
-Create_priv AS CRT,
-Drop_priv AS DRP,
-Grant_priv AS GRN
-FROM mysql.db"
-
-tmp_sql="tmp.sql"
-cp "config/mysql/secure.sql" "$tmp_sql"
-sed -i "s;\${PHP_PASS};$PHP_PASS;g" "$tmp_sql"
-
-sudo cat "$tmp_sql" | sudo mysql
-rm "$tmp_sql"
+sudo cat "$CONFIG" | sudo mysql
+echo "[$1] INFO: done"
+EOF

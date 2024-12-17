@@ -1,8 +1,10 @@
 #!/bin/sh
 
+cat > "$1/install" << EOF
 sudo mysqlshow || exit 1
 
 if mysqlshow 2>/dev/null; then
-	echo "Regular user should not have permission to read db"
+	echo "[$1] ERROR: Regular user should not have permission to read db"
 	exit 1
 fi
+EOF

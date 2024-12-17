@@ -1,5 +1,14 @@
 #!/bin/sh
 
+mkdir -p "$1/api" "$1/web"
+
+cp config/apache/server.conf "$1/server.conf"
+
+echo 'API' > "$1/api/index.php"
+echo 'WEB' > "$1/web/index.html"
+
+cat > "$1/install" << EOF
+#!/bin/sh
 sudo apt-get update
 sudo apt-get install apache2 libapache2-mod-php8.1 -y
 
@@ -13,7 +22,7 @@ sudo mkdir -p /var/www/ssl
 
 sudo openssl req -x509 -nodes -days 1095 -newkey rsa:2048 -subj "/C=US/ST=State/L=City/O=Company/OU=Org/CN=localhost" -out /var/www/ssl/server.crt -keyout /var/www/ssl/server.key
 
-sudo cp config/apache/server.conf /etc/apache2/sites-available/server.conf
+sudo cp "$1/server.conf" /etc/apache2/sites-available/server.conf
 
 sudo systemctl stop apache2
 
@@ -23,13 +32,16 @@ sudo a2ensite server.conf
 
 sudo apachectl configtest
 
-echo "API" | sudo tee "/var/www/api/index.php" > /dev/null
-echo "WEB" | sudo tee "/var/www/web/index.html" > /dev/null
+sudo cp "$1/api"/* /var/www/api/
+sudo cp "$1/web"/* /var/www/web/
 
 sudo systemctl enable apache2
 if ! sudo service apache2 start; then
+	echo "[$1] ERROR:"
 	journalctl -u apache2.service -n 50 --no-pager
 	exit 1
 fi
 
 sudo systemctl status apache2 --no-pager -l
+echo "[$1] INFO: done"
+EOF

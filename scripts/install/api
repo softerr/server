@@ -1,29 +1,41 @@
 #!/bin/sh
 
-CONFIG='/var/www/api/config.php'
-tmp_php="tmp.php"
+mkdir -p "$1/api"
+BUILD_API="$1/api"
+CONFIG="$BUILD_API/config.php"
+TMP_CONFIG=config.php.tmp
 
-if [ ! -f "$CONFIG" ] || [ -n "$PHP_PASS" ] || [ -n "$JWT_KEY" ]; then
+if [ -f "$CONFIG" ]; then
+	cp "$CONFIG" "$TMP_CONFIG"
+fi
+
+rm -rf "$BUILD_API"
+cp -r src/api "$BUILD_API"
+
+if [ ! -f "$TMP_CONFIG" ] || [ -n "$PHP_PASS" ] || [ -n "$JWT_KEY" ]; then
 	if [ -z "$PHP_PASS" ]; then
-		echo 'ERROR: PHP_PASS not provided'
+		echo "[$1] ERROR: PHP_PASS not provided"
 		exit 1
 	fi
 
 	if [ -z "$JWT_KEY" ]; then
-		echo 'ERROR: JWT_KEY not provided'
+		echo "[$1] ERROR: JWT_KEY not provided"
 		exit 1
 	fi
 
-	cp "config/php/config.php" "$tmp_php"
-	sed -i "s;\${PHP_PASS};$PHP_PASS;g" "$tmp_php"
-	sed -i "s;\${JWT_KEY};$JWT_KEY;g" "$tmp_php"
+	
+	cp config/php/config.php "$CONFIG"
+	sed -i "s;\${PHP_PASS};$PHP_PASS;g" "$CONFIG"
+	sed -i "s;\${JWT_KEY};$JWT_KEY;g" "$CONFIG"
 else
-	sudo cp "$CONFIG" "$tmp_php"
-	echo "INFO: Leaving old config"
+	cp "$TMP_CONFIG" "$CONFIG"
+	rm "$TMP_CONFIG"
+	echo "[$1] INFO: Leaving old config"
 fi
 
+cat > "$1/install" << EOF
+#!/bin/sh
 sudo rm -rf /var/www/api/*
-sudo cp -r src/api/* /var/www/api/
-
-sudo cp "$tmp_php" "$CONFIG"
-sudo rm "$tmp_php"
+sudo cp -r "$BUILD_API"/* /var/www/api/
+echo "[$1] INFO: done"
+EOF

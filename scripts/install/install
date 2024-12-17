@@ -1,15 +1,21 @@
 #!/bin/sh
 
-if [ "$2" = "local" ]; then
-	./scripts/install/"$1"
-	exit
-fi
+BUILD_DIR="build/$1"
+mkdir -p "$BUILD_DIR"
+./scripts/install/"$1" "$BUILD_DIR" "$2" || exit 1
 
-if [ "$2" = "vm" ]; then
-	./scripts/vm/root_scp "config" "~"
-	./scripts/vm/root_ssh "bash -s" < "scripts/install/$1"
-	exit
-fi
+t_local() {
+	"./build/$1/install"
+}
 
-echo "Usage: $0 <script> <local|vm>"
-exit 1
+t_vm() {
+	./scripts/vm/root_ssh "mkdir -p build"
+	# shellcheck disable=SC2088
+	./scripts/vm/root_scp "$BUILD_DIR" "~/build"
+	./scripts/vm/root_ssh "./build/$1/install || exit 1; rm -rf $1"
+}
+
+if [ -f "$BUILD_DIR/install" ]; then
+	chmod +x "$BUILD_DIR/install"
+	eval "t_$2" "$1"
+fi

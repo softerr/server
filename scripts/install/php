@@ -1,9 +1,14 @@
 #!/bin/sh
 
+mkdir -p "$1/api"
+
+echo '<?php phpinfo();' > "$1/api/index.php"
+
+cat > "$1/install" << EOF
+#!/bin/sh
 sudo apt-get update
-sudo apt-get install php8.1 -y
-
-echo "<?php phpinfo();" | sudo tee "/var/www/api/index.php" > /dev/null
-
+sudo apt-get install php8.1 php-mysqli -y
+sudo cp "$1/api"/* /var/www/api/
 sudo systemctl restart apache2.service
-echo "Done"
+echo "[$1] INFO: done"
+EOF

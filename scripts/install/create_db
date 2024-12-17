@@ -1,25 +1,33 @@
 #!/bin/sh
 
-if [ -z "$ADMIN_EMAIL" ]; then
-        echo 'ERROR: ADMIN_EMAIL not provided'
-        exit 1
+CONFIG="$1/create.sql"
+
+if [ ! -f "$CONFIG" ] || [ -n "$ADMIN_EMAIL" ] || [ -n "$ADMIN_USER" ] || [ -n "$ADMIN_PASS" ]; then
+	if [ -z "$ADMIN_EMAIL" ]; then
+		echo "[$1] ERROR: ADMIN_EMAIL not provided"
+		exit 1
+	fi
+
+	if [ -z "$ADMIN_USER" ]; then
+		echo "[$1] ERROR: ADMIN_USER not provided"
+		exit 1
+	fi
+
+	if [ -z "$ADMIN_PASS" ]; then
+		echo "[$1] ERROR: ADMIN_PASS not provided"
+		exit 1
+	fi
+
+	cp "config/mysql/create.sql" "$CONFIG"
+	sed -i "s;\${ADMIN_EMAIL};$ADMIN_EMAIL;g" "$CONFIG"
+	sed -i "s;\${ADMIN_USER};$ADMIN_USER;g" "$CONFIG"
+	sed -i "s;\${ADMIN_PASS};$ADMIN_PASS;g" "$CONFIG"
+else
+	echo "[$1] INFO: Leaving old config"
 fi
 
-if [ -z "$ADMIN_USER" ]; then
-        echo 'ERROR: ADMIN_USER not provided'
-        exit 1
-fi
-
-if [ -z "$ADMIN_PASS" ]; then
-        echo 'ERROR: ADMIN_PASS not provided'
-        exit 1
-fi
-
-tmp_sql="tmp.sql"
-cp "config/mysql/create.sql" "$tmp_sql"
-sed -i "s;\${ADMIN_EMAIL};$ADMIN_EMAIL;g" "$tmp_sql"
-sed -i "s;\${ADMIN_USER};$ADMIN_USER;g" "$tmp_sql"
-sed -i "s;\${ADMIN_PASS};$ADMIN_PASS;g" "$tmp_sql"
-
-sudo cat "$tmp_sql" | sudo mysql
-rm "$tmp_sql"
+cat > "$1/install" << EOF
+#!/bin/sh
+sudo cat "$CONFIG" | sudo mysql
+echo "[$1] INFO: done"
+EOF
