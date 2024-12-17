@@ -8,6 +8,10 @@ fi
 sudo apt-get update
 sudo apt-get install mysql-server -y
 
+sudo systemctl enable mysql
+sudo systemctl start mysql
+sudo systemctl status mysql --no-pager -l
+
 echo "Users:"
 sudo mysql -e "SELECT Host,User FROM mysql.user"
 
@@ -31,6 +35,3 @@ sed -i "s;\${PHP_PASS};$PHP_PASS;g" "$tmp_sql"
 
 sudo cat "$tmp_sql" | sudo mysql
 rm "$tmp_sql"
-
-sudo systemctl enable mysql
-sudo systemctl status mysql --no-pager -l
