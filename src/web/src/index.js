@@ -1,6 +1,7 @@
 import Post from "./views/Post.js";
 import Posts from "./views/Posts.js";
 import Root from "./views/Root.js";
+import './index.css'
 
 const pathToRegex = path => new RegExp('^' + path.replace(/\//g, '\\/').replace(/:\w+/g, '(.+)') + '$');
 
@@ -27,9 +28,12 @@ const router = async () => {
         { path: '/post/:id', view: Post },
     ];
 
+    console.log('path', location.pathname);
     const route = routes.find(route => location.pathname.match(pathToRegex(route.path)) !== null);
+
     const view = new route.view(getParams(route));
-    document.querySelector("#root").innerHTML = await view.getHtml();
+
+    document.body.innerHTML = await view.getHtml();
 }
 
 window.addEventListener('popstate', router);
@@ -43,3 +47,20 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     router();
 });
+
+if (module.hot) {
+    const context = require.context('./views', true, /\.js$/);
+    console.log('files:');
+    context.keys().forEach((file) => {
+        const p = context.resolve(file);
+        console.log(p);
+        module.hot.accept(p, function () {
+            context = require.context('./views', true, /\.js$/);
+            router();
+        });
+        
+    });
+    /*module.hot.accept('./views/Posts.js', function () {
+        router();
+    });*/
+}
