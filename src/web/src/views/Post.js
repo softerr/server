@@ -1,4 +1,4 @@
-import AbstractView from "./AbstractView.js";
+import AbstractView from "../render/AbstractView.js";
 
 export default class extends AbstractView {
     constructor(params) {
@@ -6,10 +6,10 @@ export default class extends AbstractView {
         this.setTitle("Post");
     }
 
-    async getHtml() {
+    async render() {
         console.log('Post');
         return `
-        <h1>Post</h1>
+        <h1>Post ${this.params['id']}</h1>
         `;
     }
 }

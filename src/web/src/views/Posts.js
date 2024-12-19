@@ -1,4 +1,5 @@
-import AbstractView from "./AbstractView.js";
+import AbstractView from "../render/AbstractView.js";
+import Post from "./Post.js";
 
 export default class extends AbstractView {
     constructor(params) {
@@ -6,10 +7,12 @@ export default class extends AbstractView {
         this.setTitle("Posts");
     }
 
-    async getHtml() {
+    async render() {
+        const post = await new Post({'id': 0}).render();
         return `
-        <h1>Tessst</h1>
-        <h1>Pots</h1>
+        <h1>Test</h1>
+        <h1>Posts</h1>
+        ${post}
         <a href='/' data-link>Root</href>
         `;
     }
