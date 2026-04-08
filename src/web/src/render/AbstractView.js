@@ -7,7 +7,15 @@ export default class {
         document.title = title;
     }
 
-    async render() {
+    start() {
+        return '';
+    }
+
+    child() {
+        return [''];
+    }
+
+    end() {
         return '';
     }
 }

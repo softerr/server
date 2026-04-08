@@ -10,13 +10,13 @@ export default class extends AbstractView {
         this.setTitle("App");
     }
 
-    async render() {
+    child() {
         const view = router([
             { path: '/', view: Home },
             { path: '/post', view: Posts },
             { path: '/post/:id', view: Post },
         ]);
 
-        return await view.render();
+        return [{ view: view }];
     }
 }

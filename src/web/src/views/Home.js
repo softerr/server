@@ -6,11 +6,11 @@ export default class extends AbstractView {
         this.setTitle("Home");
     }
 
-    async render() {
-        return `
+    child() {
+        return [`
         <h1>Test</h1>
         <h1>Home</h1>
         <a href='/post' data-link>Posts</href>
-        `;
+        `];
     }
 }

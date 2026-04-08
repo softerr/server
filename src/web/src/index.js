@@ -1,16 +1,12 @@
 import './index.css'
 import render from './render/render.js';
 
-const display = async (render) => {
-    document.body.innerHTML = await render();
-};
-
 const navigateTo = url => {
     history.pushState({}, '', url);
-    display(render);
+    render();
 };
 
-window.addEventListener('popstate', () => display(render));
+window.addEventListener('popstate', render);
 
 document.addEventListener('DOMContentLoaded', () => {
     document.body.addEventListener('click', e => {
@@ -19,11 +15,5 @@ document.addEventListener('DOMContentLoaded', () => {
             navigateTo(e.target.href);
         }
     })
-    display(render);
+    render();
 });
-
-if (module.hot) {
-    module.hot.accept('./render/render.js', () => {
-        display(require('./render/render.js').default);
-    });
-}

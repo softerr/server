@@ -4,12 +4,12 @@ export default class extends AbstractView {
     constructor(params) {
         super(params);
         this.setTitle("Post");
+        this.element = document.createElement('div');
     }
 
-    async render() {
-        console.log('Post');
-        return `
+    child() {
+        return [`
         <h1>Post ${this.params['id']}</h1>
-        `;
+        `];
     }
 }

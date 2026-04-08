@@ -5,15 +5,20 @@ export default class extends AbstractView {
     constructor(params) {
         super(params);
         this.setTitle("Posts");
+        
+        
     }
 
-    async render() {
-        const post = await new Post({'id': 0}).render();
-        return `
+    child() {
+        return [
+            `
         <h1>Test</h1>
         <h1>Posts</h1>
-        ${post}
-        <a href='/' data-link>Root</href>
-        `;
+        `,
+            { view: Post, params: { id: 2 } },
+        `
+         <a href='/' data-link>Root</href>
+         `
+        ];
     }
 }

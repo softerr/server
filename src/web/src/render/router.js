@@ -12,7 +12,7 @@ const getParams = route => {
 
 const router = (routes) => {
     const route = routes.find(route => location.pathname.match(pathToRegex(route.path)) !== null);
-    return new route.view(getParams(route));
+    return route.view;
 }
 
 export default router;
