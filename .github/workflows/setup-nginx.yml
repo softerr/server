@@ -1,0 +1,51 @@
+name: Setup Nginx On Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      template_path:
+        description: "Nginx template path on server (default: /tmp/workflow-artifacts/configs/nginx/softerr.conf.template)"
+        required: false
+        default: /tmp/workflow-artifacts/configs/nginx/softerr.conf.template
+
+jobs:
+  setup-nginx:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KEY_B64: ${{ secrets.SERVER_SSH_KEY_B64 }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          bash scripts/ci/configure_ssh_for_actions.sh
+
+      - name: Upload setup script and configs
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+        run: |
+          set -euo pipefail
+          source scripts/ci/load_ssh_env.sh
+
+          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/configs'"
+          scp $SSH_OPTS -P "$PORT" scripts/setup_nginx.sh "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+          scp $SSH_OPTS -P "$PORT" -r configs/. "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
+
+      - name: Run Nginx setup
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          TEMPLATE_PATH: ${{ github.event.inputs.template_path }}
+        run: |
+          set -euo pipefail
+          source scripts/ci/load_ssh_env.sh
+          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" \
+            "chmod +x /tmp/workflow-artifacts/scripts/setup_nginx.sh && NGINX_CONFIG_TEMPLATE='${TEMPLATE_PATH:-/tmp/workflow-artifacts/configs/nginx/softerr.conf.template}' sudo bash /tmp/workflow-artifacts/scripts/setup_nginx.sh"

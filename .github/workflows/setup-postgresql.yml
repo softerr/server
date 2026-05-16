@@ -1,0 +1,56 @@
+name: Setup PostgreSQL On Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      db_name:
+        description: "Database name (default: app)"
+        required: false
+        default: app
+      db_owner:
+        description: "Database owner role (default: postgres)"
+        required: false
+        default: postgres
+
+jobs:
+  setup-postgresql:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KEY_B64: ${{ secrets.SERVER_SSH_KEY_B64 }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          bash scripts/ci/configure_ssh_for_actions.sh
+
+      - name: Upload setup script and configs
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+        run: |
+          set -euo pipefail
+          source scripts/ci/load_ssh_env.sh
+
+          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/configs'"
+          scp $SSH_OPTS -P "$PORT" scripts/setup_postgresql.sh "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+          scp $SSH_OPTS -P "$PORT" -r configs/. "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
+
+      - name: Run PostgreSQL setup
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          DB_NAME: ${{ github.event.inputs.db_name }}
+          DB_OWNER: ${{ github.event.inputs.db_owner }}
+        run: |
+          set -euo pipefail
+          source scripts/ci/load_ssh_env.sh
+          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" \
+            "chmod +x /tmp/workflow-artifacts/scripts/setup_postgresql.sh && POSTGRES_DB='${DB_NAME:-app}' POSTGRES_OWNER='${DB_OWNER:-postgres}' sudo bash /tmp/workflow-artifacts/scripts/setup_postgresql.sh"
