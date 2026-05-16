@@ -7,51 +7,20 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
-if ! command -v npm >/dev/null 2>&1; then
-  echo "npm is required but not installed. Install Node.js/npm first."
-  exit 1
-fi
-
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_QUIZ_DIR="${SCRIPT_DIR}/../app/quiz"
-REMOTE_QUIZ_DIR="/tmp/workflow-artifacts/app/quiz"
-
-SOURCE_DIR="${QUIZ_SOURCE_DIR:-}"
-if [[ -z "${SOURCE_DIR}" ]]; then
-  if [[ -f "${REPO_QUIZ_DIR}/package.json" ]]; then
-    SOURCE_DIR="${REPO_QUIZ_DIR}"
-  elif [[ -f "${REMOTE_QUIZ_DIR}/package.json" ]]; then
-    SOURCE_DIR="${REMOTE_QUIZ_DIR}"
-  fi
-fi
-
-if [[ -z "${SOURCE_DIR}" ]] || [[ ! -f "${SOURCE_DIR}/package.json" ]]; then
-  echo "Could not find quiz source directory."
-  echo "Set QUIZ_SOURCE_DIR to a directory that contains app/quiz package.json."
-  exit 1
-fi
-
+PREBUILT_DIST_DIR="${QUIZ_DIST_DIR:-/tmp/workflow-artifacts/app/quiz/dist}"
 TARGET_DIR="${QUIZ_TARGET_DIR:-/var/www/quiz}"
 WEB_USER="${WEB_USER:-www-data}"
 WEB_GROUP="${WEB_GROUP:-www-data}"
 
-echo "Building quiz app from: ${SOURCE_DIR}"
-cd "${SOURCE_DIR}"
-
-if [[ -f package-lock.json ]]; then
-  npm ci
-else
-  npm install
-fi
-
-npm run build
-
-DIST_DIR="${SOURCE_DIR}/dist"
-if [[ ! -d "${DIST_DIR}" ]]; then
-  echo "Build finished, but dist directory was not found: ${DIST_DIR}"
+if [[ ! -d "${PREBUILT_DIST_DIR}" ]]; then
+  echo "Prebuilt quiz artifacts not found: ${PREBUILT_DIST_DIR}"
+  echo "Build app/quiz in GitHub Actions first, then upload artifacts."
+  echo "Optional override: set QUIZ_DIST_DIR to a valid dist directory."
   exit 1
 fi
 
+DIST_DIR="${PREBUILT_DIST_DIR}"
+echo "Using prebuilt quiz artifacts: ${DIST_DIR}"
 echo "Deploying to: ${TARGET_DIR}"
 mkdir -p "${TARGET_DIR}"
 
@@ -67,5 +36,5 @@ find "${TARGET_DIR}" -type d -exec chmod 755 {} \;
 find "${TARGET_DIR}" -type f -exec chmod 644 {} \;
 
 echo "Quiz deployed successfully."
-echo "Source: ${SOURCE_DIR}"
+echo "Artifacts: ${DIST_DIR}"
 echo "Target: ${TARGET_DIR}"

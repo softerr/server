@@ -67,7 +67,7 @@ The workflow uploads:
 - all `scripts/*.sh` to `/tmp/workflow-artifacts/scripts`
 - `app/quiz` to `/tmp/workflow-artifacts/app/quiz`
 
-This allows `deploy_quiz.sh` to build and deploy quiz directly from workflow artifacts.
+`deploy_quiz.sh` deploys only prebuilt `app/quiz/dist` artifacts from workflow upload. Server-side build is disabled.
 
 ## 5. Run the workflow
 
@@ -92,6 +92,8 @@ Mapping:
 This workflow uploads:
 - `scripts/deploy_*.sh` to `/tmp/workflow-artifacts/scripts`
 - `app/*` to `/tmp/workflow-artifacts/app`
+
+For `quiz`, build is executed on GitHub runner (`npm ci && npm run build`) before upload.
 
 ## 7. Verify access manually (recommended)
 

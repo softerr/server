@@ -16,6 +16,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Build quiz app on GitHub runner
+        run: |
+          set -euo pipefail
+          if [[ -d app/quiz ]]; then
+            cd app/quiz
+            if [[ -f package-lock.json ]]; then
+              npm ci
+            else
+              npm install
+            fi
+            npm run build
+          else
+            echo "Missing app/quiz in repository."
+            exit 1
+          fi
+
       - name: Configure SSH
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
