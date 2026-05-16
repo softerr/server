@@ -101,7 +101,7 @@ if [[ -z "${PHP_VERSION}" && "${PHP_SOCK}" =~ php([0-9.]+)-fpm\.sock$ ]]; then
 fi
 
 if [[ -n "${PHP_VERSION}" ]]; then
-  API_ENV_FILE="/etc/php/${PHP_VERSION}/fpm/pool.d/zz-cgware-api-env.conf"
+  API_ENV_FILE="/etc/php/${PHP_VERSION}/fpm/pool.d/zz-softerr-api-env.conf"
   API_DB_HOST="${API_DB_HOST:-127.0.0.1}"
   API_DB_PORT="${API_DB_PORT:-5432}"
   API_DB_NAME="${API_DB_NAME:-auth}"

@@ -4,7 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       apps:
-        description: "Comma-separated app names (example: quiz,api). Use 'all' to run all scripts matching scripts/deploy_*.sh."
+        description: "Select app deployment target."
+        type: choice
+        options:
+          - all
+          - quiz
+          - api
         required: false
         default: all
 

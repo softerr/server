@@ -76,9 +76,6 @@ Deploy apps workflow uploads:
 
 In GitHub: `Actions -> Setup Nginx On Server -> Run workflow`
 
-Input:
-- `template_path` (default: `/tmp/workflow-artifacts/configs/nginx/softerr.conf.template`)
-
 This workflow uploads:
 - `scripts/setup_nginx.sh` to `/tmp/workflow-artifacts/scripts`
 - `configs/*` to `/tmp/workflow-artifacts/configs`
@@ -110,8 +107,10 @@ This workflow requires GitHub secret:
 In GitHub: `Actions -> Deploy Apps On Server -> Run workflow`
 
 Input:
-- `apps=all` runs all scripts matching `scripts/deploy_*.sh`
-- Or specify app names, comma-separated: `quiz,api`
+- Dropdown `apps` values:
+  - `all`
+  - `quiz`
+  - `api`
 
 Mapping:
 - `quiz` runs `scripts/deploy_quiz.sh`
