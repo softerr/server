@@ -145,7 +145,7 @@ fi
 SUDOERS_FILE="/etc/sudoers.d/${WORKFLOW_USER}-workflow-scripts"
 TMP_SUDOERS="$(mktemp)"
 cat > "${TMP_SUDOERS}" <<EOF
-${WORKFLOW_USER} ALL=(root) NOPASSWD: /bin/bash ${SCRIPTS_DIR}/scripts/*.sh, /usr/bin/bash ${SCRIPTS_DIR}/scripts/*.sh
+${WORKFLOW_USER} ALL=(root) NOPASSWD:SETENV: /bin/bash ${SCRIPTS_DIR}/scripts/*.sh, /usr/bin/bash ${SCRIPTS_DIR}/scripts/*.sh
 EOF
 
 if command -v visudo >/dev/null 2>&1; then

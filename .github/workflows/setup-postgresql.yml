@@ -51,7 +51,8 @@ jobs:
           ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "POSTGRES_AUTH_API_PASSWORD_B64='$POSTGRES_AUTH_API_PASSWORD_B64' bash -s" <<'EOF'
           set -euo pipefail
           POSTGRES_AUTH_API_PASSWORD="$(printf '%s' "$POSTGRES_AUTH_API_PASSWORD_B64" | base64 -d)"
+          export POSTGRES_AUTH_API_PASSWORD
           chmod +x /tmp/workflow-artifacts/scripts/setup_postgresql.sh
-          sudo env POSTGRES_AUTH_API_PASSWORD="$POSTGRES_AUTH_API_PASSWORD" \
+          sudo --preserve-env=POSTGRES_AUTH_API_PASSWORD \
             bash /tmp/workflow-artifacts/scripts/setup_postgresql.sh
           EOF

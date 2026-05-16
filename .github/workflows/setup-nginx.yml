@@ -56,8 +56,10 @@ jobs:
           API_DB_PASSWORD_B64="$(printf '%s' "$API_DB_PASSWORD" | base64 -w 0)"
           ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "TEMPLATE_PATH='${TEMPLATE_PATH:-/tmp/workflow-artifacts/configs/nginx/softerr.conf.template}' API_DB_PASSWORD_B64='$API_DB_PASSWORD_B64' bash -s" <<'EOF'
           set -euo pipefail
+          NGINX_CONFIG_TEMPLATE="$TEMPLATE_PATH"
           API_DB_PASSWORD="$(printf '%s' "$API_DB_PASSWORD_B64" | base64 -d)"
+          export NGINX_CONFIG_TEMPLATE API_DB_PASSWORD
           chmod +x /tmp/workflow-artifacts/scripts/setup_nginx.sh
-          sudo env NGINX_CONFIG_TEMPLATE="$TEMPLATE_PATH" API_DB_PASSWORD="$API_DB_PASSWORD" \
+          sudo --preserve-env=NGINX_CONFIG_TEMPLATE,API_DB_PASSWORD \
             bash /tmp/workflow-artifacts/scripts/setup_nginx.sh
           EOF
