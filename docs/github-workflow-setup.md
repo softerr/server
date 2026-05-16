@@ -2,6 +2,7 @@
 
 This project includes:
 - Workflow: `.github/workflows/run-nginx-setup.yml`
+- Workflow: `.github/workflows/deploy-apps.yml`
 - Server bootstrap script: `scripts/create_github_workflow_user.sh`
 - Deploy scripts directory: `scripts/*.sh`
 
@@ -16,7 +17,7 @@ sudo bash scripts/create_github_workflow_user.sh
 What this configures:
 - Creates SSH user `github-workflow` (if missing)
 - Adds an SSH public key to `/home/github-workflow/.ssh/authorized_keys`
-- Creates sudoers rule so this user can run only `sudo bash /tmp/server-scripts/<script>.sh`
+- Creates sudoers rule so this user can run only `sudo bash /tmp/workflow-artifacts/scripts/<script>.sh`
 
 ## 2. Configure SSH key for GitHub Actions
 
@@ -52,8 +53,13 @@ Create:
 Place executable scripts in repository `scripts/` directory, for example:
 - `scripts/setup_nginx.sh`
 - `scripts/deploy_api.sh`
+- `scripts/deploy_quiz.sh`
 
-The workflow uploads all `scripts/*.sh` to `/tmp/server-scripts` on the server.
+The workflow uploads:
+- all `scripts/*.sh` to `/tmp/workflow-artifacts/scripts`
+- `app/quiz` to `/tmp/workflow-artifacts/app/quiz`
+
+This allows `deploy_quiz.sh` to build and deploy quiz directly from workflow artifacts.
 
 ## 5. Run the workflow
 
@@ -63,13 +69,29 @@ Input:
 - `scripts=all` to run all `.sh` scripts
 - Or specific scripts, comma-separated: `setup_nginx.sh,deploy_api.sh`
 
-## 6. Verify access manually (recommended)
+## 6. Deploy apps workflow
+
+In GitHub: `Actions -> Deploy Apps On Server -> Run workflow`
+
+Input:
+- `apps=all` runs all scripts matching `scripts/deploy_*.sh`
+- Or specify app names, comma-separated: `quiz,api`
+
+Mapping:
+- `quiz` runs `scripts/deploy_quiz.sh`
+- `api` runs `scripts/deploy_api.sh`
+
+This workflow uploads:
+- `scripts/deploy_*.sh` to `/tmp/workflow-artifacts/scripts`
+- `app/*` to `/tmp/workflow-artifacts/app`
+
+## 7. Verify access manually (recommended)
 
 From a machine with matching private key:
 
 ```bash
 ssh github-workflow@<SERVER_HOST>
-sudo bash /tmp/server-scripts/setup_nginx.sh
+sudo bash /tmp/workflow-artifacts/scripts/setup_nginx.sh
 ```
 
 This should run without sudo password prompt.

@@ -1,0 +1,115 @@
+name: Deploy Apps On Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      apps:
+        description: "Comma-separated app names (example: quiz,api). Use 'all' to run all scripts matching scripts/deploy_*.sh."
+        required: false
+        default: all
+
+jobs:
+  deploy-apps:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          KEY_PATH="$HOME/.ssh/server_key"
+          if printf '%s' "$SERVER_SSH_KEY" | grep -q "BEGIN .*PRIVATE KEY"; then
+            printf '%s' "$SERVER_SSH_KEY" | tr -d '\r' > "$KEY_PATH"
+          else
+            printf '%s' "$SERVER_SSH_KEY" | tr -d '\r' | base64 -d > "$KEY_PATH"
+          fi
+          chmod 600 "$KEY_PATH"
+          ssh-keygen -y -f "$KEY_PATH" >/dev/null
+          PORT="${SERVER_PORT:-22}"
+          ssh-keyscan -p "$PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload apps and deploy scripts
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+        run: |
+          set -euo pipefail
+          PORT="${SERVER_PORT:-22}"
+          KEY_PATH="$HOME/.ssh/server_key"
+          SSH_OPTS="-i $KEY_PATH -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          REMOTE_DIR="/tmp/workflow-artifacts"
+
+          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/app'"
+          scp $SSH_OPTS -P "$PORT" scripts/deploy_*.sh "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+
+          if [[ -d app ]]; then
+            scp $SSH_OPTS -P "$PORT" -r app/. "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/"
+          else
+            echo "Missing app directory in repository."
+            exit 1
+          fi
+
+      - name: Run app deploy scripts
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          APP_LIST: ${{ github.event.inputs.apps }}
+        run: |
+          set -euo pipefail
+          PORT="${SERVER_PORT:-22}"
+          KEY_PATH="$HOME/.ssh/server_key"
+          SSH_OPTS="-i $KEY_PATH -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+
+          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "APP_LIST='$APP_LIST' bash -s" <<'EOF'
+          set -euo pipefail
+          cd /tmp/workflow-artifacts
+
+          run_deploy_script() {
+            local script_name="$1"
+            if [[ ! "$script_name" =~ ^deploy_[A-Za-z0-9._-]+\.sh$ ]]; then
+              echo "Invalid deploy script name: $script_name"
+              exit 1
+            fi
+            if [[ ! -f "scripts/$script_name" ]]; then
+              echo "Deploy script not found on server: scripts/$script_name"
+              exit 1
+            fi
+            chmod +x "scripts/$script_name"
+            echo "Running: scripts/$script_name"
+            sudo bash "/tmp/workflow-artifacts/scripts/$script_name"
+          }
+
+          if [[ "${APP_LIST:-all}" == "all" ]]; then
+            mapfile -t deploy_scripts < <(find scripts -maxdepth 1 -type f -name 'deploy_*.sh' -printf '%f\n' | sort)
+            if [[ "${#deploy_scripts[@]}" -eq 0 ]]; then
+              echo "No deploy scripts found in /tmp/workflow-artifacts/scripts"
+              exit 1
+            fi
+            for script_name in "${deploy_scripts[@]}"; do
+              run_deploy_script "$script_name"
+            done
+          else
+            normalized="${APP_LIST//,/ }"
+            read -r -a requested_apps <<< "$normalized"
+            if [[ "${#requested_apps[@]}" -eq 0 ]]; then
+              echo "No apps requested."
+              exit 1
+            fi
+            for app_name in "${requested_apps[@]}"; do
+              if [[ ! "$app_name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+                echo "Invalid app name: $app_name"
+                exit 1
+              fi
+              run_deploy_script "deploy_${app_name}.sh"
+            done
+          fi
+          EOF

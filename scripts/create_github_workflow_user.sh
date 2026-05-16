@@ -11,7 +11,7 @@ Options:
   --user <name>             SSH user to create (default: github-workflow)
   --pubkey <key>            Public key content (optional override)
   --pubkey-file <path>      Path to public key file (optional override)
-  --scripts-dir <path>      Directory of allowed scripts (default: /tmp/server-scripts)
+  --scripts-dir <path>      Directory of allowed scripts (default: /tmp/workflow-artifacts)
   -h, --help                Show help
 
 No-argument mode:
@@ -27,7 +27,7 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 WORKFLOW_USER="github-workflow"
-SCRIPTS_DIR="/tmp/server-scripts"
+SCRIPTS_DIR="/tmp/workflow-artifacts"
 PUBLIC_KEY=""
 PUBLIC_KEY_FILE=""
 GENERATED_PRIVATE_KEY=""
@@ -145,7 +145,7 @@ fi
 SUDOERS_FILE="/etc/sudoers.d/${WORKFLOW_USER}-workflow-scripts"
 TMP_SUDOERS="$(mktemp)"
 cat > "${TMP_SUDOERS}" <<EOF
-${WORKFLOW_USER} ALL=(root) NOPASSWD: /bin/bash ${SCRIPTS_DIR}/*.sh, /usr/bin/bash ${SCRIPTS_DIR}/*.sh
+${WORKFLOW_USER} ALL=(root) NOPASSWD: /bin/bash ${SCRIPTS_DIR}/scripts/*.sh, /usr/bin/bash ${SCRIPTS_DIR}/scripts/*.sh
 EOF
 
 if command -v visudo >/dev/null 2>&1; then
@@ -157,7 +157,7 @@ rm -f "${TMP_SUDOERS}"
 
 echo "Configured sudoers: ${SUDOERS_FILE}"
 echo "User '${WORKFLOW_USER}' can run:"
-echo "  sudo bash ${SCRIPTS_DIR}/<script>.sh"
+echo "  sudo bash ${SCRIPTS_DIR}/scripts/<script>.sh"
 
 if [[ -n "${GENERATED_PRIVATE_KEY}" ]]; then
   echo

@@ -46,14 +46,20 @@ jobs:
           PORT="${SERVER_PORT:-22}"
           KEY_PATH="$HOME/.ssh/server_key"
           SSH_OPTS="-i $KEY_PATH -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
-          REMOTE_DIR="/tmp/server-scripts"
+          REMOTE_DIR="/tmp/workflow-artifacts"
 
-          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR'"
-          scp $SSH_OPTS -P "$PORT" scripts/*.sh "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
+          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/app'"
+          scp $SSH_OPTS -P "$PORT" scripts/*.sh "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+          if [[ -d app/quiz ]]; then
+            scp $SSH_OPTS -P "$PORT" -r app/quiz "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/"
+          else
+            echo "Missing app/quiz in repository."
+            exit 1
+          fi
 
           ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "SCRIPT_LIST='$SCRIPT_LIST' bash -s" <<'EOF'
           set -euo pipefail
-          cd /tmp/server-scripts
+          cd /tmp/workflow-artifacts/scripts
 
           run_script() {
             local script_name="$1"
@@ -62,18 +68,18 @@ jobs:
               exit 1
             fi
             if [[ ! -f "$script_name" ]]; then
-              echo "Script not found on server: $script_name"
+              echo "Script not found on server: scripts/$script_name"
               exit 1
             fi
             chmod +x "$script_name"
-            echo "Running: $script_name"
-            sudo bash "/tmp/server-scripts/$script_name"
+            echo "Running: scripts/$script_name"
+            sudo bash "/tmp/workflow-artifacts/scripts/$script_name"
           }
 
           if [[ "${SCRIPT_LIST:-all}" == "all" ]]; then
             mapfile -t scripts_to_run < <(find . -maxdepth 1 -type f -name '*.sh' -printf '%f\n' | sort)
             if [[ "${#scripts_to_run[@]}" -eq 0 ]]; then
-              echo "No .sh scripts found in /tmp/server-scripts"
+              echo "No .sh scripts found in /tmp/workflow-artifacts/scripts"
               exit 1
             fi
             for script_name in "${scripts_to_run[@]}"; do
