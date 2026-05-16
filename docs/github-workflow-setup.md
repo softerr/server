@@ -85,13 +85,16 @@ This workflow uploads:
 
 In GitHub: `Actions -> Setup PostgreSQL On Server -> Run workflow`
 
-Inputs:
-- `db_name` (default: `app`)
-- `db_owner` (default: `postgres`)
+No inputs required.
 
 This workflow uploads:
 - `scripts/setup_postgresql.sh` to `/tmp/workflow-artifacts/scripts`
 - `configs/*` to `/tmp/workflow-artifacts/configs`
+
+Database creation behavior:
+- Script executes `configs/postgresql/init.sql`
+- Databases are created from SQL in that single file
+- Users table is created in `auth` database by SQL in `init.sql`
 
 ## 7. Deploy apps workflow
 

@@ -2,15 +2,6 @@ name: Setup PostgreSQL On Server
 
 on:
   workflow_dispatch:
-    inputs:
-      db_name:
-        description: "Database name (default: app)"
-        required: false
-        default: app
-      db_owner:
-        description: "Database owner role (default: postgres)"
-        required: false
-        default: postgres
 
 jobs:
   setup-postgresql:
@@ -47,10 +38,8 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          DB_NAME: ${{ github.event.inputs.db_name }}
-          DB_OWNER: ${{ github.event.inputs.db_owner }}
         run: |
           set -euo pipefail
           source scripts/ci/load_ssh_env.sh
           ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" \
-            "chmod +x /tmp/workflow-artifacts/scripts/setup_postgresql.sh && POSTGRES_DB='${DB_NAME:-app}' POSTGRES_OWNER='${DB_OWNER:-postgres}' sudo bash /tmp/workflow-artifacts/scripts/setup_postgresql.sh"
+            "chmod +x /tmp/workflow-artifacts/scripts/setup_postgresql.sh && sudo bash /tmp/workflow-artifacts/scripts/setup_postgresql.sh"
