@@ -32,6 +32,11 @@ Copy that full output into GitHub secret `SERVER_SSH_KEY`.
 
 If script output says it used an existing public key (for example `Using public key: ...`), use the matching private key for that public key as `SERVER_SSH_KEY`.
 
+`SERVER_SSH_KEY` format notes:
+- Recommended: paste raw multi-line private key, including `-----BEGIN ... PRIVATE KEY-----` and `-----END ... PRIVATE KEY-----`.
+- Alternative: base64-encode the private key and store that string in `SERVER_SSH_KEY`.
+- The key must be unencrypted (no passphrase), because workflow runs non-interactively.
+
 ## 3. Add repository secrets
 
 In GitHub repo: `Settings -> Secrets and variables -> Actions -> New repository secret`

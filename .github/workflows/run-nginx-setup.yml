@@ -24,8 +24,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
-          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          KEY_PATH="$HOME/.ssh/server_key"
+          if printf '%s' "$SERVER_SSH_KEY" | grep -q "BEGIN .*PRIVATE KEY"; then
+            printf '%s' "$SERVER_SSH_KEY" | tr -d '\r' > "$KEY_PATH"
+          else
+            printf '%s' "$SERVER_SSH_KEY" | tr -d '\r' | base64 -d > "$KEY_PATH"
+          fi
+          chmod 600 "$KEY_PATH"
+          ssh-keygen -y -f "$KEY_PATH" >/dev/null
           PORT="${SERVER_PORT:-22}"
           ssh-keyscan -p "$PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
@@ -38,12 +44,14 @@ jobs:
         run: |
           set -euo pipefail
           PORT="${SERVER_PORT:-22}"
+          KEY_PATH="$HOME/.ssh/server_key"
+          SSH_OPTS="-i $KEY_PATH -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
           REMOTE_DIR="/tmp/server-scripts"
 
-          ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR'"
-          scp -P "$PORT" scripts/*.sh "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
+          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR'"
+          scp $SSH_OPTS -P "$PORT" scripts/*.sh "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
 
-          ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "SCRIPT_LIST='$SCRIPT_LIST' bash -s" <<'EOF'
+          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "SCRIPT_LIST='$SCRIPT_LIST' bash -s" <<'EOF'
           set -euo pipefail
           cd /tmp/server-scripts
 
