@@ -19,8 +19,12 @@ function connectDb()
     $host = getenv('DB_HOST') ?: '127.0.0.1';
     $port = getenv('DB_PORT') ?: '5432';
     $dbname = getenv('DB_NAME') ?: 'auth';
-    $user = getenv('DB_USER') ?: 'postgres';
+    $user = getenv('DB_USER') ?: 'auth_api';
     $password = getenv('DB_PASSWORD') ?: '';
+
+    if ($password === '') {
+        respond(500, ['error' => 'DB_PASSWORD is not configured']);
+    }
 
     $conn = pg_connect(
         "host={$host} port={$port} dbname={$dbname} user={$user} password={$password}"

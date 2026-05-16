@@ -22,6 +22,12 @@ if [[ ! -f "${INIT_SQL_FILE}" ]]; then
   exit 1
 fi
 
+if [[ -z "${POSTGRES_AUTH_API_PASSWORD:-}" ]]; then
+  echo "POSTGRES_AUTH_API_PASSWORD is required."
+  echo "Set it in server environment before running this script."
+  exit 1
+fi
+
 echo "Installing PostgreSQL..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
@@ -31,7 +37,11 @@ echo "Starting PostgreSQL service..."
 systemctl enable --now postgresql
 
 echo "Applying PostgreSQL init SQL: ${INIT_SQL_FILE}"
-sudo -u postgres psql -v ON_ERROR_STOP=1 -d postgres -f "${INIT_SQL_FILE}"
+sudo -u postgres psql \
+  -v ON_ERROR_STOP=1 \
+  -v auth_api_password="${POSTGRES_AUTH_API_PASSWORD}" \
+  -d postgres \
+  -f "${INIT_SQL_FILE}"
 
 echo "Done."
 echo "PostgreSQL is installed and databases are initialized from ${INIT_SQL_FILE}."

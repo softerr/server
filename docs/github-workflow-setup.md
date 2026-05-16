@@ -50,6 +50,8 @@ Create:
 - `SERVER_SSH_KEY_B64`: base64 of private SSH key (recommended)
 - `SERVER_SSH_KEY`: private SSH key (multi-line content, fallback)
 - `SERVER_PORT`: optional SSH port (default `22`)
+- `POSTGRES_AUTH_API_PASSWORD`: DB password for `auth_api` role
+- `API_DB_PASSWORD`: API runtime DB password (use same value as `POSTGRES_AUTH_API_PASSWORD`)
 
 To generate `SERVER_SSH_KEY_B64` on server:
 
@@ -81,6 +83,9 @@ This workflow uploads:
 - `scripts/setup_nginx.sh` to `/tmp/workflow-artifacts/scripts`
 - `configs/*` to `/tmp/workflow-artifacts/configs`
 
+This workflow requires GitHub secret:
+- `API_DB_PASSWORD`
+
 ## 6. Setup PostgreSQL workflow
 
 In GitHub: `Actions -> Setup PostgreSQL On Server -> Run workflow`
@@ -95,6 +100,10 @@ Database creation behavior:
 - Script executes `configs/postgresql/init.sql`
 - Databases are created from SQL in that single file
 - Users table is created in `auth` database by SQL in `init.sql`
+- API role `auth_api` password is set from `POSTGRES_AUTH_API_PASSWORD`
+
+This workflow requires GitHub secret:
+- `POSTGRES_AUTH_API_PASSWORD`
 
 ## 7. Deploy apps workflow
 
@@ -131,3 +140,10 @@ Example request body:
 
 Success response:
 - `201 Created` with user payload `{ id, username, email, activated }`
+
+Default API DB connection values:
+- `DB_HOST=127.0.0.1`
+- `DB_PORT=5432`
+- `DB_NAME=auth`
+- `DB_USER=auth_api`
+- `DB_PASSWORD` is required (no default)

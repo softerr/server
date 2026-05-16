@@ -38,8 +38,20 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          POSTGRES_AUTH_API_PASSWORD: ${{ secrets.POSTGRES_AUTH_API_PASSWORD }}
         run: |
           set -euo pipefail
           source scripts/ci/load_ssh_env.sh
-          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" \
-            "chmod +x /tmp/workflow-artifacts/scripts/setup_postgresql.sh && sudo bash /tmp/workflow-artifacts/scripts/setup_postgresql.sh"
+          if [[ -z "${POSTGRES_AUTH_API_PASSWORD:-}" ]]; then
+            echo "Missing required GitHub secret: POSTGRES_AUTH_API_PASSWORD"
+            exit 1
+          fi
+
+          POSTGRES_AUTH_API_PASSWORD_B64="$(printf '%s' "$POSTGRES_AUTH_API_PASSWORD" | base64 -w 0)"
+          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "POSTGRES_AUTH_API_PASSWORD_B64='$POSTGRES_AUTH_API_PASSWORD_B64' bash -s" <<'EOF'
+          set -euo pipefail
+          POSTGRES_AUTH_API_PASSWORD="$(printf '%s' "$POSTGRES_AUTH_API_PASSWORD_B64" | base64 -d)"
+          chmod +x /tmp/workflow-artifacts/scripts/setup_postgresql.sh
+          sudo env POSTGRES_AUTH_API_PASSWORD="$POSTGRES_AUTH_API_PASSWORD" \
+            bash /tmp/workflow-artifacts/scripts/setup_postgresql.sh
+          EOF
