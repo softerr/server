@@ -65,6 +65,7 @@ Place executable scripts in repository `scripts/` directory, for example:
 
 The workflow uploads:
 - all `scripts/*.sh` to `/tmp/workflow-artifacts/scripts`
+- `configs/*` to `/tmp/workflow-artifacts/configs`
 - `app/quiz` to `/tmp/workflow-artifacts/app/quiz`
 
 `deploy_quiz.sh` deploys only prebuilt `app/quiz/dist` artifacts from workflow upload. Server-side build is disabled.

@@ -7,8 +7,18 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+CONFIG_TEMPLATE="${NGINX_CONFIG_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr.conf.template}"
+
 if ! command -v apt-get >/dev/null 2>&1; then
   echo "This script currently supports Debian/Ubuntu systems (apt-get required)."
+  exit 1
+fi
+
+if [[ ! -f "${CONFIG_TEMPLATE}" ]]; then
+  echo "Nginx config template not found: ${CONFIG_TEMPLATE}"
+  echo "Expected template path: ../configs/nginx/softerr.conf.template relative to this script."
   exit 1
 fi
 
@@ -76,46 +86,7 @@ if [[ -z "${PHP_SOCK}" ]]; then
 fi
 
 echo "Writing nginx site config..."
-cat > /etc/nginx/sites-available/softerr <<EOF
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
-
-    root /var/www/home;
-    index index.html index.htm index.php;
-
-    location / {
-        try_files \$uri \$uri/ /index.html;
-    }
-
-    location = /quiz {
-        return 301 /quiz/;
-    }
-
-    location /quiz/ {
-        alias /var/www/quiz/;
-        try_files \$uri \$uri/ /quiz/index.html;
-    }
-
-    location = /api {
-        return 301 /api/;
-    }
-
-    location /api/ {
-        alias /var/www/api/;
-        index index.php;
-        try_files \$uri \$uri/ /api/index.php?\$query_string;
-    }
-
-    location ~ ^/api/(.+\.php)$ {
-        alias /var/www/api/\$1;
-        include snippets/fastcgi-php.conf;
-        fastcgi_param SCRIPT_FILENAME \$request_filename;
-        fastcgi_pass unix:${PHP_SOCK};
-    }
-}
-EOF
+sed "s|__PHP_FPM_SOCK__|${PHP_SOCK}|g" "${CONFIG_TEMPLATE}" > /etc/nginx/sites-available/softerr
 
 rm -f /etc/nginx/sites-enabled/default
 ln -sfn /etc/nginx/sites-available/softerr /etc/nginx/sites-enabled/softerr

@@ -1,0 +1,38 @@
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    root /var/www/home;
+    index index.html index.htm index.php;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location = /quiz {
+        return 301 /quiz/;
+    }
+
+    location /quiz/ {
+        alias /var/www/quiz/;
+        try_files $uri $uri/ /quiz/index.html;
+    }
+
+    location = /api {
+        return 301 /api/;
+    }
+
+    location /api/ {
+        alias /var/www/api/;
+        index index.php;
+        try_files $uri $uri/ /api/index.php?$query_string;
+    }
+
+    location ~ ^/api/(.+\.php)$ {
+        alias /var/www/api/$1;
+        include snippets/fastcgi-php.conf;
+        fastcgi_param SCRIPT_FILENAME $request_filename;
+        fastcgi_pass unix:__PHP_FPM_SOCK__;
+    }
+}

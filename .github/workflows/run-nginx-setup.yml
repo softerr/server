@@ -64,8 +64,14 @@ jobs:
           SSH_OPTS="-i $KEY_PATH -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
           REMOTE_DIR="/tmp/workflow-artifacts"
 
-          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/app'"
+          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/app' '$REMOTE_DIR/configs'"
           scp $SSH_OPTS -P "$PORT" scripts/*.sh "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+          if [[ -d configs ]]; then
+            scp $SSH_OPTS -P "$PORT" -r configs/. "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
+          else
+            echo "Missing configs directory in repository."
+            exit 1
+          fi
           if [[ -d app/quiz ]]; then
             scp $SSH_OPTS -P "$PORT" -r app/quiz "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/"
           else
