@@ -25,7 +25,7 @@ fi
 echo "Installing nginx and php-fpm..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y nginx php-fpm
+apt-get install -y nginx php-fpm php-pgsql
 
 echo "Creating web directories..."
 mkdir -p /var/www/home /var/www/quiz /var/www/api

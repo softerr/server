@@ -113,3 +113,21 @@ This workflow uploads:
 - `app/*` to `/tmp/workflow-artifacts/app`
 
 For `quiz`, build is executed on GitHub runner (`npm ci && npm run build`) before upload.
+
+## 8. API endpoint
+
+After running setup and app deploy workflows, signup endpoint is available at:
+- `POST /api/auth/signup`
+
+Example request body:
+
+```json
+{
+  "username": "john",
+  "password": "secret123",
+  "email": "john@example.com"
+}
+```
+
+Success response:
+- `201 Created` with user payload `{ id, username, email, activated }`
