@@ -96,6 +96,9 @@ PHP_VERSION=""
 if [[ "${PHP_FPM_SERVICE}" =~ ^php([0-9.]+)-fpm\.service$ ]]; then
   PHP_VERSION="${BASH_REMATCH[1]}"
 fi
+if [[ -z "${PHP_VERSION}" && "${PHP_SOCK}" =~ php([0-9.]+)-fpm\.sock$ ]]; then
+  PHP_VERSION="${BASH_REMATCH[1]}"
+fi
 
 if [[ -n "${PHP_VERSION}" ]]; then
   API_ENV_FILE="/etc/php/${PHP_VERSION}/fpm/pool.d/zz-cgware-api-env.conf"
@@ -105,15 +108,20 @@ if [[ -n "${PHP_VERSION}" ]]; then
   API_DB_USER="${API_DB_USER:-auth_api}"
   API_DB_PASSWORD="${API_DB_PASSWORD:-}"
 
-  if [[ -n "${API_DB_PASSWORD}" ]]; then
-    esc() {
-      local value="$1"
-      value="${value//\\/\\\\}"
-      value="${value//\"/\\\"}"
-      printf '%s' "$value"
-    }
+  if [[ -z "${API_DB_PASSWORD}" ]]; then
+    echo "API_DB_PASSWORD is required but not set."
+    echo "Set GitHub secret API_DB_PASSWORD and re-run Setup Nginx workflow."
+    exit 1
+  fi
 
-    cat > "${API_ENV_FILE}" <<EOF
+  esc() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    printf '%s' "$value"
+  }
+
+  cat > "${API_ENV_FILE}" <<EOF
 [www]
 env[DB_HOST] = "$(esc "${API_DB_HOST}")"
 env[DB_PORT] = "$(esc "${API_DB_PORT}")"
@@ -121,13 +129,15 @@ env[DB_NAME] = "$(esc "${API_DB_NAME}")"
 env[DB_USER] = "$(esc "${API_DB_USER}")"
 env[DB_PASSWORD] = "$(esc "${API_DB_PASSWORD}")"
 EOF
-    chmod 640 "${API_ENV_FILE}"
-    chown root:root "${API_ENV_FILE}"
-    echo "Configured API DB env in php-fpm pool: ${API_ENV_FILE}"
-  else
-    echo "API_DB_PASSWORD is not set. Skipping php-fpm API env file creation."
-    echo "Set API_DB_PASSWORD in server environment and re-run setup_nginx.sh to enable API DB auth."
-  fi
+  chmod 640 "${API_ENV_FILE}"
+  chown root:root "${API_ENV_FILE}"
+  echo "Configured API DB env in php-fpm pool: ${API_ENV_FILE}"
+  systemctl restart "${PHP_FPM_SERVICE}"
+else
+  echo "Could not determine PHP version for php-fpm env file generation."
+  echo "Detected socket: ${PHP_SOCK}"
+  echo "Detected service: ${PHP_FPM_SERVICE}"
+  exit 1
 fi
 
 echo "Writing nginx site config..."
