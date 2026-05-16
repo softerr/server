@@ -1,0 +1,85 @@
+name: Run Server Scripts On Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      scripts:
+        description: "Comma-separated script names from scripts/ (example: setup_nginx.sh,other.sh). Use 'all' to run all .sh files."
+        required: false
+        default: all
+
+jobs:
+  run-setup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          PORT="${SERVER_PORT:-22}"
+          ssh-keyscan -p "$PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+
+      - name: Copy and execute server scripts
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SCRIPT_LIST: ${{ github.event.inputs.scripts }}
+        run: |
+          set -euo pipefail
+          PORT="${SERVER_PORT:-22}"
+          REMOTE_DIR="/tmp/server-scripts"
+
+          ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR'"
+          scp -P "$PORT" scripts/*.sh "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
+
+          ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "SCRIPT_LIST='$SCRIPT_LIST' bash -s" <<'EOF'
+          set -euo pipefail
+          cd /tmp/server-scripts
+
+          run_script() {
+            local script_name="$1"
+            if [[ ! "$script_name" =~ ^[A-Za-z0-9._-]+\.sh$ ]]; then
+              echo "Invalid script name: $script_name"
+              exit 1
+            fi
+            if [[ ! -f "$script_name" ]]; then
+              echo "Script not found on server: $script_name"
+              exit 1
+            fi
+            chmod +x "$script_name"
+            echo "Running: $script_name"
+            sudo bash "/tmp/server-scripts/$script_name"
+          }
+
+          if [[ "${SCRIPT_LIST:-all}" == "all" ]]; then
+            mapfile -t scripts_to_run < <(find . -maxdepth 1 -type f -name '*.sh' -printf '%f\n' | sort)
+            if [[ "${#scripts_to_run[@]}" -eq 0 ]]; then
+              echo "No .sh scripts found in /tmp/server-scripts"
+              exit 1
+            fi
+            for script_name in "${scripts_to_run[@]}"; do
+              run_script "$script_name"
+            done
+          else
+            normalized="${SCRIPT_LIST//,/ }"
+            read -r -a requested <<< "$normalized"
+            if [[ "${#requested[@]}" -eq 0 ]]; then
+              echo "No scripts requested."
+              exit 1
+            fi
+            for script_name in "${requested[@]}"; do
+              run_script "$script_name"
+            done
+          fi
+          EOF
