@@ -71,14 +71,21 @@ EOF
 fi
 
 echo "Discovering php-fpm socket..."
-PHP_FPM_SERVICE="$(systemctl list-unit-files --type=service --no-legend | awk '/^php[0-9.]+-fpm\.service/ {print $1; exit}')"
+PHP_FPM_SERVICE=""
+while IFS= read -r unit_line; do
+  unit_name="${unit_line%% *}"
+  if [[ "${unit_name}" =~ ^php[0-9.]+-fpm\.service$ ]]; then
+    PHP_FPM_SERVICE="${unit_name}"
+    break
+  fi
+done < <(systemctl list-unit-files --type=service --no-legend)
 if [[ -z "${PHP_FPM_SERVICE}" ]]; then
   PHP_FPM_SERVICE="php-fpm.service"
 fi
 
 systemctl enable --now "${PHP_FPM_SERVICE}" || true
 
-PHP_SOCK="$(find /run/php -maxdepth 1 -type s -name 'php*-fpm.sock' | head -n 1 || true)"
+PHP_SOCK="$(find /run/php -maxdepth 1 -type s -name 'php*-fpm.sock' -print -quit || true)"
 if [[ -z "${PHP_SOCK}" ]]; then
   echo "Could not find php-fpm socket in /run/php."
   echo "Check php-fpm service status and set fastcgi_pass manually."
