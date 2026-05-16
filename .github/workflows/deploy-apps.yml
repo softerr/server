@@ -25,13 +25,24 @@ jobs:
           set -euo pipefail
           mkdir -p ~/.ssh
           KEY_PATH="$HOME/.ssh/server_key"
-          if printf '%s' "$SERVER_SSH_KEY" | grep -q "BEGIN .*PRIVATE KEY"; then
-            printf '%s' "$SERVER_SSH_KEY" | tr -d '\r' > "$KEY_PATH"
+          RAW_KEY="$(printf '%s' "$SERVER_SSH_KEY" | tr -d '\r')"
+          RAW_KEY="${RAW_KEY#\"}"
+          RAW_KEY="${RAW_KEY%\"}"
+          RAW_KEY="${RAW_KEY#\'}"
+          RAW_KEY="${RAW_KEY%\'}"
+
+          if [[ "$RAW_KEY" == *"BEGIN "*"PRIVATE KEY"* ]]; then
+            RAW_KEY="${RAW_KEY//\\n/$'\n'}"
+            printf '%s' "$RAW_KEY" > "$KEY_PATH"
           else
-            printf '%s' "$SERVER_SSH_KEY" | tr -d '\r' | base64 -d > "$KEY_PATH"
+            printf '%s' "$RAW_KEY" | tr -d '\n ' | base64 -d > "$KEY_PATH"
           fi
+
           chmod 600 "$KEY_PATH"
-          ssh-keygen -y -f "$KEY_PATH" >/dev/null
+          if ! ssh-keygen -y -f "$KEY_PATH" >/dev/null 2>&1; then
+            echo "Invalid SERVER_SSH_KEY: use an unencrypted private key (raw multiline or base64-encoded)."
+            exit 1
+          fi
           PORT="${SERVER_PORT:-22}"
           ssh-keyscan -p "$PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
