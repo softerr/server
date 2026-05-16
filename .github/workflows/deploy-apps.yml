@@ -20,27 +20,32 @@ jobs:
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KEY_B64: ${{ secrets.SERVER_SSH_KEY_B64 }}
           SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
           KEY_PATH="$HOME/.ssh/server_key"
-          RAW_KEY="$(printf '%s' "$SERVER_SSH_KEY" | tr -d '\r')"
-          RAW_KEY="${RAW_KEY#\"}"
-          RAW_KEY="${RAW_KEY%\"}"
-          RAW_KEY="${RAW_KEY#\'}"
-          RAW_KEY="${RAW_KEY%\'}"
-
-          if [[ "$RAW_KEY" == *"BEGIN "*"PRIVATE KEY"* ]]; then
-            RAW_KEY="${RAW_KEY//\\n/$'\n'}"
-            printf '%s' "$RAW_KEY" > "$KEY_PATH"
+          if [[ -n "${SERVER_SSH_KEY_B64:-}" ]]; then
+            printf '%s' "$SERVER_SSH_KEY_B64" | tr -d '\r\n ' | base64 -d > "$KEY_PATH"
           else
-            printf '%s' "$RAW_KEY" | tr -d '\n ' | base64 -d > "$KEY_PATH"
+            RAW_KEY="$(printf '%s' "$SERVER_SSH_KEY" | tr -d '\r')"
+            RAW_KEY="${RAW_KEY#\"}"
+            RAW_KEY="${RAW_KEY%\"}"
+            RAW_KEY="${RAW_KEY#\'}"
+            RAW_KEY="${RAW_KEY%\'}"
+
+            if [[ "$RAW_KEY" == *"BEGIN "*"PRIVATE KEY"* ]]; then
+              RAW_KEY="${RAW_KEY//\\n/$'\n'}"
+              printf '%s' "$RAW_KEY" > "$KEY_PATH"
+            else
+              printf '%s' "$RAW_KEY" | tr -d '\n ' | base64 -d > "$KEY_PATH"
+            fi
           fi
 
           chmod 600 "$KEY_PATH"
           if ! ssh-keygen -y -f "$KEY_PATH" >/dev/null 2>&1; then
-            echo "Invalid SERVER_SSH_KEY: use an unencrypted private key (raw multiline or base64-encoded)."
+            echo "Invalid SSH key secret. Set SERVER_SSH_KEY_B64 (recommended) or SERVER_SSH_KEY."
             exit 1
           fi
           PORT="${SERVER_PORT:-22}"

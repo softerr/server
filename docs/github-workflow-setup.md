@@ -30,6 +30,7 @@ sudo cat /root/.ssh/github-workflow_github_actions_ed25519
 ```
 
 Copy that full output into GitHub secret `SERVER_SSH_KEY`.
+Recommended alternative (less formatting risk): set `SERVER_SSH_KEY_B64` with base64-encoded private key.
 
 If script output says it used an existing public key (for example `Using public key: ...`), use the matching private key for that public key as `SERVER_SSH_KEY`.
 
@@ -45,8 +46,15 @@ In GitHub repo: `Settings -> Secrets and variables -> Actions -> New repository 
 Create:
 - `SERVER_HOST`: server IP or domain
 - `SERVER_USER`: `github-workflow`
-- `SERVER_SSH_KEY`: private SSH key (multi-line content)
+- `SERVER_SSH_KEY_B64`: base64 of private SSH key (recommended)
+- `SERVER_SSH_KEY`: private SSH key (multi-line content, fallback)
 - `SERVER_PORT`: optional SSH port (default `22`)
+
+To generate `SERVER_SSH_KEY_B64` on server:
+
+```bash
+sudo base64 -w 0 /root/.ssh/github-workflow_github_actions_ed25519
+```
 
 ## 4. Add scripts to execute
 

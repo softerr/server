@@ -166,4 +166,7 @@ if [[ -n "${GENERATED_PRIVATE_KEY}" ]]; then
   echo
   echo "Command to print it:"
   echo "  cat ${GENERATED_PRIVATE_KEY}"
+  echo
+  echo "Recommended: set SERVER_SSH_KEY_B64 with:"
+  echo "  base64 -w 0 ${GENERATED_PRIVATE_KEY}"
 fi
