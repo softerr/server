@@ -41,7 +41,7 @@ sudo -u postgres psql \
   -v ON_ERROR_STOP=1 \
   -v auth_api_password="${POSTGRES_AUTH_API_PASSWORD}" \
   -d postgres \
-  -f "${INIT_SQL_FILE}"
+  < "${INIT_SQL_FILE}"
 
 echo "Done."
 echo "PostgreSQL is installed and databases are initialized from ${INIT_SQL_FILE}."

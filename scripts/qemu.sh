@@ -1,0 +1,438 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+
+VM_NAME="${VM_NAME:-server-clone}"
+VM_DIR="${VM_DIR:-${REPO_ROOT}/.qemu/${VM_NAME}}"
+VM_USER="${VM_USER:-ubuntu}"
+VM_CPUS="${VM_CPUS:-2}"
+VM_RAM_MB="${VM_RAM_MB:-4096}"
+VM_DISK_GB="${VM_DISK_GB:-30}"
+SSH_PORT="${SSH_PORT:-2222}"
+HTTP_PORT="${HTTP_PORT:-8080}"
+UBUNTU_IMAGE_URL="${UBUNTU_IMAGE_URL:-https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img}"
+WAIT_SSH_SECONDS="${WAIT_SSH_SECONDS:-240}"
+RECREATE_VM_DISK="${RECREATE_VM_DISK:-0}"
+SKIP_PROVISION="${SKIP_PROVISION:-0}"
+
+BASE_IMAGE="${VM_DIR}/ubuntu-noble-cloudimg-amd64.img"
+VM_DISK="${VM_DIR}/${VM_NAME}.qcow2"
+SEED_IMAGE="${VM_DIR}/seed.img"
+PID_FILE="${VM_DIR}/qemu.pid"
+SERIAL_LOG="${VM_DIR}/serial.log"
+SSH_KEY="${VM_DIR}/id_ed25519"
+USER_DATA="${VM_DIR}/user-data"
+META_DATA="${VM_DIR}/meta-data"
+REMOTE_APP_DIR="/home/${VM_USER}/server"
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "${cmd}"
+    exit 1
+  fi
+}
+
+qemu_running() {
+  if [[ -f "${PID_FILE}" ]]; then
+    local pid
+    pid="$(cat "${PID_FILE}")"
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+ensure_required_commands() {
+  local missing=()
+  local package_list=()
+  local sudo_cmd=()
+
+  if ! command -v curl >/dev/null 2>&1; then missing+=("curl"); fi
+  if ! command -v qemu-img >/dev/null 2>&1; then missing+=("qemu-img"); fi
+  if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then missing+=("qemu-system-x86_64"); fi
+  if ! command -v cloud-localds >/dev/null 2>&1; then missing+=("cloud-localds"); fi
+  if ! command -v ssh-keygen >/dev/null 2>&1; then missing+=("ssh-keygen"); fi
+  if ! command -v ssh >/dev/null 2>&1; then missing+=("ssh"); fi
+  if ! command -v scp >/dev/null 2>&1; then missing+=("scp"); fi
+  if ! command -v rsync >/dev/null 2>&1; then missing+=("rsync"); fi
+
+  if [[ "${#missing[@]}" -eq 0 ]]; then
+    return
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    if [[ "${EUID}" -ne 0 ]]; then
+      if command -v sudo >/dev/null 2>&1; then
+        sudo_cmd=(sudo)
+      else
+        echo "Missing dependencies: ${missing[*]}"
+        echo "sudo is not installed, rerun this script as root to auto-install packages."
+        exit 1
+      fi
+    fi
+
+    if [[ " ${missing[*]} " == *" curl "* ]]; then package_list+=("curl"); fi
+    if [[ " ${missing[*]} " == *" qemu-img "* || " ${missing[*]} " == *" qemu-system-x86_64 "* ]]; then package_list+=("qemu-system-x86"); fi
+    if [[ " ${missing[*]} " == *" cloud-localds "* ]]; then package_list+=("cloud-image-utils"); fi
+    if [[ " ${missing[*]} " == *" ssh-keygen "* || " ${missing[*]} " == *" ssh "* || " ${missing[*]} " == *" scp "* ]]; then package_list+=("openssh-client"); fi
+    if [[ " ${missing[*]} " == *" rsync "* ]]; then package_list+=("rsync"); fi
+
+    if [[ "${#package_list[@]}" -gt 0 ]]; then
+      local unique_packages=()
+      local pkg
+      for pkg in "${package_list[@]}"; do
+        if [[ " ${unique_packages[*]} " != *" ${pkg} "* ]]; then
+          unique_packages+=("${pkg}")
+        fi
+      done
+
+      echo "Installing missing dependencies: ${unique_packages[*]}"
+      export DEBIAN_FRONTEND=noninteractive
+      "${sudo_cmd[@]}" apt-get update
+      "${sudo_cmd[@]}" apt-get install -y "${unique_packages[@]}"
+    fi
+  else
+    echo "Missing dependencies: ${missing[*]}"
+    echo "Automatic install is supported on apt-get systems only."
+    exit 1
+  fi
+
+  local still_missing=()
+  if ! command -v curl >/dev/null 2>&1; then still_missing+=("curl"); fi
+  if ! command -v qemu-img >/dev/null 2>&1; then still_missing+=("qemu-img"); fi
+  if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then still_missing+=("qemu-system-x86_64"); fi
+  if ! command -v cloud-localds >/dev/null 2>&1; then still_missing+=("cloud-localds"); fi
+  if ! command -v ssh-keygen >/dev/null 2>&1; then still_missing+=("ssh-keygen"); fi
+  if ! command -v ssh >/dev/null 2>&1; then still_missing+=("ssh"); fi
+  if ! command -v scp >/dev/null 2>&1; then still_missing+=("scp"); fi
+  if ! command -v rsync >/dev/null 2>&1; then still_missing+=("rsync"); fi
+
+  if [[ "${#still_missing[@]}" -gt 0 ]]; then
+    echo "Dependencies still missing after install: ${still_missing[*]}"
+    exit 1
+  fi
+}
+
+prepare_vm_files() {
+  mkdir -p "${VM_DIR}"
+
+  if [[ ! -f "${BASE_IMAGE}" ]]; then
+    echo "Downloading Ubuntu cloud image..."
+    curl -L --fail --output "${BASE_IMAGE}" "${UBUNTU_IMAGE_URL}"
+  fi
+
+  if [[ "${RECREATE_VM_DISK}" == "1" ]]; then
+    rm -f "${VM_DISK}"
+  fi
+
+  if [[ ! -f "${VM_DISK}" ]]; then
+    echo "Creating VM overlay disk..."
+    qemu-img create -f qcow2 -F qcow2 -b "${BASE_IMAGE}" "${VM_DISK}" "${VM_DISK_GB}G" >/dev/null
+  fi
+
+  if [[ ! -f "${SSH_KEY}" ]]; then
+    echo "Generating SSH key for VM access..."
+    ssh-keygen -t ed25519 -N "" -f "${SSH_KEY}" >/dev/null
+  fi
+
+  local pubkey
+  pubkey="$(cat "${SSH_KEY}.pub")"
+
+  cat > "${USER_DATA}" <<EOF
+#cloud-config
+users:
+  - default
+  - name: ${VM_USER}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${pubkey}
+ssh_pwauth: false
+disable_root: true
+package_update: true
+EOF
+
+  cat > "${META_DATA}" <<EOF
+instance-id: ${VM_NAME}
+local-hostname: ${VM_NAME}
+EOF
+
+  cloud-localds "${SEED_IMAGE}" "${USER_DATA}" "${META_DATA}"
+}
+
+start_vm() {
+  if qemu_running; then
+    echo "VM is already running (pid $(cat "${PID_FILE}"))."
+    return
+  fi
+
+  echo "Starting QEMU VM..."
+  qemu-system-x86_64 \
+    -name "${VM_NAME}" \
+    -machine accel=kvm:tcg \
+    -cpu host \
+    -smp "${VM_CPUS}" \
+    -m "${VM_RAM_MB}" \
+    -drive "file=${VM_DISK},if=virtio" \
+    -drive "file=${SEED_IMAGE},if=virtio,format=raw" \
+    -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22,hostfwd=tcp:127.0.0.1:${HTTP_PORT}-:80" \
+    -device virtio-net-pci,netdev=net0 \
+    -display none \
+    -daemonize \
+    -pidfile "${PID_FILE}" \
+    -serial "file:${SERIAL_LOG}"
+}
+
+wait_for_ssh() {
+  echo "Waiting for SSH on localhost:${SSH_PORT}..."
+  local waited=0
+  until ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -p "${SSH_PORT}" "${VM_USER}@127.0.0.1" "echo ssh-ready" >/dev/null 2>&1; do
+    sleep 3
+    waited=$((waited + 3))
+    if (( waited >= WAIT_SSH_SECONDS )); then
+      echo "Timed out waiting for VM SSH."
+      echo "See serial log: ${SERIAL_LOG}"
+      exit 1
+    fi
+  done
+  echo "SSH is ready."
+}
+
+ensure_quiz_dist() {
+  if [[ ! -d "${REPO_ROOT}/app/quiz/dist" ]]; then
+    echo "Quiz dist artifacts not found locally. Building app/quiz..."
+    if ! command -v npm >/dev/null 2>&1; then
+      echo "npm is required to build app/quiz locally before VM provisioning."
+      echo "Install npm or build app/quiz manually, then rerun qemu.sh."
+      exit 1
+    fi
+    (
+      cd "${REPO_ROOT}/app/quiz"
+      if [[ -f package-lock.json ]]; then
+        npm ci
+      else
+        npm install
+      fi
+      npm run build
+    )
+  fi
+}
+
+sync_repo_to_vm() {
+  echo "Syncing project into VM..."
+  rsync -az --delete \
+    --exclude=".git" \
+    --exclude=".qemu" \
+    --exclude="app/quiz/node_modules" \
+    -e "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${SSH_PORT}" \
+    "${REPO_ROOT}/" "${VM_USER}@127.0.0.1:${REMOTE_APP_DIR}/"
+}
+
+run_remote_script() {
+  local script_rel="$1"
+  local script_b64 pg_b64 api_b64
+  local ssh_cmd
+  ssh_cmd=(ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "${SSH_PORT}" "${VM_USER}@127.0.0.1")
+
+  script_b64="$(printf '%s' "${script_rel}" | base64 -w 0)"
+  pg_b64="$(printf '%s' "${POSTGRES_AUTH_API_PASSWORD:-}" | base64 -w 0)"
+  api_b64="$(printf '%s' "${API_DB_PASSWORD:-}" | base64 -w 0)"
+
+  "${ssh_cmd[@]}" "SCRIPT_REL_B64='${script_b64}' POSTGRES_AUTH_API_PASSWORD_B64='${pg_b64}' API_DB_PASSWORD_B64='${api_b64}' bash -s" <<'EOF'
+set -euo pipefail
+cd /home/ubuntu/server
+
+SCRIPT_REL="$(printf '%s' "${SCRIPT_REL_B64}" | base64 -d)"
+POSTGRES_AUTH_API_PASSWORD="$(printf '%s' "${POSTGRES_AUTH_API_PASSWORD_B64}" | base64 -d)"
+API_DB_PASSWORD="$(printf '%s' "${API_DB_PASSWORD_B64}" | base64 -d)"
+
+if [[ ! -f "${SCRIPT_REL}" ]]; then
+  echo "Script not found in VM repo: ${SCRIPT_REL}"
+  exit 1
+fi
+
+chmod +x "${SCRIPT_REL}"
+
+case "${SCRIPT_REL}" in
+  scripts/setup_postgresql.sh)
+    if [[ -z "${POSTGRES_AUTH_API_PASSWORD}" ]]; then
+      echo "POSTGRES_AUTH_API_PASSWORD is required to run ${SCRIPT_REL}"
+      exit 1
+    fi
+    export POSTGRES_AUTH_API_PASSWORD
+    sudo --preserve-env=POSTGRES_AUTH_API_PASSWORD bash "${SCRIPT_REL}"
+    ;;
+  scripts/setup_nginx.sh)
+    if [[ -z "${API_DB_PASSWORD}" ]]; then
+      echo "API_DB_PASSWORD is required to run ${SCRIPT_REL}"
+      exit 1
+    fi
+    export API_DB_PASSWORD
+    sudo --preserve-env=API_DB_PASSWORD bash "${SCRIPT_REL}"
+    ;;
+  scripts/deploy_quiz.sh)
+    mkdir -p /tmp/workflow-artifacts
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete /home/ubuntu/server/app/ /tmp/workflow-artifacts/app/
+    else
+      rm -rf /tmp/workflow-artifacts/app
+      mkdir -p /tmp/workflow-artifacts/app
+      cp -a /home/ubuntu/server/app/. /tmp/workflow-artifacts/app/
+    fi
+    sudo bash "${SCRIPT_REL}"
+    ;;
+  *)
+    sudo bash "${SCRIPT_REL}"
+    ;;
+esac
+EOF
+}
+
+provision_vm() {
+  if [[ "${SKIP_PROVISION}" == "1" ]]; then
+    echo "Skipping provisioning (SKIP_PROVISION=1)."
+    return
+  fi
+
+  if [[ -z "${POSTGRES_AUTH_API_PASSWORD:-}" ]]; then
+    echo "POSTGRES_AUTH_API_PASSWORD is required for provisioning."
+    exit 1
+  fi
+  if [[ -z "${API_DB_PASSWORD:-}" ]]; then
+    echo "API_DB_PASSWORD is required for provisioning."
+    exit 1
+  fi
+
+  ensure_quiz_dist
+  sync_repo_to_vm
+
+  echo "Running server setup scripts inside VM..."
+  run_remote_script "scripts/setup_postgresql.sh"
+  run_remote_script "scripts/setup_nginx.sh"
+  run_remote_script "scripts/deploy_api.sh"
+  run_remote_script "scripts/deploy_quiz.sh"
+}
+
+apply_script_vm() {
+  local script_rel="${1:-scripts/setup_nginx.sh}"
+
+  if ! qemu_running; then
+    echo "VM is not running. Start it first: bash scripts/qemu.sh start"
+    exit 1
+  fi
+
+  if [[ ! -f "${REPO_ROOT}/${script_rel}" ]]; then
+    echo "Local script not found: ${script_rel}"
+    exit 1
+  fi
+
+  wait_for_ssh
+
+  if [[ "${script_rel}" == "scripts/deploy_quiz.sh" ]]; then
+    ensure_quiz_dist
+  fi
+
+  sync_repo_to_vm
+  run_remote_script "${script_rel}"
+  echo "Applied ${script_rel} in VM."
+}
+
+print_usage() {
+  cat <<'EOF'
+Usage:
+  bash scripts/qemu.sh [start|stop|status|ssh|apply]
+
+Commands:
+  start   Create/launch VM and provision it with server scripts (default)
+  stop    Stop running VM
+  status  Show VM status
+  ssh     SSH into VM
+  apply   Sync repo and run one script in VM (default: scripts/setup_nginx.sh)
+
+Environment variables:
+  POSTGRES_AUTH_API_PASSWORD   Required for provisioning
+  API_DB_PASSWORD              Required for provisioning
+  VM_NAME                      Default: server-clone
+  VM_DIR                       Default: ./.qemu/<VM_NAME>
+  SSH_PORT                     Default: 2222
+  HTTP_PORT                    Default: 8080
+  VM_CPUS                      Default: 2
+  VM_RAM_MB                    Default: 4096
+  VM_DISK_GB                   Default: 30
+  RECREATE_VM_DISK             1 to recreate overlay disk
+  SKIP_PROVISION               1 to only boot VM
+
+Examples:
+  bash scripts/qemu.sh apply scripts/setup_postgresql.sh
+  bash scripts/qemu.sh apply scripts/setup_nginx.sh
+EOF
+}
+
+stop_vm() {
+  if ! qemu_running; then
+    echo "VM is not running."
+    return
+  fi
+  local pid
+  pid="$(cat "${PID_FILE}")"
+  kill "${pid}"
+  rm -f "${PID_FILE}"
+  echo "VM stopped."
+}
+
+status_vm() {
+  if qemu_running; then
+    echo "VM running (pid $(cat "${PID_FILE}"))."
+    echo "SSH: ssh -i ${SSH_KEY} -p ${SSH_PORT} ${VM_USER}@127.0.0.1"
+    echo "HTTP: http://127.0.0.1:${HTTP_PORT}"
+  else
+    echo "VM stopped."
+  fi
+}
+
+ssh_vm() {
+  ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "${SSH_PORT}" "${VM_USER}@127.0.0.1"
+}
+
+main() {
+  local command="${1:-start}"
+  case "${command}" in
+    start)
+      ensure_required_commands
+      prepare_vm_files
+      start_vm
+      wait_for_ssh
+      provision_vm
+      echo "VM is ready."
+      echo "SSH: ssh -i ${SSH_KEY} -p ${SSH_PORT} ${VM_USER}@127.0.0.1"
+      echo "HTTP: http://127.0.0.1:${HTTP_PORT}"
+      ;;
+    stop)
+      stop_vm
+      ;;
+    status)
+      status_vm
+      ;;
+    ssh)
+      ssh_vm
+      ;;
+    apply)
+      apply_script_vm "${2:-scripts/setup_nginx.sh}"
+      ;;
+    -h|--help|help)
+      print_usage
+      ;;
+    *)
+      echo "Unknown command: ${command}"
+      print_usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
