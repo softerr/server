@@ -24,15 +24,15 @@ server {
     }
 
     location /api/ {
-        alias /var/www/api/;
+        root /var/www;
         index index.php;
         try_files $uri $uri/ /api/index.php?$query_string;
     }
 
-    location ~ ^/api/(.+\.php)$ {
-        alias /var/www/api/$1;
+    location ~ ^/api/.+\.php$ {
+        root /var/www;
         include snippets/fastcgi-php.conf;
-        fastcgi_param SCRIPT_FILENAME $request_filename;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         fastcgi_pass unix:__PHP_FPM_SOCK__;
     }
 }
