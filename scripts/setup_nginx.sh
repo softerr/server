@@ -107,6 +107,13 @@ if [[ -n "${PHP_VERSION}" ]]; then
   API_DB_NAME="${API_DB_NAME:-auth}"
   API_DB_USER="${API_DB_USER:-auth_api}"
   API_DB_PASSWORD="${API_DB_PASSWORD:-}"
+  API_MAIL_FROM="${API_MAIL_FROM:-}"
+  API_APP_BASE_URL="${API_APP_BASE_URL:-}"
+  API_SMTP_HOST="${API_SMTP_HOST:-}"
+  API_SMTP_PORT="${API_SMTP_PORT:-}"
+  API_SMTP_ENCRYPTION="${API_SMTP_ENCRYPTION:-}"
+  API_SMTP_USERNAME="${API_SMTP_USERNAME:-}"
+  API_SMTP_PASSWORD="${API_SMTP_PASSWORD:-}"
 
   if [[ -z "${API_DB_PASSWORD}" ]]; then
     echo "API_DB_PASSWORD is required but not set."
@@ -129,6 +136,27 @@ env[DB_NAME] = "$(esc "${API_DB_NAME}")"
 env[DB_USER] = "$(esc "${API_DB_USER}")"
 env[DB_PASSWORD] = "$(esc "${API_DB_PASSWORD}")"
 EOF
+  if [[ -n "${API_MAIL_FROM}" ]]; then
+    echo "env[MAIL_FROM] = \"$(esc "${API_MAIL_FROM}")\"" >> "${API_ENV_FILE}"
+  fi
+  if [[ -n "${API_APP_BASE_URL}" ]]; then
+    echo "env[APP_BASE_URL] = \"$(esc "${API_APP_BASE_URL}")\"" >> "${API_ENV_FILE}"
+  fi
+  if [[ -n "${API_SMTP_HOST}" ]]; then
+    echo "env[SMTP_HOST] = \"$(esc "${API_SMTP_HOST}")\"" >> "${API_ENV_FILE}"
+  fi
+  if [[ -n "${API_SMTP_PORT}" ]]; then
+    echo "env[SMTP_PORT] = \"$(esc "${API_SMTP_PORT}")\"" >> "${API_ENV_FILE}"
+  fi
+  if [[ -n "${API_SMTP_ENCRYPTION}" ]]; then
+    echo "env[SMTP_ENCRYPTION] = \"$(esc "${API_SMTP_ENCRYPTION}")\"" >> "${API_ENV_FILE}"
+  fi
+  if [[ -n "${API_SMTP_USERNAME}" ]]; then
+    echo "env[SMTP_USERNAME] = \"$(esc "${API_SMTP_USERNAME}")\"" >> "${API_ENV_FILE}"
+  fi
+  if [[ -n "${API_SMTP_PASSWORD}" ]]; then
+    echo "env[SMTP_PASSWORD] = \"$(esc "${API_SMTP_PASSWORD}")\"" >> "${API_ENV_FILE}"
+  fi
   chmod 640 "${API_ENV_FILE}"
   chown root:root "${API_ENV_FILE}"
   echo "Configured API DB env in php-fpm pool: ${API_ENV_FILE}"

@@ -52,6 +52,13 @@ Create:
 - `SERVER_PORT`: optional SSH port (default `22`)
 - `POSTGRES_AUTH_API_PASSWORD`: DB password for `auth_api` role
 - `API_DB_PASSWORD`: API runtime DB password (use same value as `POSTGRES_AUTH_API_PASSWORD`)
+- `API_MAIL_FROM`: optional sender email (example: `no-reply@example.com`)
+- `API_APP_BASE_URL`: optional public base URL used in verification links (example: `https://example.com`)
+- `API_SMTP_HOST`: optional SMTP host for email delivery (example: `smtp.mailgun.org`)
+- `API_SMTP_PORT`: optional SMTP port (default API behavior: `587`)
+- `API_SMTP_ENCRYPTION`: optional `tls`, `ssl`, or `none` (default API behavior: `tls`)
+- `API_SMTP_USERNAME`: optional SMTP username
+- `API_SMTP_PASSWORD`: optional SMTP password
 
 To generate `SERVER_SSH_KEY_B64` on server:
 
@@ -83,6 +90,13 @@ This workflow uploads:
 This workflow requires GitHub secret:
 - `API_DB_PASSWORD`
 
+Optional for signup verification email delivery without local MTA:
+- `API_SMTP_HOST`
+- `API_SMTP_PORT`
+- `API_SMTP_ENCRYPTION`
+- `API_SMTP_USERNAME`
+- `API_SMTP_PASSWORD`
+
 ## 6. Setup PostgreSQL workflow
 
 In GitHub: `Actions -> Setup PostgreSQL On Server -> Run workflow`
@@ -95,8 +109,6 @@ This workflow uploads:
 
 Database creation behavior:
 - Script executes `configs/postgresql/init.sql`
-- Databases are created from SQL in that single file
-- Users table is created in `auth` database by SQL in `init.sql`
 - API role `auth_api` password is set from `POSTGRES_AUTH_API_PASSWORD`
 
 This workflow requires GitHub secret:
@@ -124,8 +136,9 @@ For `quiz`, build is executed on GitHub runner (`npm ci && npm run build`) befor
 
 ## 8. API endpoint
 
-After running setup and app deploy workflows, signup endpoint is available at:
+After running setup and app deploy workflows, auth endpoints are available:
 - `POST /api/auth/signup`
+- `GET /api/auth/verify?token=<token>`
 
 Example request body:
 
@@ -138,7 +151,13 @@ Example request body:
 ```
 
 Success response:
-- `201 Created` with user payload `{ id, username, email, activated }`
+- `201 Created` with user payload `{ id, username, email, verified, created }`
+
+Signup behavior:
+- Creates account with `verified=false`
+- Creates a verification token in `auth.public.user_token`
+- Sends email with verification link to `/api/auth/verify?token=...`
+- Uses SMTP when `API_SMTP_HOST` is configured; otherwise falls back to PHP `mail()` (requires local MTA/sendmail on server)
 
 Default API DB connection values:
 - `DB_HOST=127.0.0.1`

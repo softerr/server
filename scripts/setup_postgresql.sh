@@ -28,10 +28,14 @@ if [[ -z "${POSTGRES_AUTH_API_PASSWORD:-}" ]]; then
   exit 1
 fi
 
-echo "Installing PostgreSQL..."
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y postgresql postgresql-contrib
+if dpkg -s postgresql postgresql-contrib >/dev/null 2>&1; then
+  echo "PostgreSQL packages are already installed."
+else
+  echo "Installing PostgreSQL..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y postgresql postgresql-contrib
+fi
 
 echo "Starting PostgreSQL service..."
 systemctl enable --now postgresql
