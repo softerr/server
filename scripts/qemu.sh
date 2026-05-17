@@ -236,20 +236,36 @@ sync_repo_to_vm() {
 run_remote_script() {
   local script_rel="$1"
   local script_b64 pg_b64 api_b64
+  local mail_from_b64 app_base_url_b64
+  local smtp_host_b64 smtp_port_b64 smtp_encryption_b64 smtp_username_b64 smtp_password_b64
   local ssh_cmd
   ssh_cmd=(ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "${SSH_PORT}" "${VM_USER}@127.0.0.1")
 
   script_b64="$(printf '%s' "${script_rel}" | base64 -w 0)"
   pg_b64="$(printf '%s' "${POSTGRES_AUTH_API_PASSWORD:-}" | base64 -w 0)"
   api_b64="$(printf '%s' "${API_DB_PASSWORD:-}" | base64 -w 0)"
+  mail_from_b64="$(printf '%s' "${API_MAIL_FROM:-}" | base64 -w 0)"
+  app_base_url_b64="$(printf '%s' "${API_APP_BASE_URL:-}" | base64 -w 0)"
+  smtp_host_b64="$(printf '%s' "${API_SMTP_HOST:-}" | base64 -w 0)"
+  smtp_port_b64="$(printf '%s' "${API_SMTP_PORT:-}" | base64 -w 0)"
+  smtp_encryption_b64="$(printf '%s' "${API_SMTP_ENCRYPTION:-}" | base64 -w 0)"
+  smtp_username_b64="$(printf '%s' "${API_SMTP_USERNAME:-}" | base64 -w 0)"
+  smtp_password_b64="$(printf '%s' "${API_SMTP_PASSWORD:-}" | base64 -w 0)"
 
-  "${ssh_cmd[@]}" "SCRIPT_REL_B64='${script_b64}' POSTGRES_AUTH_API_PASSWORD_B64='${pg_b64}' API_DB_PASSWORD_B64='${api_b64}' bash -s" <<'EOF'
+  "${ssh_cmd[@]}" "SCRIPT_REL_B64='${script_b64}' POSTGRES_AUTH_API_PASSWORD_B64='${pg_b64}' API_DB_PASSWORD_B64='${api_b64}' API_MAIL_FROM_B64='${mail_from_b64}' API_APP_BASE_URL_B64='${app_base_url_b64}' API_SMTP_HOST_B64='${smtp_host_b64}' API_SMTP_PORT_B64='${smtp_port_b64}' API_SMTP_ENCRYPTION_B64='${smtp_encryption_b64}' API_SMTP_USERNAME_B64='${smtp_username_b64}' API_SMTP_PASSWORD_B64='${smtp_password_b64}' bash -s" <<'EOF'
 set -euo pipefail
 cd /home/ubuntu/server
 
 SCRIPT_REL="$(printf '%s' "${SCRIPT_REL_B64}" | base64 -d)"
 POSTGRES_AUTH_API_PASSWORD="$(printf '%s' "${POSTGRES_AUTH_API_PASSWORD_B64}" | base64 -d)"
 API_DB_PASSWORD="$(printf '%s' "${API_DB_PASSWORD_B64}" | base64 -d)"
+API_MAIL_FROM="$(printf '%s' "${API_MAIL_FROM_B64}" | base64 -d)"
+API_APP_BASE_URL="$(printf '%s' "${API_APP_BASE_URL_B64}" | base64 -d)"
+API_SMTP_HOST="$(printf '%s' "${API_SMTP_HOST_B64}" | base64 -d)"
+API_SMTP_PORT="$(printf '%s' "${API_SMTP_PORT_B64}" | base64 -d)"
+API_SMTP_ENCRYPTION="$(printf '%s' "${API_SMTP_ENCRYPTION_B64}" | base64 -d)"
+API_SMTP_USERNAME="$(printf '%s' "${API_SMTP_USERNAME_B64}" | base64 -d)"
+API_SMTP_PASSWORD="$(printf '%s' "${API_SMTP_PASSWORD_B64}" | base64 -d)"
 
 if [[ ! -f "${SCRIPT_REL}" ]]; then
   echo "Script not found in VM repo: ${SCRIPT_REL}"
@@ -272,8 +288,9 @@ case "${SCRIPT_REL}" in
       echo "API_DB_PASSWORD is required to run ${SCRIPT_REL}"
       exit 1
     fi
-    export API_DB_PASSWORD
-    sudo --preserve-env=API_DB_PASSWORD bash "${SCRIPT_REL}"
+    export API_DB_PASSWORD API_MAIL_FROM API_APP_BASE_URL API_SMTP_HOST API_SMTP_PORT API_SMTP_ENCRYPTION API_SMTP_USERNAME API_SMTP_PASSWORD
+    sudo --preserve-env=API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD \
+      bash "${SCRIPT_REL}"
     ;;
   scripts/deploy_quiz.sh)
     mkdir -p /tmp/workflow-artifacts
@@ -306,6 +323,10 @@ provision_vm() {
   if [[ -z "${API_DB_PASSWORD:-}" ]]; then
     echo "API_DB_PASSWORD is required for provisioning."
     exit 1
+  fi
+  if [[ -z "${API_SMTP_HOST:-}" ]]; then
+    echo "Warning: API_SMTP_HOST is not set."
+    echo "Signup verification email in VM will fail unless VM has a working local MTA for PHP mail()."
   fi
 
   ensure_quiz_dist
@@ -357,6 +378,13 @@ Commands:
 Environment variables:
   POSTGRES_AUTH_API_PASSWORD   Required for provisioning
   API_DB_PASSWORD              Required for provisioning
+  API_MAIL_FROM                Optional sender address
+  API_APP_BASE_URL             Optional public base URL for verification links
+  API_SMTP_HOST                Optional SMTP host (recommended for verification emails)
+  API_SMTP_PORT                Optional SMTP port (default 587 in API)
+  API_SMTP_ENCRYPTION          Optional tls|ssl|none (default tls in API)
+  API_SMTP_USERNAME            Optional SMTP username
+  API_SMTP_PASSWORD            Optional SMTP password
   VM_NAME                      Default: server-clone
   VM_DIR                       Default: ./.qemu/<VM_NAME>
   SSH_PORT                     Default: 2222

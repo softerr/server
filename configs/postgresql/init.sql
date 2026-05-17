@@ -11,8 +11,6 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'auth') \gexec
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-DROP TABLE IF EXISTS public."user";
-
 CREATE TABLE IF NOT EXISTS public."user" (
     id BIGSERIAL PRIMARY KEY,
     username VARCHAR(100) NOT NULL UNIQUE,
