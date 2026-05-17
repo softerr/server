@@ -181,10 +181,21 @@ start_vm() {
   fi
 
   echo "Starting QEMU VM..."
+
+  local accel cpu_model
+  if [[ -r /dev/kvm && -w /dev/kvm ]]; then
+    accel="kvm:tcg"
+    cpu_model="host"
+  else
+    accel="tcg"
+    cpu_model="max"
+    echo "KVM is unavailable; using TCG emulation (slower)."
+  fi
+
   qemu-system-x86_64 \
     -name "${VM_NAME}" \
-    -machine accel=kvm:tcg \
-    -cpu host \
+    -machine "accel=${accel}" \
+    -cpu "${cpu_model}" \
     -smp "${VM_CPUS}" \
     -m "${VM_RAM_MB}" \
     -drive "file=${VM_DISK},if=virtio" \
