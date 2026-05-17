@@ -23,6 +23,39 @@ function appBaseUrl(): string
     return $scheme . '://' . $host;
 }
 
+function normalizeTimezoneName(?string $candidate): ?string
+{
+    $value = trim((string)($candidate ?? ''));
+    if ($value === '') {
+        return null;
+    }
+    try {
+        new DateTimeZone($value);
+        return $value;
+    } catch (Exception $e) {
+        return null;
+    }
+}
+
+function detectUserTimezone(array $payload): ?string
+{
+    $candidates = [
+        $payload['timezone'] ?? null,
+        $_SERVER['HTTP_X_TIMEZONE'] ?? null,
+        $_SERVER['HTTP_TIMEZONE'] ?? null,
+        $_COOKIE['timezone'] ?? null,
+    ];
+
+    foreach ($candidates as $candidate) {
+        $normalized = normalizeTimezoneName(is_string($candidate) ? $candidate : null);
+        if ($normalized !== null) {
+            return $normalized;
+        }
+    }
+
+    return null;
+}
+
 function smtpReadLine($socket): string|false
 {
     $line = fgets($socket, 515);
@@ -215,14 +248,37 @@ function sendViaSmtp(string $email, string $subject, string $body, string $mailF
     return true;
 }
 
-function sendVerificationEmail(string $email, string $username, string $token, string $expires): bool
+function sendVerificationEmail(string $email, string $username, string $token, string $expires, ?string $userTimezone = null): bool
 {
+    $formattedExpires = $expires;
+    try {
+        $trimmedExpires = trim($expires);
+        if (preg_match('/(Z|[+-]\d{2}(:?\d{2})?|[A-Za-z_\/]+)$/', $trimmedExpires) === 1) {
+            $expiresAt = new DateTimeImmutable($trimmedExpires);
+        } else {
+            // PostgreSQL text value without timezone is treated as UTC.
+            $expiresAt = new DateTimeImmutable($trimmedExpires, new DateTimeZone('UTC'));
+        }
+
+        $timezoneName = trim((string)($userTimezone ?? ''));
+        if ($timezoneName !== '') {
+            try {
+                $expiresAt = $expiresAt->setTimezone(new DateTimeZone($timezoneName));
+            } catch (Exception $e) {
+                // Ignore invalid timezone and keep parsed timezone.
+            }
+        }
+        $formattedExpires = $expiresAt->format('Y-m-d H:i:s T');
+    } catch (Exception $e) {
+        // Keep original value when parsing fails.
+    }
+
     $verifyUrl = appBaseUrl() . '/api/auth/verify?token=' . rawurlencode($token);
     $subject = 'Verify your account';
     $body = "Hello {$username},\n\n"
         . "Please verify your account by opening this link:\n"
         . "{$verifyUrl}\n\n"
-        . "This link expires at: {$expires}\n";
+        . "This link expires at: {$formattedExpires}\n";
 
     $mailFrom = trim((string)(getenv('MAIL_FROM') ?: 'no-reply@localhost'));
     if (sendViaSmtp($email, $subject, $body, $mailFrom)) {
@@ -279,6 +335,7 @@ function handleSignup(): never
     $username = trim((string)($payload['username'] ?? ''));
     $password = (string)($payload['password'] ?? '');
     $email = strtolower(trim((string)($payload['email'] ?? '')));
+    $timezone = detectUserTimezone($payload);
 
     if ($username === '' || $password === '' || $email === '') {
         respond(400, ['error' => 'username, password and email are required']);
@@ -296,6 +353,22 @@ function handleSignup(): never
     }
 
     $db = connectDb();
+
+    $duplicateCheckResult = @pg_query_params(
+        $db,
+        'SELECT 1
+         FROM public."user"
+         WHERE username = $1 OR email = $2
+         LIMIT 1',
+        [$username, $email]
+    );
+    if ($duplicateCheckResult === false) {
+        respond(500, ['error' => 'Failed to validate account uniqueness']);
+    }
+    if (pg_fetch_assoc($duplicateCheckResult) !== false) {
+        respond(409, ['error' => 'username or email already exists']);
+    }
+
     if (@pg_query($db, 'BEGIN') === false) {
         respond(500, ['error' => 'Failed to start transaction']);
     }
@@ -311,7 +384,12 @@ function handleSignup(): never
     if ($result === false) {
         @pg_query($db, 'ROLLBACK');
         $errorMessage = pg_last_error($db);
-        if (strpos($errorMessage, 'duplicate key value') !== false) {
+        $normalizedError = strtolower($errorMessage);
+        if (
+            strpos($normalizedError, 'duplicate key value') !== false
+            || strpos($normalizedError, 'unique constraint') !== false
+            || strpos($normalizedError, '23505') !== false
+        ) {
             respond(409, ['error' => 'username or email already exists']);
         }
         respond(500, ['error' => 'Failed to create account']);
@@ -341,7 +419,7 @@ function handleSignup(): never
         respond(500, ['error' => 'Failed to fetch verification token']);
     }
 
-    if (!sendVerificationEmail($user['email'], $user['username'], $tokenRow['hash'], $tokenRow['expires'])) {
+    if (!sendVerificationEmail($user['email'], $user['username'], $tokenRow['hash'], $tokenRow['expires'], $timezone)) {
         @pg_query($db, 'ROLLBACK');
         respond(500, ['error' => 'Failed to send verification email']);
     }

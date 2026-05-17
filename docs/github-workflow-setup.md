@@ -4,6 +4,7 @@ This project includes:
 - Workflow: `.github/workflows/setup-nginx.yml`
 - Workflow: `.github/workflows/setup-postgresql.yml`
 - Workflow: `.github/workflows/deploy-apps.yml`
+- Workflow: `.github/workflows/test-api-qemu.yml`
 - Shared provisioning entrypoint: `scripts/provision.sh`
 - Server bootstrap script: `scripts/create_github_workflow_user.sh`
 - Deploy scripts directory: `scripts/*.sh`
@@ -149,3 +150,28 @@ Execution:
 - `apps=all` runs `scripts/provision.sh` with `PROVISION_COMPONENTS=apps` (runs all `deploy_*.sh`)
 - `apps=quiz` runs `scripts/provision.sh` with `PROVISION_COMPONENTS=quiz`
 - `apps=api` runs `scripts/provision.sh` with `PROVISION_COMPONENTS=api`
+
+## 8. Test API workflow
+
+In GitHub: `Actions -> Test API In QEMU -> Run workflow`
+
+Input:
+- `require_db_checks`:
+  - `1` (default): includes verify-success test that reads token from PostgreSQL
+  - `0`: skips DB-backed verify-success test if DB access is unavailable
+- `require_email_checks`:
+  - `1` (default): requires successful verification email delivery in signup flow
+  - `0`: allows signup-related tests to skip when email delivery is unavailable
+
+Execution:
+- Starts a fresh local QEMU VM on GitHub runner
+- Provisions it via `scripts/qemu.sh start` (shared `scripts/provision.sh` flow)
+- Runs API tests via `scripts/qemu.sh test-api`
+
+When `require_email_checks=1`, set SMTP-related secrets so signup email delivery can succeed:
+- `API_SMTP_HOST` (required for strict email checks)
+- `API_SMTP_PORT`
+- `API_SMTP_ENCRYPTION`
+- `API_SMTP_USERNAME`
+- `API_SMTP_PASSWORD`
+- `API_MAIL_FROM`

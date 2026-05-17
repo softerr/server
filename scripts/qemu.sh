@@ -5,6 +5,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 
+QEMU_ENV_FILE="${QEMU_ENV_FILE:-${REPO_ROOT}/.qemu.env}"
+if [[ -f "${QEMU_ENV_FILE}" ]]; then
+  echo "Loading QEMU environment from: ${QEMU_ENV_FILE}"
+  set -a
+  # shellcheck disable=SC1090
+  source "${QEMU_ENV_FILE}"
+  set +a
+fi
+
 VM_NAME="${VM_NAME:-server-clone}"
 VM_DIR="${VM_DIR:-${REPO_ROOT}/.qemu/${VM_NAME}}"
 VM_USER="${VM_USER:-ubuntu}"
@@ -203,6 +212,20 @@ wait_for_ssh() {
   echo "SSH is ready."
 }
 
+wait_for_cloud_init() {
+  local ssh_cmd
+  ssh_cmd=(ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "${SSH_PORT}" "${VM_USER}@127.0.0.1")
+
+  echo "Waiting for cloud-init to finish in VM..."
+  "${ssh_cmd[@]}" "bash -s" <<'EOF'
+set -euo pipefail
+if command -v cloud-init >/dev/null 2>&1; then
+  sudo cloud-init status --wait
+fi
+EOF
+  echo "cloud-init completed."
+}
+
 ensure_quiz_dist() {
   if [[ ! -d "${REPO_ROOT}/app/quiz/dist" ]]; then
     echo "Quiz dist artifacts not found locally. Building app/quiz..."
@@ -250,6 +273,11 @@ run_remote_script() {
     API_SMTP_ENCRYPTION
     API_SMTP_USERNAME
     API_SMTP_PASSWORD
+    API_TEST_BASE_URL
+    API_TEST_DB_NAME
+    API_TEST_DB_SUPERUSER
+    API_TEST_REQUIRE_DB
+    API_TEST_REQUIRE_EMAIL
   )
   local assignments=()
   local env_name env_value env_b64
@@ -287,6 +315,11 @@ case "${SCRIPT_REL}" in
   scripts/provision.sh)
     export PROVISION_COMPONENTS POSTGRES_AUTH_API_PASSWORD API_DB_PASSWORD API_MAIL_FROM API_APP_BASE_URL API_SMTP_HOST API_SMTP_PORT API_SMTP_ENCRYPTION API_SMTP_USERNAME API_SMTP_PASSWORD
     sudo --preserve-env=PROVISION_COMPONENTS,POSTGRES_AUTH_API_PASSWORD,API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD \
+      bash "${SCRIPT_REL}"
+    ;;
+  scripts/test_api.sh)
+    export API_TEST_BASE_URL API_TEST_DB_NAME API_TEST_DB_SUPERUSER API_TEST_REQUIRE_DB API_TEST_REQUIRE_EMAIL
+    sudo --preserve-env=API_TEST_BASE_URL,API_TEST_DB_NAME,API_TEST_DB_SUPERUSER,API_TEST_REQUIRE_DB,API_TEST_REQUIRE_EMAIL \
       bash "${SCRIPT_REL}"
     ;;
   scripts/setup_postgresql.sh)
@@ -343,6 +376,7 @@ provision_vm() {
     echo "Signup verification email in VM will fail unless VM has a working local MTA for PHP mail()."
   fi
 
+  wait_for_cloud_init
   ensure_quiz_dist
   sync_repo_to_vm
 
@@ -364,6 +398,7 @@ apply_script_vm() {
   fi
 
   wait_for_ssh
+  wait_for_cloud_init
 
   if [[ "${script_rel}" == "scripts/deploy_quiz.sh" ]]; then
     ensure_quiz_dist
@@ -374,10 +409,29 @@ apply_script_vm() {
   echo "Applied ${script_rel} in VM."
 }
 
+test_api_vm() {
+  if ! qemu_running; then
+    echo "VM is not running. Start it first: bash scripts/qemu.sh start"
+    exit 1
+  fi
+
+  wait_for_ssh
+  wait_for_cloud_init
+  sync_repo_to_vm
+
+  export API_TEST_BASE_URL="${API_TEST_BASE_URL:-http://127.0.0.1}"
+  export API_TEST_DB_NAME="${API_TEST_DB_NAME:-auth}"
+  export API_TEST_DB_SUPERUSER="${API_TEST_DB_SUPERUSER:-postgres}"
+  export API_TEST_REQUIRE_DB="${API_TEST_REQUIRE_DB:-1}"
+  export API_TEST_REQUIRE_EMAIL="${API_TEST_REQUIRE_EMAIL:-1}"
+
+  run_remote_script "scripts/test_api.sh"
+}
+
 print_usage() {
   cat <<'EOF'
 Usage:
-  bash scripts/qemu.sh [start|stop|status|ssh|apply]
+  bash scripts/qemu.sh [start|stop|status|ssh|apply|test-api]
 
 Commands:
   start   Create/launch VM and provision it with server scripts (default)
@@ -385,6 +439,7 @@ Commands:
   status  Show VM status
   ssh     SSH into VM
   apply   Sync repo and run one script in VM (default: scripts/setup_nginx.sh)
+  test-api Sync repo and run scripts/test_api.sh in VM
 
 Environment variables:
   POSTGRES_AUTH_API_PASSWORD   Required for provisioning
@@ -396,6 +451,11 @@ Environment variables:
   API_SMTP_ENCRYPTION          Optional tls|ssl|none (default tls in API)
   API_SMTP_USERNAME            Optional SMTP username
   API_SMTP_PASSWORD            Optional SMTP password
+  API_TEST_BASE_URL            Default: http://127.0.0.1
+  API_TEST_DB_NAME             Default: auth
+  API_TEST_DB_SUPERUSER        Default: postgres
+  API_TEST_REQUIRE_DB          Default: 1
+  API_TEST_REQUIRE_EMAIL       Default: 1 (require signup email delivery checks)
   VM_NAME                      Default: server-clone
   VM_DIR                       Default: ./.qemu/<VM_NAME>
   SSH_PORT                     Default: 2222
@@ -409,6 +469,7 @@ Environment variables:
 Examples:
   bash scripts/qemu.sh apply scripts/setup_postgresql.sh
   bash scripts/qemu.sh apply scripts/setup_nginx.sh
+  bash scripts/qemu.sh test-api
 EOF
 }
 
@@ -462,6 +523,9 @@ main() {
       ;;
     apply)
       apply_script_vm "${2:-scripts/setup_nginx.sh}"
+      ;;
+    test-api)
+      test_api_vm
       ;;
     -h|--help|help)
       print_usage

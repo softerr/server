@@ -1,0 +1,85 @@
+name: Test API In QEMU
+
+on:
+  workflow_dispatch:
+    inputs:
+      require_db_checks:
+        description: "Require DB-backed verify success check."
+        type: choice
+        options:
+          - "1"
+          - "0"
+        required: false
+        default: "1"
+      require_email_checks:
+        description: "Require signup email delivery checks."
+        type: choice
+        options:
+          - "1"
+          - "0"
+        required: false
+        default: "1"
+
+jobs:
+  test-api-qemu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare QEMU test environment
+        env:
+          REQUIRE_EMAIL_CHECKS: ${{ github.event.inputs.require_email_checks }}
+          API_SMTP_HOST: ${{ secrets.API_SMTP_HOST }}
+          API_SMTP_PORT: ${{ secrets.API_SMTP_PORT }}
+          API_SMTP_ENCRYPTION: ${{ secrets.API_SMTP_ENCRYPTION }}
+          API_SMTP_USERNAME: ${{ secrets.API_SMTP_USERNAME }}
+          API_SMTP_PASSWORD: ${{ secrets.API_SMTP_PASSWORD }}
+          API_MAIL_FROM: ${{ secrets.API_MAIL_FROM }}
+        run: |
+          set -euo pipefail
+
+          DB_PASS="ci_$(date +%s)_$RANDOM"
+          echo "POSTGRES_AUTH_API_PASSWORD=${DB_PASS}" >> "$GITHUB_ENV"
+          echo "API_DB_PASSWORD=${DB_PASS}" >> "$GITHUB_ENV"
+          echo "SSH_PORT=22022" >> "$GITHUB_ENV"
+          echo "HTTP_PORT=18080" >> "$GITHUB_ENV"
+          echo "WAIT_SSH_SECONDS=600" >> "$GITHUB_ENV"
+          echo "RECREATE_VM_DISK=1" >> "$GITHUB_ENV"
+          echo "API_TEST_BASE_URL=http://127.0.0.1" >> "$GITHUB_ENV"
+
+          {
+            echo "API_SMTP_HOST=${API_SMTP_HOST}"
+            echo "API_SMTP_PORT=${API_SMTP_PORT}"
+            echo "API_SMTP_ENCRYPTION=${API_SMTP_ENCRYPTION}"
+            echo "API_SMTP_USERNAME=${API_SMTP_USERNAME}"
+            echo "API_SMTP_PASSWORD=${API_SMTP_PASSWORD}"
+            echo "API_MAIL_FROM=${API_MAIL_FROM}"
+          } >> "$GITHUB_ENV"
+
+          if [[ "${REQUIRE_EMAIL_CHECKS:-1}" == "1" && -z "${API_SMTP_HOST:-}" ]]; then
+            echo "require_email_checks=1 but API_SMTP_HOST secret is not set."
+            echo "Set SMTP secrets or run workflow with require_email_checks=0."
+            exit 1
+          fi
+
+      - name: Start and provision QEMU VM
+        run: |
+          set -euo pipefail
+          bash scripts/qemu.sh start
+
+      - name: Run API tests in QEMU
+        env:
+          API_TEST_REQUIRE_DB: ${{ github.event.inputs.require_db_checks }}
+          API_TEST_REQUIRE_EMAIL: ${{ github.event.inputs.require_email_checks }}
+        run: |
+          set -euo pipefail
+          bash scripts/qemu.sh test-api
+
+      - name: Stop QEMU VM
+        if: always()
+        run: |
+          set -euo pipefail
+          bash scripts/qemu.sh stop || true

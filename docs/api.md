@@ -44,6 +44,14 @@ Validation rules:
 - `email` must be a valid email format.
 - `verified` is always controlled by backend (not accepted from user).
 
+Timezone for verification email expiry is resolved automatically in this order:
+1. `X-Timezone` request header (recommended, IANA timezone like `Europe/Vilnius`)
+2. `Timezone` request header
+3. `timezone` cookie
+4. `timezone` field in request body (optional fallback)
+
+If no client timezone is provided, email uses the token timestamp timezone as-is.
+
 Success:
 - `201 Created`
 
@@ -136,3 +144,33 @@ Any unknown route under `/api`:
 
 Known routes with wrong HTTP method:
 - `405 {"error":"Method not allowed"}`
+
+## 6. Automated endpoint tests
+
+Run against local QEMU VM:
+
+```bash
+bash scripts/qemu.sh test-api
+```
+
+Local/server run:
+
+```bash
+sudo API_TEST_BASE_URL='http://127.0.0.1' bash scripts/test_api.sh
+```
+
+Optional test env vars:
+- `API_TEST_BASE_URL` (default `http://127.0.0.1`)
+- `API_TEST_DB_NAME` (default `auth`)
+- `API_TEST_DB_SUPERUSER` (default `postgres`)
+- `API_TEST_REQUIRE_DB` (`1` or `0`, default `1`)
+- `API_TEST_REQUIRE_EMAIL` (`1` or `0`, default `1` in both `qemu.sh test-api` and `scripts/test_api.sh`)
+
+GitHub workflow:
+- `.github/workflows/test-api-qemu.yml` (`Test API In QEMU`)
+
+How to add a new endpoint test:
+1. Add a new case file in `tests/api/cases/` (for example `40-password-reset.sh`).
+2. Define one or more `test_*` functions using helpers from `tests/api/lib.sh`.
+3. Register each test with `register_test_case test_function_name`.
+4. Workflow/local runner will auto-discover and execute it.
