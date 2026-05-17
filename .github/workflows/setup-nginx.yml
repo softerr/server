@@ -26,18 +26,14 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
         run: |
-          set -euo pipefail
-          source scripts/ci/load_ssh_env.sh
-
-          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/configs'"
-          scp $SSH_OPTS -P "$PORT" scripts/setup_nginx.sh "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-          scp $SSH_OPTS -P "$PORT" -r configs/. "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
+          bash scripts/ci/upload_artifacts.sh nginx
 
       - name: Run Nginx setup
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          PROVISION_COMPONENTS: nginx
           API_DB_PASSWORD: ${{ secrets.API_DB_PASSWORD }}
           API_MAIL_FROM: ${{ secrets.API_MAIL_FROM }}
           API_APP_BASE_URL: ${{ secrets.API_APP_BASE_URL }}
@@ -48,32 +44,10 @@ jobs:
           API_SMTP_PASSWORD: ${{ secrets.API_SMTP_PASSWORD }}
         run: |
           set -euo pipefail
-          source scripts/ci/load_ssh_env.sh
           if [[ -z "${API_DB_PASSWORD:-}" ]]; then
             echo "Missing required GitHub secret: API_DB_PASSWORD"
             exit 1
           fi
-
-          API_DB_PASSWORD_B64="$(printf '%s' "$API_DB_PASSWORD" | base64 -w 0)"
-          API_MAIL_FROM_B64="$(printf '%s' "${API_MAIL_FROM:-}" | base64 -w 0)"
-          API_APP_BASE_URL_B64="$(printf '%s' "${API_APP_BASE_URL:-}" | base64 -w 0)"
-          API_SMTP_HOST_B64="$(printf '%s' "${API_SMTP_HOST:-}" | base64 -w 0)"
-          API_SMTP_PORT_B64="$(printf '%s' "${API_SMTP_PORT:-}" | base64 -w 0)"
-          API_SMTP_ENCRYPTION_B64="$(printf '%s' "${API_SMTP_ENCRYPTION:-}" | base64 -w 0)"
-          API_SMTP_USERNAME_B64="$(printf '%s' "${API_SMTP_USERNAME:-}" | base64 -w 0)"
-          API_SMTP_PASSWORD_B64="$(printf '%s' "${API_SMTP_PASSWORD:-}" | base64 -w 0)"
-          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "API_DB_PASSWORD_B64='$API_DB_PASSWORD_B64' API_MAIL_FROM_B64='$API_MAIL_FROM_B64' API_APP_BASE_URL_B64='$API_APP_BASE_URL_B64' API_SMTP_HOST_B64='$API_SMTP_HOST_B64' API_SMTP_PORT_B64='$API_SMTP_PORT_B64' API_SMTP_ENCRYPTION_B64='$API_SMTP_ENCRYPTION_B64' API_SMTP_USERNAME_B64='$API_SMTP_USERNAME_B64' API_SMTP_PASSWORD_B64='$API_SMTP_PASSWORD_B64' bash -s" <<'EOF'
-          set -euo pipefail
-          API_DB_PASSWORD="$(printf '%s' "$API_DB_PASSWORD_B64" | base64 -d)"
-          API_MAIL_FROM="$(printf '%s' "$API_MAIL_FROM_B64" | base64 -d)"
-          API_APP_BASE_URL="$(printf '%s' "$API_APP_BASE_URL_B64" | base64 -d)"
-          API_SMTP_HOST="$(printf '%s' "$API_SMTP_HOST_B64" | base64 -d)"
-          API_SMTP_PORT="$(printf '%s' "$API_SMTP_PORT_B64" | base64 -d)"
-          API_SMTP_ENCRYPTION="$(printf '%s' "$API_SMTP_ENCRYPTION_B64" | base64 -d)"
-          API_SMTP_USERNAME="$(printf '%s' "$API_SMTP_USERNAME_B64" | base64 -d)"
-          API_SMTP_PASSWORD="$(printf '%s' "$API_SMTP_PASSWORD_B64" | base64 -d)"
-          export API_DB_PASSWORD API_MAIL_FROM API_APP_BASE_URL API_SMTP_HOST API_SMTP_PORT API_SMTP_ENCRYPTION API_SMTP_USERNAME API_SMTP_PASSWORD
-          chmod +x /tmp/workflow-artifacts/scripts/setup_nginx.sh
-          sudo --preserve-env=API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD \
-            bash /tmp/workflow-artifacts/scripts/setup_nginx.sh
-          EOF
+          REQUIRED_ENV_VARS="PROVISION_COMPONENTS,API_DB_PASSWORD" \
+          OPTIONAL_ENV_VARS="API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD" \
+            bash scripts/ci/run_remote_setup.sh provision.sh

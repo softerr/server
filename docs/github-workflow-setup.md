@@ -4,6 +4,7 @@ This project includes:
 - Workflow: `.github/workflows/setup-nginx.yml`
 - Workflow: `.github/workflows/setup-postgresql.yml`
 - Workflow: `.github/workflows/deploy-apps.yml`
+- Shared provisioning entrypoint: `scripts/provision.sh`
 - Server bootstrap script: `scripts/create_github_workflow_user.sh`
 - Deploy scripts directory: `scripts/*.sh`
 
@@ -69,6 +70,7 @@ sudo base64 -w 0 /root/.ssh/github-workflow_github_actions_ed25519
 ## 4. Add app deploy scripts
 
 Place executable scripts in repository `scripts/` directory, for example:
+- `scripts/provision.sh`
 - `scripts/setup_nginx.sh`
 - `scripts/deploy_api.sh`
 - `scripts/deploy_quiz.sh`
@@ -84,8 +86,12 @@ Deploy apps workflow uploads:
 In GitHub: `Actions -> Setup Nginx On Server -> Run workflow`
 
 This workflow uploads:
+- `scripts/provision.sh` to `/tmp/workflow-artifacts/scripts`
 - `scripts/setup_nginx.sh` to `/tmp/workflow-artifacts/scripts`
 - `configs/*` to `/tmp/workflow-artifacts/configs`
+
+Execution:
+- Runs `scripts/provision.sh` with `PROVISION_COMPONENTS=nginx`
 
 This workflow requires GitHub secret:
 - `API_DB_PASSWORD`
@@ -104,8 +110,12 @@ In GitHub: `Actions -> Setup PostgreSQL On Server -> Run workflow`
 No inputs required.
 
 This workflow uploads:
+- `scripts/provision.sh` to `/tmp/workflow-artifacts/scripts`
 - `scripts/setup_postgresql.sh` to `/tmp/workflow-artifacts/scripts`
 - `configs/*` to `/tmp/workflow-artifacts/configs`
+
+Execution:
+- Runs `scripts/provision.sh` with `PROVISION_COMPONENTS=postgresql`
 
 Database creation behavior:
 - Script executes `configs/postgresql/init.sql`
@@ -129,39 +139,13 @@ Mapping:
 - `api` runs `scripts/deploy_api.sh`
 
 This workflow uploads:
+- `scripts/provision.sh` to `/tmp/workflow-artifacts/scripts`
 - `scripts/deploy_*.sh` to `/tmp/workflow-artifacts/scripts`
 - `app/*` to `/tmp/workflow-artifacts/app`
 
 For `quiz`, build is executed on GitHub runner (`npm ci && npm run build`) before upload.
 
-## 8. API endpoint
-
-After running setup and app deploy workflows, auth endpoints are available:
-- `POST /api/auth/signup`
-- `GET /api/auth/verify?token=<token>`
-
-Example request body:
-
-```json
-{
-  "username": "john",
-  "password": "secret123",
-  "email": "john@example.com"
-}
-```
-
-Success response:
-- `201 Created` with user payload `{ id, username, email, verified, created }`
-
-Signup behavior:
-- Creates account with `verified=false`
-- Creates a verification token in `auth.public.user_token`
-- Sends email with verification link to `/api/auth/verify?token=...`
-- Uses SMTP when `API_SMTP_HOST` is configured; otherwise falls back to PHP `mail()` (requires local MTA/sendmail on server)
-
-Default API DB connection values:
-- `DB_HOST=127.0.0.1`
-- `DB_PORT=5432`
-- `DB_NAME=auth`
-- `DB_USER=auth_api`
-- `DB_PASSWORD` is required (no default)
+Execution:
+- `apps=all` runs `scripts/provision.sh` with `PROVISION_COMPONENTS=apps` (runs all `deploy_*.sh`)
+- `apps=quiz` runs `scripts/provision.sh` with `PROVISION_COMPONENTS=quiz`
+- `apps=api` runs `scripts/provision.sh` with `PROVISION_COMPONENTS=api`

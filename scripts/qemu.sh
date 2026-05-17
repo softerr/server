@@ -235,37 +235,46 @@ sync_repo_to_vm() {
 
 run_remote_script() {
   local script_rel="$1"
-  local script_b64 pg_b64 api_b64
-  local mail_from_b64 app_base_url_b64
-  local smtp_host_b64 smtp_port_b64 smtp_encryption_b64 smtp_username_b64 smtp_password_b64
   local ssh_cmd
   ssh_cmd=(ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "${SSH_PORT}" "${VM_USER}@127.0.0.1")
 
-  script_b64="$(printf '%s' "${script_rel}" | base64 -w 0)"
-  pg_b64="$(printf '%s' "${POSTGRES_AUTH_API_PASSWORD:-}" | base64 -w 0)"
-  api_b64="$(printf '%s' "${API_DB_PASSWORD:-}" | base64 -w 0)"
-  mail_from_b64="$(printf '%s' "${API_MAIL_FROM:-}" | base64 -w 0)"
-  app_base_url_b64="$(printf '%s' "${API_APP_BASE_URL:-}" | base64 -w 0)"
-  smtp_host_b64="$(printf '%s' "${API_SMTP_HOST:-}" | base64 -w 0)"
-  smtp_port_b64="$(printf '%s' "${API_SMTP_PORT:-}" | base64 -w 0)"
-  smtp_encryption_b64="$(printf '%s' "${API_SMTP_ENCRYPTION:-}" | base64 -w 0)"
-  smtp_username_b64="$(printf '%s' "${API_SMTP_USERNAME:-}" | base64 -w 0)"
-  smtp_password_b64="$(printf '%s' "${API_SMTP_PASSWORD:-}" | base64 -w 0)"
+  local env_names=(
+    SCRIPT_REL
+    PROVISION_COMPONENTS
+    POSTGRES_AUTH_API_PASSWORD
+    API_DB_PASSWORD
+    API_MAIL_FROM
+    API_APP_BASE_URL
+    API_SMTP_HOST
+    API_SMTP_PORT
+    API_SMTP_ENCRYPTION
+    API_SMTP_USERNAME
+    API_SMTP_PASSWORD
+  )
+  local assignments=()
+  local env_name env_value env_b64
+  for env_name in "${env_names[@]}"; do
+    if [[ "${env_name}" == "SCRIPT_REL" ]]; then
+      env_value="${script_rel}"
+    else
+      env_value="${!env_name:-}"
+    fi
+    env_b64="$(printf '%s' "${env_value}" | base64 -w 0)"
+    assignments+=("${env_name}_B64='${env_b64}'")
+  done
 
-  "${ssh_cmd[@]}" "SCRIPT_REL_B64='${script_b64}' POSTGRES_AUTH_API_PASSWORD_B64='${pg_b64}' API_DB_PASSWORD_B64='${api_b64}' API_MAIL_FROM_B64='${mail_from_b64}' API_APP_BASE_URL_B64='${app_base_url_b64}' API_SMTP_HOST_B64='${smtp_host_b64}' API_SMTP_PORT_B64='${smtp_port_b64}' API_SMTP_ENCRYPTION_B64='${smtp_encryption_b64}' API_SMTP_USERNAME_B64='${smtp_username_b64}' API_SMTP_PASSWORD_B64='${smtp_password_b64}' bash -s" <<'EOF'
+  local all_vars_csv
+  all_vars_csv="$(IFS=,; printf '%s' "${env_names[*]}")"
+
+  "${ssh_cmd[@]}" "${assignments[*]} ALL_VARS_CSV='${all_vars_csv}' bash -s" <<'EOF'
 set -euo pipefail
 cd /home/ubuntu/server
 
-SCRIPT_REL="$(printf '%s' "${SCRIPT_REL_B64}" | base64 -d)"
-POSTGRES_AUTH_API_PASSWORD="$(printf '%s' "${POSTGRES_AUTH_API_PASSWORD_B64}" | base64 -d)"
-API_DB_PASSWORD="$(printf '%s' "${API_DB_PASSWORD_B64}" | base64 -d)"
-API_MAIL_FROM="$(printf '%s' "${API_MAIL_FROM_B64}" | base64 -d)"
-API_APP_BASE_URL="$(printf '%s' "${API_APP_BASE_URL_B64}" | base64 -d)"
-API_SMTP_HOST="$(printf '%s' "${API_SMTP_HOST_B64}" | base64 -d)"
-API_SMTP_PORT="$(printf '%s' "${API_SMTP_PORT_B64}" | base64 -d)"
-API_SMTP_ENCRYPTION="$(printf '%s' "${API_SMTP_ENCRYPTION_B64}" | base64 -d)"
-API_SMTP_USERNAME="$(printf '%s' "${API_SMTP_USERNAME_B64}" | base64 -d)"
-API_SMTP_PASSWORD="$(printf '%s' "${API_SMTP_PASSWORD_B64}" | base64 -d)"
+for var_name in ${ALL_VARS_CSV//,/ }; do
+  b64_var="${var_name}_B64"
+  decoded_value="$(printf '%s' "${!b64_var}" | base64 -d)"
+  printf -v "${var_name}" '%s' "${decoded_value}"
+done
 
 if [[ ! -f "${SCRIPT_REL}" ]]; then
   echo "Script not found in VM repo: ${SCRIPT_REL}"
@@ -275,6 +284,11 @@ fi
 chmod +x "${SCRIPT_REL}"
 
 case "${SCRIPT_REL}" in
+  scripts/provision.sh)
+    export PROVISION_COMPONENTS POSTGRES_AUTH_API_PASSWORD API_DB_PASSWORD API_MAIL_FROM API_APP_BASE_URL API_SMTP_HOST API_SMTP_PORT API_SMTP_ENCRYPTION API_SMTP_USERNAME API_SMTP_PASSWORD
+    sudo --preserve-env=PROVISION_COMPONENTS,POSTGRES_AUTH_API_PASSWORD,API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD \
+      bash "${SCRIPT_REL}"
+    ;;
   scripts/setup_postgresql.sh)
     if [[ -z "${POSTGRES_AUTH_API_PASSWORD}" ]]; then
       echo "POSTGRES_AUTH_API_PASSWORD is required to run ${SCRIPT_REL}"
@@ -333,10 +347,7 @@ provision_vm() {
   sync_repo_to_vm
 
   echo "Running server setup scripts inside VM..."
-  run_remote_script "scripts/setup_postgresql.sh"
-  run_remote_script "scripts/setup_nginx.sh"
-  run_remote_script "scripts/deploy_api.sh"
-  run_remote_script "scripts/deploy_quiz.sh"
+  run_remote_script "scripts/provision.sh"
 }
 
 apply_script_vm() {

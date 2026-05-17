@@ -136,27 +136,22 @@ env[DB_NAME] = "$(esc "${API_DB_NAME}")"
 env[DB_USER] = "$(esc "${API_DB_USER}")"
 env[DB_PASSWORD] = "$(esc "${API_DB_PASSWORD}")"
 EOF
-  if [[ -n "${API_MAIL_FROM}" ]]; then
-    echo "env[MAIL_FROM] = \"$(esc "${API_MAIL_FROM}")\"" >> "${API_ENV_FILE}"
-  fi
-  if [[ -n "${API_APP_BASE_URL}" ]]; then
-    echo "env[APP_BASE_URL] = \"$(esc "${API_APP_BASE_URL}")\"" >> "${API_ENV_FILE}"
-  fi
-  if [[ -n "${API_SMTP_HOST}" ]]; then
-    echo "env[SMTP_HOST] = \"$(esc "${API_SMTP_HOST}")\"" >> "${API_ENV_FILE}"
-  fi
-  if [[ -n "${API_SMTP_PORT}" ]]; then
-    echo "env[SMTP_PORT] = \"$(esc "${API_SMTP_PORT}")\"" >> "${API_ENV_FILE}"
-  fi
-  if [[ -n "${API_SMTP_ENCRYPTION}" ]]; then
-    echo "env[SMTP_ENCRYPTION] = \"$(esc "${API_SMTP_ENCRYPTION}")\"" >> "${API_ENV_FILE}"
-  fi
-  if [[ -n "${API_SMTP_USERNAME}" ]]; then
-    echo "env[SMTP_USERNAME] = \"$(esc "${API_SMTP_USERNAME}")\"" >> "${API_ENV_FILE}"
-  fi
-  if [[ -n "${API_SMTP_PASSWORD}" ]]; then
-    echo "env[SMTP_PASSWORD] = \"$(esc "${API_SMTP_PASSWORD}")\"" >> "${API_ENV_FILE}"
-  fi
+
+  append_optional_env() {
+    local key="$1"
+    local value="$2"
+    if [[ -n "${value}" ]]; then
+      echo "env[${key}] = \"$(esc "${value}")\"" >> "${API_ENV_FILE}"
+    fi
+  }
+
+  append_optional_env "MAIL_FROM" "${API_MAIL_FROM}"
+  append_optional_env "APP_BASE_URL" "${API_APP_BASE_URL}"
+  append_optional_env "SMTP_HOST" "${API_SMTP_HOST}"
+  append_optional_env "SMTP_PORT" "${API_SMTP_PORT}"
+  append_optional_env "SMTP_ENCRYPTION" "${API_SMTP_ENCRYPTION}"
+  append_optional_env "SMTP_USERNAME" "${API_SMTP_USERNAME}"
+  append_optional_env "SMTP_PASSWORD" "${API_SMTP_PASSWORD}"
   chmod 640 "${API_ENV_FILE}"
   chown root:root "${API_ENV_FILE}"
   echo "Configured API DB env in php-fpm pool: ${API_ENV_FILE}"

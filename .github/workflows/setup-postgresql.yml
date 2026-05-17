@@ -26,33 +26,20 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
         run: |
-          set -euo pipefail
-          source scripts/ci/load_ssh_env.sh
-
-          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/configs'"
-          scp $SSH_OPTS -P "$PORT" scripts/setup_postgresql.sh "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-          scp $SSH_OPTS -P "$PORT" -r configs/. "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
+          bash scripts/ci/upload_artifacts.sh postgresql
 
       - name: Run PostgreSQL setup
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          PROVISION_COMPONENTS: postgresql
           POSTGRES_AUTH_API_PASSWORD: ${{ secrets.POSTGRES_AUTH_API_PASSWORD }}
         run: |
           set -euo pipefail
-          source scripts/ci/load_ssh_env.sh
           if [[ -z "${POSTGRES_AUTH_API_PASSWORD:-}" ]]; then
             echo "Missing required GitHub secret: POSTGRES_AUTH_API_PASSWORD"
             exit 1
           fi
-
-          POSTGRES_AUTH_API_PASSWORD_B64="$(printf '%s' "$POSTGRES_AUTH_API_PASSWORD" | base64 -w 0)"
-          ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "POSTGRES_AUTH_API_PASSWORD_B64='$POSTGRES_AUTH_API_PASSWORD_B64' bash -s" <<'EOF'
-          set -euo pipefail
-          POSTGRES_AUTH_API_PASSWORD="$(printf '%s' "$POSTGRES_AUTH_API_PASSWORD_B64" | base64 -d)"
-          export POSTGRES_AUTH_API_PASSWORD
-          chmod +x /tmp/workflow-artifacts/scripts/setup_postgresql.sh
-          sudo --preserve-env=POSTGRES_AUTH_API_PASSWORD \
-            bash /tmp/workflow-artifacts/scripts/setup_postgresql.sh
-          EOF
+          REQUIRED_ENV_VARS="PROVISION_COMPONENTS,POSTGRES_AUTH_API_PASSWORD" \
+            bash scripts/ci/run_remote_setup.sh provision.sh
