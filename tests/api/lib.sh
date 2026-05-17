@@ -124,15 +124,31 @@ fetch_verify_token_for_email() {
          LIMIT 1;"
 
   local token=""
-  if token="$(sudo -n -u "${API_TEST_DB_SUPERUSER}" psql -d "${API_TEST_DB_NAME}" -Atqc "${query}" 2>/dev/null)"; then
-    :
-  else
-    if [[ "${API_TEST_REQUIRE_DB:-1}" == "1" ]]; then
-      fail_test "cannot query PostgreSQL for verification token (sudo/psql access failed)"
-      return 1
+  if [[ -n "${API_TEST_DB_HOST:-}" ]]; then
+    local db_port db_user
+    db_port="${API_TEST_DB_PORT:-5432}"
+    db_user="${API_TEST_DB_USER:-${API_TEST_DB_SUPERUSER}}"
+    if token="$(PGPASSWORD="${API_TEST_DB_PASSWORD:-}" psql -h "${API_TEST_DB_HOST}" -p "${db_port}" -U "${db_user}" -d "${API_TEST_DB_NAME}" -Atqc "${query}" 2>/dev/null)"; then
+      :
+    else
+      if [[ "${API_TEST_REQUIRE_DB:-1}" == "1" ]]; then
+        fail_test "cannot query PostgreSQL for verification token (psql host connection failed)"
+        return 1
+      fi
+      skip_test "cannot query PostgreSQL via host connection; skipping verify success test"
+      return 200
     fi
-    skip_test "cannot query PostgreSQL; skipping verify success test"
-    return 200
+  else
+    if token="$(sudo -n -u "${API_TEST_DB_SUPERUSER}" psql -d "${API_TEST_DB_NAME}" -Atqc "${query}" 2>/dev/null)"; then
+      :
+    else
+      if [[ "${API_TEST_REQUIRE_DB:-1}" == "1" ]]; then
+        fail_test "cannot query PostgreSQL for verification token (sudo/psql access failed)"
+        return 1
+      fi
+      skip_test "cannot query PostgreSQL; skipping verify success test"
+      return 200
+    fi
   fi
 
   token="$(printf '%s' "${token}" | tr -d '\r\n')"

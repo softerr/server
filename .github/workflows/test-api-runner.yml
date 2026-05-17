@@ -1,0 +1,120 @@
+name: Test API On Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      require_db_checks:
+        description: "Require DB-backed verify success check."
+        type: choice
+        options:
+          - "1"
+          - "0"
+        required: false
+        default: "1"
+      require_email_checks:
+        description: "Require signup email delivery checks."
+        type: choice
+        options:
+          - "1"
+          - "0"
+        required: false
+        default: "1"
+  pull_request:
+    paths:
+      - "app/api/**"
+      - "tests/api/**"
+      - "scripts/test_api.sh"
+      - "configs/postgresql/init.sql"
+      - ".github/workflows/test-api-runner.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "app/api/**"
+      - "tests/api/**"
+      - "scripts/test_api.sh"
+      - "configs/postgresql/init.sql"
+      - ".github/workflows/test-api-runner.yml"
+
+jobs:
+  test-api-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    services:
+      mailpit:
+        image: axllent/mailpit:latest
+        ports:
+          - 1025:1025
+
+    env:
+      API_TEST_REQUIRE_DB: ${{ github.event.inputs.require_db_checks || '1' }}
+      API_TEST_REQUIRE_EMAIL: ${{ github.event.inputs.require_email_checks || '1' }}
+      API_TEST_BASE_URL: http://127.0.0.1
+      API_TEST_DB_NAME: auth
+      API_SMTP_HOST: 127.0.0.1
+      API_SMTP_PORT: "1025"
+      API_SMTP_ENCRYPTION: none
+      API_MAIL_FROM: no-reply@example.test
+      API_APP_BASE_URL: http://127.0.0.1
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare provisioning env
+        run: |
+          set -euo pipefail
+          DB_PASS="runner_$(date +%s)_$RANDOM"
+          {
+            echo "POSTGRES_AUTH_API_PASSWORD=${DB_PASS}"
+            echo "API_DB_PASSWORD=${DB_PASS}"
+          } >> "$GITHUB_ENV"
+
+      - name: Provision runner via setup scripts
+        run: |
+          set -euo pipefail
+          sudo --preserve-env=PROVISION_COMPONENTS,POSTGRES_AUTH_API_PASSWORD,API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION \
+            bash scripts/provision.sh
+        env:
+          PROVISION_COMPONENTS: postgresql,nginx,api
+          POSTGRES_AUTH_API_PASSWORD: ${{ env.POSTGRES_AUTH_API_PASSWORD }}
+          API_DB_PASSWORD: ${{ env.API_DB_PASSWORD }}
+          API_MAIL_FROM: ${{ env.API_MAIL_FROM }}
+          API_APP_BASE_URL: ${{ env.API_APP_BASE_URL }}
+          API_SMTP_HOST: ${{ env.API_SMTP_HOST }}
+          API_SMTP_PORT: ${{ env.API_SMTP_PORT }}
+          API_SMTP_ENCRYPTION: ${{ env.API_SMTP_ENCRYPTION }}
+
+      - name: Validate test dependencies
+        run: |
+          set -euo pipefail
+          command -v curl
+          command -v jq
+          command -v psql
+
+      - name: Wait for API
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            if curl -fsS "${API_TEST_BASE_URL%/}/api/" >/dev/null 2>&1; then
+              echo "API is ready."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API did not become ready in time."
+          sudo journalctl -u nginx --no-pager -n 150 || true
+          sudo journalctl -u postgresql --no-pager -n 150 || true
+          exit 1
+
+      - name: Run API tests
+        run: |
+          set -euo pipefail
+          bash scripts/test_api.sh
+
+      - name: Print service logs on failure
+        if: failure()
+        run: |
+          sudo journalctl -u nginx --no-pager -n 300 || true
+          sudo journalctl -u postgresql --no-pager -n 300 || true
