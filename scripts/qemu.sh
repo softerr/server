@@ -237,24 +237,48 @@ EOF
   echo "cloud-init completed."
 }
 
-ensure_quiz_dist() {
-  if [[ ! -d "${REPO_ROOT}/app/quiz/dist" ]]; then
-    echo "Quiz dist artifacts not found locally. Building app/quiz..."
-    if ! command -v npm >/dev/null 2>&1; then
-      echo "npm is required to build app/quiz locally before VM provisioning."
-      echo "Install npm or build app/quiz manually, then rerun qemu.sh."
-      exit 1
-    fi
-    (
-      cd "${REPO_ROOT}/app/quiz"
-      if [[ -f package-lock.json ]]; then
-        npm ci
-      else
-        npm install
-      fi
-      npm run build
-    )
+provision_includes_quiz() {
+  local components="${PROVISION_COMPONENTS:-all}"
+  components="${components//,/ }"
+  local component
+  for component in ${components}; do
+    case "${component}" in
+      all|apps|quiz) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+build_quiz_dist() {
+  echo "Building app/quiz from current source..."
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "npm is required to build app/quiz before VM deployment."
+    exit 1
   fi
+  (
+    cd "${REPO_ROOT}/app/quiz"
+    if [[ -f package-lock.json ]]; then
+      npm ci
+    else
+      npm install
+    fi
+    npm run build
+  )
+}
+
+check_quiz_routes() {
+  local route status
+  for route in /quiz /quiz/; do
+    if ! status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 10 "http://127.0.0.1:${HTTP_PORT}${route}")"; then
+      echo "Quiz route check failed: ${route} is unreachable."
+      return 1
+    fi
+    if [[ "${status}" != "200" ]]; then
+      echo "Quiz route check failed: ${route} returned HTTP ${status}, expected 200."
+      return 1
+    fi
+  done
+  echo "Quiz routes /quiz and /quiz/ returned HTTP 200."
 }
 
 sync_repo_to_vm() {
@@ -401,15 +425,21 @@ provision_vm() {
   fi
 
   wait_for_cloud_init
-  ensure_quiz_dist
+  if provision_includes_quiz; then
+    build_quiz_dist
+  fi
   sync_repo_to_vm
 
   echo "Running server setup scripts inside VM..."
   run_remote_script "scripts/provision.sh"
+  if provision_includes_quiz; then
+    check_quiz_routes
+  fi
 }
 
 apply_script_vm() {
   local script_rel="${1:-scripts/setup_nginx.sh}"
+  local quiz_deploy=0
 
   if ! qemu_running; then
     echo "VM is not running. Start it first: bash scripts/qemu.sh start"
@@ -424,12 +454,16 @@ apply_script_vm() {
   wait_for_ssh
   wait_for_cloud_init
 
-  if [[ "${script_rel}" == "scripts/deploy_quiz.sh" ]]; then
-    ensure_quiz_dist
+  if [[ "${script_rel}" == "scripts/deploy_quiz.sh" ]] || { [[ "${script_rel}" == "scripts/provision.sh" ]] && provision_includes_quiz; }; then
+    quiz_deploy=1
+    build_quiz_dist
   fi
 
   sync_repo_to_vm
   run_remote_script "${script_rel}"
+  if (( quiz_deploy )) || [[ "${script_rel}" == "scripts/setup_nginx.sh" ]]; then
+    check_quiz_routes
+  fi
   echo "Applied ${script_rel} in VM."
 }
 

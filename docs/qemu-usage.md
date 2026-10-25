@@ -57,8 +57,10 @@ Default access:
 
 `start` does:
 - boots VM
+- rebuilds the quiz from current source when provisioning includes `quiz`, `apps`, or `all`
 - syncs repo into VM (`/home/ubuntu/server`)
 - runs `scripts/provision.sh` with default `PROVISION_COMPONENTS=all`
+- checks that `/quiz` and `/quiz/` both return HTTP 200 after quiz deployment
 
 ## 4. Apply changed script quickly (no full rebuild)
 
@@ -67,6 +69,8 @@ After editing a script, run:
 ```bash
 bash scripts/qemu.sh apply scripts/setup_nginx.sh
 ```
+
+Applying `scripts/deploy_quiz.sh` or provisioning `quiz`, `apps`, or `all` rebuilds the quiz before syncing. Quiz and Nginx applies also check both quiz URLs afterward.
 
 Other examples:
 
