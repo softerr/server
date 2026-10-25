@@ -63,7 +63,8 @@ Example response:
   "username": "john",
   "email": "john@example.com",
   "verified": false,
-  "created": "2026-05-17 14:30:00+00"
+  "created": "2026-05-17 14:30:00+00",
+  "verification_email_sent": true
 }
 ```
 
@@ -71,6 +72,7 @@ Side effects:
 - Stores user in `public."user"`.
 - Stores verification token in `public.user_token` (`type='verify'`).
 - Sends verification email containing `/api/auth/verify?token=...`.
+- The account and token are committed before email delivery. If delivery fails, signup still returns `201` with `verification_email_sent: false`; use the resend endpoint below.
 
 Common errors:
 - `400 {"error":"Invalid JSON body"}`
@@ -78,11 +80,25 @@ Common errors:
 - `400 {"error":"username must be at most 100 characters"}`
 - `400 {"error":"email is invalid"}`
 - `409 {"error":"username or email already exists"}`
-- `500 {"error":"Failed to send verification email"}`
 - `500 {"error":"Database connection failed"}`
 - `500 {"error":"DB_PASSWORD is not configured"}`
 
-## 3. Verify account
+## 3. Resend verification email
+
+Endpoint:
+- `POST /api/auth/resend-verification`
+
+Request body:
+
+```json
+{"email":"john@example.com"}
+```
+
+Returns `202 Accepted` with the same message whether the account exists, is already verified, or is eligible for another email. For an unverified account, a new attempt is allowed after one minute. A token with less than ten minutes remaining is replaced before sending. The optional timezone inputs follow the signup rules above.
+
+Deploy the `configs/postgresql/init.sql` migration with the Setup PostgreSQL workflow before deploying this API change.
+
+## 4. Verify account
 
 Endpoint:
 - `GET /api/auth/verify?token=<token>`
@@ -108,7 +124,7 @@ Example response:
 Behavior:
 - Validates token from `public.user_token`.
 - Token must be unexpired (`expires > CURRENT_TIMESTAMP`).
-- Marks user as verified and deletes token row.
+- Marks user as verified and deletes all verification tokens for that user.
 
 Common errors:
 - `400 {"error":"Invalid verification token"}`
@@ -117,7 +133,7 @@ Common errors:
 - `500 {"error":"Failed to verify account"}`
 - `500 {"error":"Failed to finalize verification"}`
 
-## 4. Email delivery behavior
+## 5. Email delivery behavior
 
 Signup email send order:
 1. SMTP if `SMTP_HOST` is configured.
@@ -137,7 +153,7 @@ Relevant runtime env vars (from php-fpm):
 - `SMTP_USERNAME` (optional)
 - `SMTP_PASSWORD` (required if `SMTP_USERNAME` is set)
 
-## 5. Not found and method handling
+## 6. Not found and method handling
 
 Any unknown route under `/api`:
 - `404 {"error":"Not found"}`
@@ -145,7 +161,7 @@ Any unknown route under `/api`:
 Known routes with wrong HTTP method:
 - `405 {"error":"Method not allowed"}`
 
-## 6. Automated endpoint tests
+## 7. Automated endpoint tests
 
 Run against local QEMU VM:
 

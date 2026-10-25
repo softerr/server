@@ -8,23 +8,16 @@ test_auth_signup_success() {
 
   api_request "POST" "/api/auth/signup" "${request_body}"
 
-  if [[ "${TEST_LAST_RESPONSE_STATUS}" == "500" ]]; then
-    local response_error=""
-    response_error="$(json_field_or_empty '.error')"
-    if [[ "${response_error}" == "Failed to send verification email" && "${API_TEST_REQUIRE_EMAIL:-0}" != "1" ]]; then
-      TEST_EMAIL=""
-      TEST_USERNAME=""
-      skip_test "email delivery unavailable; skipping signup success assertions"
-      return 200
-    fi
-  fi
-
   assert_status "201" || return 1
   assert_json_value '.username' "${TEST_USERNAME}" || return 1
   assert_json_value '.email' "${TEST_EMAIL}" || return 1
   assert_json_value '.verified' "false" || return 1
   assert_json_expression '.id | type == "number"' || return 1
   assert_json_expression '.created != null and .created != ""' || return 1
+  assert_json_expression '.verification_email_sent | type == "boolean"' || return 1
+  if [[ "${API_TEST_REQUIRE_EMAIL:-0}" == "1" ]]; then
+    assert_json_value '.verification_email_sent' 'true' || return 1
+  fi
 }
 
 test_auth_signup_duplicate_conflict() {

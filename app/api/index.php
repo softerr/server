@@ -403,8 +403,8 @@ function handleSignup(): never
 
     $tokenResult = @pg_query_params(
         $db,
-        'INSERT INTO public.user_token (user_id, type)
-         VALUES ($1, $2)
+        'INSERT INTO public.user_token (user_id, type, email_attempted_at)
+         VALUES ($1, $2, CURRENT_TIMESTAMP)
          RETURNING hash, expires',
         [$user['id'], 'verify']
     );
@@ -419,15 +419,12 @@ function handleSignup(): never
         respond(500, ['error' => 'Failed to fetch verification token']);
     }
 
-    if (!sendVerificationEmail($user['email'], $user['username'], $tokenRow['hash'], $tokenRow['expires'], $timezone)) {
-        @pg_query($db, 'ROLLBACK');
-        respond(500, ['error' => 'Failed to send verification email']);
-    }
-
     if (@pg_query($db, 'COMMIT') === false) {
         @pg_query($db, 'ROLLBACK');
         respond(500, ['error' => 'Failed to finalize account creation']);
     }
+
+    $emailSent = sendVerificationEmail($user['email'], $user['username'], $tokenRow['hash'], $tokenRow['expires'], $timezone);
 
     respond(201, [
         'id' => (int)$user['id'],
@@ -435,7 +432,109 @@ function handleSignup(): never
         'email' => $user['email'],
         'verified' => $user['verified'] === 't',
         'created' => $user['created'],
+        'verification_email_sent' => $emailSent,
     ]);
+}
+
+function handleResendVerification(): never
+{
+    $rawBody = file_get_contents('php://input');
+    $payload = json_decode($rawBody ?: '', true);
+    if (!is_array($payload) || !is_string($payload['email'] ?? null)) {
+        respond(400, ['error' => 'A valid email is required']);
+    }
+
+    $email = strtolower(trim($payload['email']));
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        respond(400, ['error' => 'A valid email is required']);
+    }
+    $timezone = detectUserTimezone($payload);
+    $accepted = ['message' => 'Verification email request accepted'];
+    $db = connectDb();
+
+    if (@pg_query($db, 'BEGIN') === false) {
+        respond(500, ['error' => 'Failed to start transaction']);
+    }
+
+    $userResult = @pg_query_params(
+        $db,
+        'SELECT id, username, email, verified FROM public."user" WHERE email = $1 FOR UPDATE',
+        [$email]
+    );
+    if ($userResult === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(500, ['error' => 'Failed to look up account']);
+    }
+
+    $user = pg_fetch_assoc($userResult);
+    if ($user === false || $user['verified'] === 't') {
+        if (@pg_query($db, 'COMMIT') === false) {
+            respond(500, ['error' => 'Failed to finalize verification email request']);
+        }
+        respond(202, $accepted);
+    }
+
+    $tokenResult = @pg_query_params(
+        $db,
+        'SELECT id, hash, expires,
+                expires > CURRENT_TIMESTAMP + INTERVAL \'10 minutes\' AS reusable,
+                email_attempted_at > CURRENT_TIMESTAMP - INTERVAL \'1 minute\' AS recent_attempt
+         FROM public.user_token
+         WHERE user_id = $1 AND type = $2
+         ORDER BY id DESC LIMIT 1',
+        [$user['id'], 'verify']
+    );
+    if ($tokenResult === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(500, ['error' => 'Failed to look up verification token']);
+    }
+
+    $token = pg_fetch_assoc($tokenResult);
+    if ($token !== false && $token['recent_attempt'] === 't') {
+        if (@pg_query($db, 'COMMIT') === false) {
+            respond(500, ['error' => 'Failed to finalize verification email request']);
+        }
+        respond(202, $accepted);
+    }
+
+    if ($token !== false && $token['reusable'] === 't') {
+        $claimResult = @pg_query_params(
+            $db,
+            'UPDATE public.user_token SET email_attempted_at = CURRENT_TIMESTAMP
+             WHERE id = $1 RETURNING hash, expires',
+            [$token['id']]
+        );
+    } else {
+        $deleteResult = @pg_query_params(
+            $db,
+            'DELETE FROM public.user_token WHERE user_id = $1 AND type = $2',
+            [$user['id'], 'verify']
+        );
+        if ($deleteResult === false) {
+            @pg_query($db, 'ROLLBACK');
+            respond(500, ['error' => 'Failed to replace verification token']);
+        }
+        $claimResult = @pg_query_params(
+            $db,
+            'INSERT INTO public.user_token (user_id, type, email_attempted_at)
+             VALUES ($1, $2, CURRENT_TIMESTAMP) RETURNING hash, expires',
+            [$user['id'], 'verify']
+        );
+    }
+    if ($claimResult === false || ($claimedToken = pg_fetch_assoc($claimResult)) === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(500, ['error' => 'Failed to prepare verification email']);
+    }
+
+    if (@pg_query($db, 'COMMIT') === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(500, ['error' => 'Failed to finalize verification email request']);
+    }
+
+    if (!sendVerificationEmail($user['email'], $user['username'], $claimedToken['hash'], $claimedToken['expires'], $timezone)) {
+        error_log('Verification email resend failed for user ID ' . $user['id']);
+    }
+    respond(202, $accepted);
 }
 
 function handleVerify(): never
@@ -493,8 +592,8 @@ function handleVerify(): never
 
     $deleteResult = @pg_query_params(
         $db,
-        'DELETE FROM public.user_token WHERE id = $1',
-        [$tokenRow['id']]
+        'DELETE FROM public.user_token WHERE user_id = $1 AND type = $2',
+        [$tokenRow['user_id'], 'verify']
     );
     if ($deleteResult === false) {
         @pg_query($db, 'ROLLBACK');
@@ -541,6 +640,13 @@ if ($normalizedPath === '/auth/verify') {
         respond(405, ['error' => 'Method not allowed']);
     }
     handleVerify();
+}
+
+if ($normalizedPath === '/auth/resend-verification') {
+    if ($method !== 'POST') {
+        respond(405, ['error' => 'Method not allowed']);
+    }
+    handleResendVerification();
 }
 
 respond(404, ['error' => 'Not found']);

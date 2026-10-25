@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS public.user_token (
     user_id BIGINT NOT NULL REFERENCES public."user"(id) ON DELETE CASCADE,
     type VARCHAR(64) NOT NULL,
     hash TEXT NOT NULL DEFAULT encode(gen_random_bytes(32), 'hex'),
-    expires TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '1 hour')
+    expires TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '1 hour'),
+    email_attempted_at TIMESTAMP
 );
 
 GRANT CONNECT ON DATABASE auth TO auth_api;
