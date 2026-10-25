@@ -55,6 +55,9 @@ jobs:
       - name: Check atomic app replacement
         run: bash tests/deploy/atomic_deploy.sh
 
+      - name: Check pinned SSH host key
+        run: bash tests/deploy/ssh_host_key.sh
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

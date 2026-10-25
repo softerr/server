@@ -45,6 +45,7 @@ jobs:
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           SERVER_SSH_KEY_B64: ${{ secrets.SERVER_SSH_KEY_B64 }}
           SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
         run: |
           bash scripts/ci/configure_ssh_for_actions.sh
 

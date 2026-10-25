@@ -1,6 +1,7 @@
 PORT="${SERVER_PORT:-22}"
-KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/server_key}"
-SSH_OPTS="-i $KEY_PATH -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+SSH_CONFIG_DIR="${SSH_CONFIG_DIR:-${HOME}/.ssh}"
+KEY_PATH="${SSH_KEY_PATH:-${SSH_CONFIG_DIR}/server_key}"
+SSH_OPTS="-i $KEY_PATH -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${SSH_CONFIG_DIR}/known_hosts"
 if [[ -z "${REMOTE_DIR:-}" ]]; then
   if [[ -z "${GITHUB_RUN_ID:-}" ]]; then
     echo "REMOTE_DIR is required outside GitHub Actions; use a unique run directory." >&2

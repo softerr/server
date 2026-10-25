@@ -46,6 +46,14 @@ SSH key format notes:
 - Store base64 content only in `SERVER_SSH_KEY_B64`. If `SERVER_SSH_KEY` currently contains base64 or literal `\n` escapes, migrate it to one of the supported formats before updating the workflow.
 - The key must be unencrypted (no passphrase), because workflow runs non-interactively.
 
+Pin the server's SSH host key in the `production` environment secret `SERVER_SSH_KNOWN_HOSTS`. Run this from the repository on the server through a trusted login or console, replacing the host and port with the exact `SERVER_HOST` and `SERVER_PORT` values used by the workflows:
+
+```bash
+bash scripts/print_ssh_host_key.sh server.example.com 22
+```
+
+Copy the displayed `known_hosts` line into `SERVER_SSH_KNOWN_HOSTS`. The script also prints its SHA256 fingerprint for verification through trusted server access. When rotating the host key, update the secret before deploying again. Workflows fail if the secret is missing or has no entry for the requested host and port.
+
 ## 3. Protect deployment access and add secrets
 
 Create a `production` environment in the repository's `Settings -> Environments`. The Nginx, PostgreSQL, and app deployment jobs reference it. Restrict deployment to the intended branch and require a reviewer where your GitHub plan supports that rule. An environment name alone does not enforce a review or branch restriction.
@@ -59,6 +67,7 @@ Secret names used by the workflows:
 - `SERVER_USER`: `github-workflow`
 - `SERVER_SSH_KEY_B64`: base64 of private SSH key (recommended)
 - `SERVER_SSH_KEY`: raw multi-line private SSH key (alternative)
+- `SERVER_SSH_KNOWN_HOSTS`: trusted server SSH host key in `known_hosts` format (required)
 - `SERVER_PORT`: optional SSH port (default `22`)
 - `POSTGRES_AUTH_API_PASSWORD`: DB password for `auth_api` role
 - `API_DB_PASSWORD`: API runtime DB password (use same value as `POSTGRES_AUTH_API_PASSWORD`)
@@ -138,7 +147,6 @@ Execution:
 Database creation behavior:
 - Script executes `configs/postgresql/init.sql`
 - API role `auth_api` password is set from `POSTGRES_AUTH_API_PASSWORD`
-- Existing `user_token` tables receive the `email_attempted_at` column if it is missing
 - Verification-token lookup and expiry indexes are created, and expired verification tokens are removed
 - A daily systemd timer keeps removing expired verification tokens; missed runs are caught up after restart
 
