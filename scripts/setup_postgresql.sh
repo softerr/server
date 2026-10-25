@@ -91,7 +91,7 @@ sudo -u postgres psql \
   < "${INIT_SQL_FILE}"
 
 echo "Pruning expired verification tokens..."
-sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth -f "${PRUNE_SQL_FILE}"
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${PRUNE_SQL_FILE}"
 
 echo "Installing expired-token cleanup timer..."
 install -d -m 755 /etc/softerr
