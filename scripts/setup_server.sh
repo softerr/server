@@ -65,15 +65,50 @@ else
   bash "${SCRIPT_DIR}/setup_tls_certificate.sh" "${public_host}"
 fi
 
-PROVISION_COMPONENTS=all bash "${SCRIPT_DIR}/provision.sh"
+PROVISION_COMPONENTS=postgresql bash "${SCRIPT_DIR}/provision.sh"
+if ! PGPASSWORD="${API_DB_PASSWORD}" PGCONNECT_TIMEOUT=5 psql -X -v ON_ERROR_STOP=1 \
+  -h "${API_DB_HOST:-127.0.0.1}" -p "${API_DB_PORT:-5432}" \
+  -U "${API_DB_USER:-auth_api}" -d "${API_DB_NAME:-auth}" \
+  -Atqc 'SELECT 1' >/dev/null; then
+  echo "PostgreSQL is not reachable with the API credentials." >&2
+  exit 1
+fi
+PROVISION_COMPONENTS=nginx,api,quiz bash "${SCRIPT_DIR}/provision.sh"
 
 systemctl is-active --quiet nginx
 systemctl is-active --quiet postgresql
 systemctl is-active --quiet softerr-send-email.timer
 systemctl is-active --quiet softerr-prune-user-tokens.timer
-curl -fsS --noproxy '*' --connect-timeout 5 --max-time 15 \
-  --connect-to "${public_host}:443:127.0.0.1:443" "${API_APP_BASE_URL%/}/api/" >/dev/null
-curl -fsS --noproxy '*' --connect-timeout 5 --max-time 15 \
-  --connect-to "${public_host}:443:127.0.0.1:443" "${API_APP_BASE_URL%/}/quiz/" >/dev/null
+
+check_https_route() {
+  local route="$1"
+  local response_file status attempt
+  response_file="$(mktemp)"
+  for attempt in {1..6}; do
+    status=""
+    if status="$(curl -sS --noproxy '*' --connect-timeout 5 --max-time 15 \
+      --output "${response_file}" --write-out '%{http_code}' \
+      --connect-to "${public_host}:443:127.0.0.1:443" \
+      "${API_APP_BASE_URL%/}${route}")" && [[ "${status}" == 200 ]]; then
+      rm -f -- "${response_file}"
+      return 0
+    fi
+    if (( attempt < 6 )); then
+      sleep 2
+    fi
+  done
+
+  echo "HTTPS readiness check failed for ${route} (HTTP ${status:-unavailable})." >&2
+  if [[ -s "${response_file}" ]]; then
+    echo "Response body:" >&2
+    head -c 1000 "${response_file}" >&2
+    echo >&2
+  fi
+  rm -f -- "${response_file}"
+  return 1
+}
+
+check_https_route '/api/'
+check_https_route '/quiz/'
 
 echo "First-time setup is complete: ${API_APP_BASE_URL%/}"

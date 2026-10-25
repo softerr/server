@@ -153,7 +153,8 @@ if [[ -z "${PHP_VERSION}" && "${PHP_SOCK}" =~ php([0-9.]+)-fpm\.sock$ ]]; then
 fi
 
 if [[ -n "${PHP_VERSION}" ]]; then
-  API_ENV_FILE="/etc/php/${PHP_VERSION}/fpm/pool.d/zz-softerr-api-env.conf"
+  FPM_POOL_DIR="/etc/php/${PHP_VERSION}/fpm/pool.d"
+  API_ENV_FILE="${FPM_POOL_DIR}/zz-softerr-api-env.conf"
   API_DB_HOST="${API_DB_HOST:-127.0.0.1}"
   API_DB_PORT="${API_DB_PORT:-5432}"
   API_DB_NAME="${API_DB_NAME:-auth}"
@@ -206,6 +207,13 @@ EOF
   append_optional_env "SMTP_PASSWORD" "${API_SMTP_PASSWORD}"
   chmod 640 "${API_ENV_FILE}"
   chown root:root "${API_ENV_FILE}"
+
+  mapfile -t conflicting_env_files < <(find "${FPM_POOL_DIR}" -maxdepth 1 -name '*.conf' \
+    ! -path "${API_ENV_FILE}" -exec grep -lE '^[[:space:]]*env\[DB_PASSWORD\][[:space:]]*=' {} +)
+  if (( ${#conflicting_env_files[@]} > 0 )); then
+    printf 'Conflicting php-fpm DB_PASSWORD setting in: %s\n' "${conflicting_env_files[@]}" >&2
+    exit 1
+  fi
   echo "Configured API DB env in php-fpm pool: ${API_ENV_FILE}"
   systemctl restart "${PHP_FPM_SERVICE}"
 else
