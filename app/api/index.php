@@ -296,11 +296,12 @@ function sendVerificationEmail(string $email, string $username, string $token, s
         . "This link expires at: {$formattedExpires}\n";
 
     $mailFrom = trim((string)(getenv('MAIL_FROM') ?: 'no-reply@localhost'));
-    if (sendViaSmtp($email, $subject, $body, $mailFrom)) {
-        return true;
+    if (trim((string)(getenv('SMTP_HOST') ?: '')) !== '') {
+        return sendViaSmtp($email, $subject, $body, $mailFrom);
     }
 
     if (!function_exists('mail')) {
+        error_log('PHP mail() is unavailable and SMTP_HOST is not configured');
         return false;
     }
 
@@ -309,7 +310,11 @@ function sendVerificationEmail(string $email, string $username, string $token, s
         'Content-Type: text/plain; charset=UTF-8',
     ];
 
-    return mail($email, $subject, $body, implode("\r\n", $headers));
+    $accepted = mail($email, $subject, $body, implode("\r\n", $headers));
+    if (!$accepted) {
+        error_log('PHP mail() failed to accept verification email');
+    }
+    return $accepted;
 }
 
 function quotePgConnectionValue(string $value): string

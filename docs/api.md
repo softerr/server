@@ -137,9 +137,11 @@ Common errors:
 
 ## 5. Email delivery behavior
 
-Signup email send order:
-1. SMTP if `SMTP_HOST` is configured.
-2. PHP `mail()` fallback if SMTP is not configured.
+Email transport selection:
+- With `SMTP_HOST` configured, only SMTP is attempted. An SMTP failure is reported as `verification_email_sent: false`; PHP `mail()` is not tried.
+- Without `SMTP_HOST`, PHP `mail()` is used. A local mail failure also reports `verification_email_sent: false`.
+
+The response field means the configured transport accepted the message; it does not confirm delivery to the recipient's inbox. The account and token remain committed, so the client can request another attempt with `POST /api/auth/resend-verification` after the one-minute cooldown.
 
 Relevant runtime env vars (from php-fpm):
 - `DB_HOST` (default `127.0.0.1`)
