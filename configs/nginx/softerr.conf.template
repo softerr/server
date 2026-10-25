@@ -11,7 +11,7 @@ server {
     }
 
     location = /quiz {
-        return 301 /quiz/;
+        rewrite ^ /quiz/index.html last;
     }
 
     location /quiz/ {
