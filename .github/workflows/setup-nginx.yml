@@ -48,6 +48,10 @@ jobs:
             echo "Missing required GitHub secret: API_DB_PASSWORD"
             exit 1
           fi
-          REQUIRED_ENV_VARS="PROVISION_COMPONENTS,API_DB_PASSWORD" \
-          OPTIONAL_ENV_VARS="API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD" \
+          if [[ -z "${API_APP_BASE_URL:-}" ]]; then
+            echo "Missing required GitHub secret: API_APP_BASE_URL"
+            exit 1
+          fi
+          REQUIRED_ENV_VARS="PROVISION_COMPONENTS,API_DB_PASSWORD,API_APP_BASE_URL" \
+          OPTIONAL_ENV_VARS="API_MAIL_FROM,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD" \
             bash scripts/ci/run_remote_setup.sh provision.sh

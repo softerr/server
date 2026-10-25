@@ -10,17 +10,27 @@ function respond(int $statusCode, array $payload): never
     exit;
 }
 
-function appBaseUrl(): string
+function appBaseUrl(): ?string
 {
-    $explicit = trim((string)(getenv('APP_BASE_URL') ?: ''));
-    if ($explicit !== '') {
-        return rtrim($explicit, '/');
+    $url = trim((string)(getenv('APP_BASE_URL') ?: ''));
+    $parts = parse_url($url);
+    if (
+        $url === ''
+        || filter_var($url, FILTER_VALIDATE_URL) === false
+        || $parts === false
+        || !in_array(strtolower((string)($parts['scheme'] ?? '')), ['http', 'https'], true)
+        || empty($parts['host'])
+        || isset($parts['user'])
+        || isset($parts['pass'])
+        || isset($parts['query'])
+        || isset($parts['fragment'])
+        || !in_array($parts['path'] ?? '', ['', '/'], true)
+    ) {
+        error_log('APP_BASE_URL must be a configured HTTP(S) origin');
+        return null;
     }
 
-    $https = $_SERVER['HTTPS'] ?? '';
-    $scheme = (!empty($https) && strtolower((string)$https) !== 'off') ? 'https' : 'http';
-    $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost');
-    return $scheme . '://' . $host;
+    return rtrim($url, '/');
 }
 
 function normalizeTimezoneName(?string $candidate): ?string
@@ -250,6 +260,11 @@ function sendViaSmtp(string $email, string $subject, string $body, string $mailF
 
 function sendVerificationEmail(string $email, string $username, string $token, string $expires, ?string $userTimezone = null): bool
 {
+    $baseUrl = appBaseUrl();
+    if ($baseUrl === null) {
+        return false;
+    }
+
     $formattedExpires = $expires;
     try {
         $trimmedExpires = trim($expires);
@@ -273,7 +288,7 @@ function sendVerificationEmail(string $email, string $username, string $token, s
         // Keep original value when parsing fails.
     }
 
-    $verifyUrl = appBaseUrl() . '/api/auth/verify?token=' . rawurlencode($token);
+    $verifyUrl = $baseUrl . '/api/auth/verify?token=' . rawurlencode($token);
     $subject = 'Verify your account';
     $body = "Hello {$username},\n\n"
         . "Please verify your account by opening this link:\n"
@@ -356,6 +371,9 @@ function handleSignup(): never
     }
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         respond(400, ['error' => 'email is invalid']);
+    }
+    if (appBaseUrl() === null) {
+        respond(503, ['error' => 'Verification email is not configured']);
     }
 
     $passwordHash = password_hash($password, PASSWORD_DEFAULT);
@@ -458,6 +476,9 @@ function handleResendVerification(): never
     $email = strtolower(trim($payload['email']));
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         respond(400, ['error' => 'A valid email is required']);
+    }
+    if (appBaseUrl() === null) {
+        respond(503, ['error' => 'Verification email is not configured']);
     }
     $timezone = detectUserTimezone($payload);
     $accepted = ['message' => 'Verification email request accepted'];

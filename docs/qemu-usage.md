@@ -33,7 +33,7 @@ export POSTGRES_AUTH_API_PASSWORD='change-me'
 export API_DB_PASSWORD='change-me'
 ```
 
-Optional (recommended for signup email verification):
+Optional URL override and email settings:
 
 ```bash
 export API_MAIL_FROM='no-reply@example.com'
@@ -44,6 +44,8 @@ export API_SMTP_ENCRYPTION='tls'
 export API_SMTP_USERNAME='smtp-user'
 export API_SMTP_PASSWORD='smtp-pass'
 ```
+
+QEMU defaults `API_APP_BASE_URL` to `http://127.0.0.1:<HTTP_PORT>` when unset. Set it explicitly if you access the VM through another origin.
 
 ## 3. Start VM and provision everything
 

@@ -22,6 +22,11 @@ if [[ ! -f "${CONFIG_TEMPLATE}" ]]; then
   exit 1
 fi
 
+if [[ ! "${API_APP_BASE_URL:-}" =~ ^https?://[^/@?#[:space:]]+/?$ ]]; then
+  echo "API_APP_BASE_URL must be an HTTP(S) origin without credentials, path, query, or fragment."
+  exit 1
+fi
+
 wait_for_apt_locks() {
   local timeout="${APT_LOCK_TIMEOUT_SECONDS:-300}"
   local waited=0
@@ -168,6 +173,7 @@ env[DB_PORT] = "$(esc "${API_DB_PORT}")"
 env[DB_NAME] = "$(esc "${API_DB_NAME}")"
 env[DB_USER] = "$(esc "${API_DB_USER}")"
 env[DB_PASSWORD] = "$(esc "${API_DB_PASSWORD}")"
+env[APP_BASE_URL] = "$(esc "${API_APP_BASE_URL}")"
 EOF
 
   append_optional_env() {
@@ -179,7 +185,6 @@ EOF
   }
 
   append_optional_env "MAIL_FROM" "${API_MAIL_FROM}"
-  append_optional_env "APP_BASE_URL" "${API_APP_BASE_URL}"
   append_optional_env "SMTP_HOST" "${API_SMTP_HOST}"
   append_optional_env "SMTP_PORT" "${API_SMTP_PORT}"
   append_optional_env "SMTP_ENCRYPTION" "${API_SMTP_ENCRYPTION}"

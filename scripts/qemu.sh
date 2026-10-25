@@ -22,6 +22,7 @@ VM_RAM_MB="${VM_RAM_MB:-4096}"
 VM_DISK_GB="${VM_DISK_GB:-30}"
 SSH_PORT="${SSH_PORT:-2222}"
 HTTP_PORT="${HTTP_PORT:-8080}"
+API_APP_BASE_URL="${API_APP_BASE_URL:-http://127.0.0.1:${HTTP_PORT}}"
 UBUNTU_IMAGE_URL="${UBUNTU_IMAGE_URL:-https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img}"
 WAIT_SSH_SECONDS="${WAIT_SSH_SECONDS:-240}"
 RECREATE_VM_DISK="${RECREATE_VM_DISK:-0}"
@@ -503,7 +504,7 @@ Environment variables:
   POSTGRES_AUTH_API_PASSWORD   Required for provisioning
   API_DB_PASSWORD              Required for provisioning
   API_MAIL_FROM                Optional sender address
-  API_APP_BASE_URL             Optional public base URL for verification links
+  API_APP_BASE_URL             Verification-link origin (default: http://127.0.0.1:<HTTP_PORT>)
   API_SMTP_HOST                Optional SMTP host (recommended for verification emails)
   API_SMTP_PORT                Optional SMTP port (default 587 in API)
   API_SMTP_ENCRYPTION          Optional tls|ssl|none (default tls in API)

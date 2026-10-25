@@ -152,7 +152,7 @@ sudo POSTGRES_AUTH_API_PASSWORD='your-password' PROVISION_COMPONENTS='postgresql
 Run only Nginx/PHP setup:
 
 ```bash
-sudo API_DB_PASSWORD='your-password' PROVISION_COMPONENTS='nginx' bash scripts/provision.sh
+sudo API_DB_PASSWORD='your-password' API_APP_BASE_URL='https://example.com' PROVISION_COMPONENTS='nginx' bash scripts/provision.sh
 ```
 
 Deploy only API:

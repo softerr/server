@@ -57,7 +57,7 @@ Create:
 - `POSTGRES_AUTH_API_PASSWORD`: DB password for `auth_api` role
 - `API_DB_PASSWORD`: API runtime DB password (use same value as `POSTGRES_AUTH_API_PASSWORD`)
 - `API_MAIL_FROM`: optional sender email (example: `no-reply@example.com`)
-- `API_APP_BASE_URL`: optional public base URL used in verification links (example: `https://example.com`)
+- `API_APP_BASE_URL`: required public origin used in verification links (example: `https://example.com`); use HTTPS for a public server
 - `API_SMTP_HOST`: optional SMTP host for email delivery (example: `smtp.mailgun.org`)
 - `API_SMTP_PORT`: optional SMTP port (default API behavior: `587`)
 - `API_SMTP_ENCRYPTION`: optional `tls`, `ssl`, or `none` (default API behavior: `tls`)
@@ -102,6 +102,7 @@ Execution:
 
 This workflow requires GitHub secret:
 - `API_DB_PASSWORD`
+- `API_APP_BASE_URL`
 
 Optional for signup verification email delivery without local MTA:
 - `API_SMTP_HOST`

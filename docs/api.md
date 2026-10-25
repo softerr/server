@@ -82,6 +82,7 @@ Common errors:
 - `409 {"error":"username or email already exists"}`
 - `500 {"error":"Database connection failed"}`
 - `500 {"error":"DB_PASSWORD is not configured"}`
+- `503 {"error":"Verification email is not configured"}` when `APP_BASE_URL` is missing or invalid
 
 ## 3. Resend verification email
 
@@ -95,6 +96,7 @@ Request body:
 ```
 
 Returns `202 Accepted` with the same message whether the account exists, is already verified, or is eligible for another email. For an unverified account, a new attempt is allowed after one minute. A token with less than ten minutes remaining is replaced before sending. The optional timezone inputs follow the signup rules above.
+If `APP_BASE_URL` is missing or invalid, the endpoint returns `503` before accessing the database.
 
 Deploy the `configs/postgresql/init.sql` migration with the Setup PostgreSQL workflow before deploying this API change.
 
@@ -146,7 +148,7 @@ Relevant runtime env vars (from php-fpm):
 - `DB_USER` (default `auth_api`)
 - `DB_PASSWORD` (required)
 - `MAIL_FROM` (default `no-reply@localhost`)
-- `APP_BASE_URL` (optional)
+- `APP_BASE_URL` (required HTTP(S) origin for verification links, with no path, credentials, query, or fragment)
 - `SMTP_HOST` (optional, enables SMTP path)
 - `SMTP_PORT` (optional, default `587`)
 - `SMTP_ENCRYPTION` (optional: `tls`, `ssl`, `none`; default `tls`)
