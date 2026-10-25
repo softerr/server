@@ -31,8 +31,35 @@ deploy "${SOURCE_NEW}" "${WEB_USER}"
 [[ "$(cat "${LIVE}/index.html")" == new ]]
 [[ -f "${LIVE}/assets/app.js" ]]
 [[ ! -e "${LIVE}/removed.js" ]]
+
 [[ "$(stat -c %a "${LIVE}")" == 755 ]]
 [[ "$(stat -c %a "${LIVE}/index.html")" == 644 ]]
+
+source "${REPO_ROOT}/scripts/lib/atomic_deploy.sh"
+reject_release() { return 1; }
+FIRST_LIVE="${TEST_ROOT}/first"
+if atomic_deploy_dir "${SOURCE_NEW}" "${FIRST_LIVE}" "${WEB_USER}" "${WEB_GROUP}" reject_release > /dev/null 2>&1; then
+  echo "Failed first-release verification unexpectedly succeeded."
+  exit 1
+fi
+[[ ! -e "${FIRST_LIVE}" ]]
+accept_release() { [[ "$(cat "${FIRST_LIVE}/index.html")" == new ]]; }
+atomic_deploy_dir "${SOURCE_NEW}" "${FIRST_LIVE}" "${WEB_USER}" "${WEB_GROUP}" accept_release
+[[ "$(cat "${FIRST_LIVE}/index.html")" == new ]]
+if atomic_deploy_dir "${SOURCE_OLD}" "${LIVE}" "${WEB_USER}" "${WEB_GROUP}" reject_release > /dev/null 2>&1; then
+  echo "Failed verification unexpectedly kept the new release."
+  exit 1
+fi
+[[ "$(cat "${LIVE}/index.html")" == new ]]
+[[ -f "${LIVE}/assets/app.js" ]]
+[[ ! -e "${LIVE}/removed.js" ]]
+
+interrupt_release() { kill -TERM "${BASHPID}"; }
+if atomic_deploy_dir "${SOURCE_OLD}" "${LIVE}" "${WEB_USER}" "${WEB_GROUP}" interrupt_release > /dev/null 2>&1; then
+  echo "Interrupted verification unexpectedly kept the new release."
+  exit 1
+fi
+[[ "$(cat "${LIVE}/index.html")" == new ]]
 
 INVALID_USER="missing-deploy-owner-$$"
 if id -u "${INVALID_USER}" >/dev/null 2>&1; then
@@ -51,7 +78,8 @@ if deploy "${TEST_ROOT}/missing" "${WEB_USER}" > /dev/null 2>&1; then
 fi
 [[ "$(cat "${LIVE}/index.html")" == new ]]
 
-if compgen -G "${TEST_ROOT}/.live.next.*" > /dev/null; then
+if compgen -G "${TEST_ROOT}/.live.next.*" > /dev/null \
+  || compgen -G "${TEST_ROOT}/.first.next.*" > /dev/null; then
   echo "Deployment left a staging directory behind."
   exit 1
 fi

@@ -21,10 +21,12 @@ if [[ ! -f "${PREBUILT_DIST_DIR}/index.html" ]]; then
 fi
 
 source "${SCRIPT_DIR}/lib/atomic_deploy.sh"
+source "${SCRIPT_DIR}/lib/deploy_checks.sh"
 DIST_DIR="${PREBUILT_DIST_DIR}"
 echo "Using prebuilt quiz artifacts: ${DIST_DIR}"
 echo "Deploying to: ${TARGET_DIR}"
-atomic_deploy_dir "${DIST_DIR}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}"
+atomic_deploy_dir "${DIST_DIR}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}" \
+  verify_local_app_route /quiz/ file "${TARGET_DIR}/index.html"
 
 echo "Quiz deployed successfully."
 echo "Artifacts: ${DIST_DIR}"

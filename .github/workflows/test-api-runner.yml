@@ -31,6 +31,9 @@ on:
       - "scripts/setup_postgresql.sh"
       - "scripts/backup_postgresql.sh"
       - "scripts/setup_nginx.sh"
+      - "scripts/deploy_api.sh"
+      - "scripts/lib/**"
+      - "scripts/provision.sh"
       - "tests/db/**"
       - ".github/workflows/test-api-runner.yml"
   push:
@@ -47,6 +50,9 @@ on:
       - "scripts/setup_postgresql.sh"
       - "scripts/backup_postgresql.sh"
       - "scripts/setup_nginx.sh"
+      - "scripts/deploy_api.sh"
+      - "scripts/lib/**"
+      - "scripts/provision.sh"
       - "tests/db/**"
       - ".github/workflows/test-api-runner.yml"
 

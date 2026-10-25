@@ -3,6 +3,10 @@ name: Set Up Server
 on:
   workflow_dispatch:
 
+concurrency:
+  group: production-server
+  queue: max
+
 jobs:
   setup-server:
     runs-on: ubuntu-latest

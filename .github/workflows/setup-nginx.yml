@@ -3,6 +3,10 @@ name: Setup Nginx On Server
 on:
   workflow_dispatch:
 
+concurrency:
+  group: production-server
+  queue: max
+
 jobs:
   setup-nginx:
     runs-on: ubuntu-latest

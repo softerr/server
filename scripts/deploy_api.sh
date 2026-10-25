@@ -30,9 +30,27 @@ TARGET_DIR="${API_TARGET_DIR:-/var/www/api}"
 WEB_USER="${WEB_USER:-www-data}"
 WEB_GROUP="${WEB_GROUP:-www-data}"
 source "${SCRIPT_DIR}/lib/atomic_deploy.sh"
+source "${SCRIPT_DIR}/lib/deploy_checks.sh"
 
 echo "Deploying API from: ${SOURCE_DIR}"
-atomic_deploy_dir "${SOURCE_DIR}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}"
+restart_api_fpm() {
+  local routes_file=/etc/nginx/snippets/softerr-routes.conf
+  local socket
+  socket="$(sed -nE 's/^[[:space:]]*fastcgi_pass unix:([^;]+);/\1/p' "${routes_file}" | head -n 1)"
+  if [[ ! "${socket}" =~ ^/run/php/php([0-9.]+)-fpm\.sock$ ]]; then
+    echo "Could not identify the PHP-FPM service from ${routes_file}." >&2
+    return 1
+  fi
+  systemctl restart "php${BASH_REMATCH[1]}-fpm.service"
+}
+verify_api_release() {
+  restart_api_fpm || return 1
+  verify_local_app_route /api/ api
+}
+if ! atomic_deploy_dir "${SOURCE_DIR}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}" verify_api_release; then
+  restart_api_fpm || true
+  exit 1
+fi
 
 echo "API deployed successfully."
 echo "Source: ${SOURCE_DIR}"

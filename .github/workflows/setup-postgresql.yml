@@ -3,6 +3,10 @@ name: Setup PostgreSQL On Server
 on:
   workflow_dispatch:
 
+concurrency:
+  group: production-server
+  queue: max
+
 jobs:
   setup-postgresql:
     runs-on: ubuntu-latest

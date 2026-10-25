@@ -43,6 +43,6 @@ The workflow fails at the step that needs attention. Rerunning it reapplies the 
 
 ## Later updates
 
-Use **Deploy Apps On Server** to deploy `api`, `quiz`, or `all` without repeating server setup. The quiz builds on the GitHub runner; only its built files are uploaded. Use **Setup PostgreSQL On Server** after database schema changes and **Setup Nginx On Server** after web server configuration or runtime settings change. Those workflows use the same pinned SSH host key and production secrets.
+Use **Deploy Apps On Server** to deploy `api`, `quiz`, or `all` without repeating server setup. The quiz builds on the GitHub runner; only its built files are uploaded. Each app is checked through Nginx after publication and restored to its previous release if the check fails. Use **Setup PostgreSQL On Server** after database schema changes and **Setup Nginx On Server** after web server configuration or runtime settings change. Those workflows use the same pinned SSH host key and production secrets.
 
 The **Test Deployment** workflow checks shell syntax, atomic app replacement, the quiz build, and Nginx configuration. The **Test API On Runner** and **Test API In QEMU** workflows exercise the API with local Mailpit, including email rejection and resend behavior. Require their jobs in branch protection if they should block merges.

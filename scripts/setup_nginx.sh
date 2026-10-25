@@ -76,7 +76,7 @@ wait_for_apt_locks
 echo "Installing nginx and php-fpm..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y nginx php-fpm php-cli php-pgsql
+apt-get install -y nginx php-fpm php-cli php-pgsql curl
 
 echo "Creating web directories..."
 mkdir -p /var/www/home /var/www/quiz /var/www/api

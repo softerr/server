@@ -389,7 +389,12 @@ case "${SCRIPT_REL}" in
       bash "${SCRIPT_REL}"
     ;;
   scripts/deploy_quiz.sh)
-    sudo QUIZ_DIST_DIR="${PWD}/app/quiz/dist" bash "${SCRIPT_REL}"
+    export API_APP_BASE_URL
+    sudo --preserve-env=API_APP_BASE_URL QUIZ_DIST_DIR="${PWD}/app/quiz/dist" bash "${SCRIPT_REL}"
+    ;;
+  scripts/deploy_api.sh)
+    export API_APP_BASE_URL
+    sudo --preserve-env=API_APP_BASE_URL bash "${SCRIPT_REL}"
     ;;
   *)
     sudo bash "${SCRIPT_REL}"
