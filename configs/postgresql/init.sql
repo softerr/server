@@ -29,6 +29,18 @@ CREATE TABLE IF NOT EXISTS public.user_token (
     email_attempted_at TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS public.verification_email_outbox (
+    id BIGSERIAL PRIMARY KEY,
+    token_id BIGINT NOT NULL UNIQUE REFERENCES public.user_token(id) ON DELETE CASCADE,
+    timezone TEXT,
+    queued_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    available_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    attempts INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS verification_email_outbox_available_idx
+    ON public.verification_email_outbox (available_at, id);
+
 CREATE INDEX IF NOT EXISTS user_token_hash_idx
     ON public.user_token (hash);
 CREATE INDEX IF NOT EXISTS user_token_user_type_id_idx
@@ -40,5 +52,7 @@ GRANT CONNECT ON DATABASE auth TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, UPDATE ON TABLE public."user" TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_token TO auth_api;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.verification_email_outbox TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.user_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.user_token_id_seq TO auth_api;
+GRANT USAGE, SELECT ON SEQUENCE public.verification_email_outbox_id_seq TO auth_api;

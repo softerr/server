@@ -12,6 +12,8 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 CONFIG_TEMPLATE="${NGINX_CONFIG_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr.conf.template}"
 TLS_CONFIG_TEMPLATE="${NGINX_TLS_CONFIG_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr-tls.conf.template}"
 ROUTES_TEMPLATE="${NGINX_ROUTES_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr-routes.conf.template}"
+EMAIL_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-send-email.service"
+EMAIL_TIMER_FILE="${REPO_ROOT}/configs/systemd/softerr-send-email.timer"
 
 if ! command -v apt-get >/dev/null 2>&1; then
   echo "This script currently supports Debian/Ubuntu systems (apt-get required)."
@@ -66,8 +68,9 @@ else
   exit 1
 fi
 
-if [[ ! -f "${CONFIG_TEMPLATE}" || ! -f "${ROUTES_TEMPLATE}" ]]; then
-  echo "Nginx config or routes template not found."
+if [[ ! -f "${CONFIG_TEMPLATE}" || ! -f "${ROUTES_TEMPLATE}" \
+  || ! -f "${EMAIL_SERVICE_FILE}" || ! -f "${EMAIL_TIMER_FILE}" ]]; then
+  echo "Nginx config, routes, or email worker unit not found."
   exit 1
 fi
 
@@ -107,7 +110,7 @@ wait_for_apt_locks
 echo "Installing nginx and php-fpm..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y nginx php-fpm php-pgsql
+apt-get install -y nginx php-fpm php-cli php-pgsql
 
 echo "Creating web directories..."
 mkdir -p /var/www/home /var/www/quiz /var/www/api
@@ -244,6 +247,29 @@ else
   echo "Detected service: ${PHP_FPM_SERVICE}"
   exit 1
 fi
+
+echo "Configuring email worker..."
+install -d -m 755 /etc/softerr
+cat > /etc/softerr/email-worker.env <<EOF
+DB_HOST="$(esc "${API_DB_HOST}")"
+DB_PORT="$(esc "${API_DB_PORT}")"
+DB_NAME="$(esc "${API_DB_NAME}")"
+DB_USER="$(esc "${API_DB_USER}")"
+DB_PASSWORD="$(esc "${API_DB_PASSWORD}")"
+APP_BASE_URL="$(esc "${API_APP_BASE_URL}")"
+MAIL_FROM="$(esc "${API_MAIL_FROM}")"
+SMTP_HOST="$(esc "${API_SMTP_HOST}")"
+SMTP_PORT="$(esc "${API_SMTP_PORT}")"
+SMTP_ENCRYPTION="$(esc "${API_SMTP_ENCRYPTION}")"
+SMTP_USERNAME="$(esc "${API_SMTP_USERNAME}")"
+SMTP_PASSWORD="$(esc "${API_SMTP_PASSWORD}")"
+EOF
+chown root:www-data /etc/softerr/email-worker.env
+chmod 640 /etc/softerr/email-worker.env
+install -m 644 "${EMAIL_SERVICE_FILE}" /etc/systemd/system/softerr-send-email.service
+install -m 644 "${EMAIL_TIMER_FILE}" /etc/systemd/system/softerr-send-email.timer
+systemctl daemon-reload
+systemctl enable --now softerr-send-email.timer
 
 echo "Writing nginx site config..."
 install -d -m 755 /etc/nginx/snippets

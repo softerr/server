@@ -26,8 +26,10 @@ on:
       - "scripts/test_api.sh"
       - "configs/postgresql/init.sql"
       - "configs/postgresql/prune_user_tokens.sql"
+      - "configs/nginx/**"
       - "configs/systemd/**"
       - "scripts/setup_postgresql.sh"
+      - "scripts/setup_nginx.sh"
       - "tests/db/**"
       - ".github/workflows/test-api-runner.yml"
   push:
@@ -39,8 +41,10 @@ on:
       - "scripts/test_api.sh"
       - "configs/postgresql/init.sql"
       - "configs/postgresql/prune_user_tokens.sql"
+      - "configs/nginx/**"
       - "configs/systemd/**"
       - "scripts/setup_postgresql.sh"
+      - "scripts/setup_nginx.sh"
       - "tests/db/**"
       - ".github/workflows/test-api-runner.yml"
 
@@ -146,3 +150,4 @@ jobs:
           sudo journalctl -u nginx --no-pager -n 300 || true
           sudo journalctl -u postgresql --no-pager -n 300 || true
           sudo journalctl -u softerr-prune-user-tokens.service --no-pager -n 100 || true
+          sudo journalctl -u softerr-send-email.service --no-pager -n 100 || true

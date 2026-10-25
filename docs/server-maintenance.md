@@ -151,6 +151,8 @@ sudo POSTGRES_AUTH_API_PASSWORD='your-password' PROVISION_COMPONENTS='postgresql
 
 PostgreSQL setup installs `softerr-prune-user-tokens.timer` to remove expired verification tokens daily. Check its next run with `systemctl list-timers softerr-prune-user-tokens.timer`, or run cleanup immediately with `sudo systemctl start softerr-prune-user-tokens.service`.
 
+Nginx setup installs `softerr-send-email.timer` to deliver queued verification emails every minute. Check it with `systemctl list-timers softerr-send-email.timer` and inspect delivery failures with `sudo journalctl -u softerr-send-email.service -n 100 --no-pager`.
+
 Run only Nginx/PHP setup:
 
 ```bash

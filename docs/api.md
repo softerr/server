@@ -64,15 +64,15 @@ Example response:
   "email": "john@example.com",
   "verified": false,
   "created": "2026-05-17 14:30:00+00",
-  "verification_email_sent": true
+  "verification_email_queued": true
 }
 ```
 
 Side effects:
 - Stores user in `public."user"`.
 - Stores verification token in `public.user_token` (`type='verify'`).
-- Sends verification email containing `/api/auth/verify?token=...`.
-- The account and token are committed before email delivery. If delivery fails, signup still returns `201` with `verification_email_sent: false`; use the resend endpoint below.
+- Queues a verification email in `public.verification_email_outbox` in the same transaction as the account and token.
+- A background worker sends the email containing `/api/auth/verify?token=...`.
 
 Common errors:
 - `400 {"error":"Invalid JSON body"}`
@@ -95,7 +95,7 @@ Request body:
 {"email":"john@example.com"}
 ```
 
-Returns `202 Accepted` with the same message whether the account exists, is already verified, or is eligible for another email. For an unverified account, a new attempt is allowed after one minute. A token with less than ten minutes remaining is replaced before sending. The optional timezone inputs follow the signup rules above.
+Returns `202 Accepted` with the same message whether the account exists, is already verified, or is eligible for another email. For an unverified account, a new request is allowed after one minute. A token with less than ten minutes remaining is replaced before queuing. The optional timezone inputs follow the signup rules above.
 If `APP_BASE_URL` is missing or invalid, the endpoint returns `503` before accessing the database.
 
 Deploy the `configs/postgresql/init.sql` migration with the Setup PostgreSQL workflow before deploying this API change.
@@ -137,13 +137,11 @@ Common errors:
 
 ## 5. Email delivery behavior
 
-Email transport selection:
-- With `SMTP_HOST` configured, only SMTP is attempted. An SMTP failure is reported as `verification_email_sent: false`; PHP `mail()` is not tried.
-- Without `SMTP_HOST`, PHP `mail()` is used. A local mail failure also reports `verification_email_sent: false`.
+The `verification_email_queued` response field confirms that the job was committed to PostgreSQL. It does not mean the mail transport accepted or delivered the message. The systemd email worker checks the outbox every minute. Failed deliveries remain queued and are retried after two minutes while the token is valid. Delivery may happen more than once if the worker stops after SMTP accepts a message but before it deletes the outbox row.
 
-The response field means the configured transport accepted the message; it does not confirm delivery to the recipient's inbox. The account and token remain committed, so the client can request another attempt with `POST /api/auth/resend-verification` after the one-minute cooldown.
+The worker uses SMTP when `SMTP_HOST` is configured and PHP `mail()` otherwise. An SMTP failure does not fall back to `mail()`. Verification or token expiry removes obsolete queued jobs. The client can request another attempt with `POST /api/auth/resend-verification` after the one-minute cooldown.
 
-Relevant runtime env vars (from php-fpm):
+Relevant runtime env vars (from php-fpm and the systemd email worker):
 - `DB_HOST` (default `127.0.0.1`)
 - `DB_PORT` (default `5432`)
 - `DB_NAME` (default `auth`)

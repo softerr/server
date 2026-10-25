@@ -1,0 +1,16 @@
+[Unit]
+Description=Send queued verification emails
+Requires=postgresql.service
+After=postgresql.service
+ConditionPathExists=/var/www/api/bin/send_email.php
+
+[Service]
+Type=oneshot
+TimeoutStartSec=10min
+User=www-data
+Group=www-data
+EnvironmentFile=/etc/softerr/email-worker.env
+ExecStart=/usr/bin/php /var/www/api/bin/send_email.php
+NoNewPrivileges=true
+PrivateTmp=true
+

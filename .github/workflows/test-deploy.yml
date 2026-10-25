@@ -6,6 +6,7 @@ on:
       - "app/api/**"
       - "app/quiz/**"
       - "configs/nginx/**"
+      - "configs/systemd/**"
       - "scripts/ci/**"
       - "scripts/deploy_*.sh"
       - "scripts/lib/**"
@@ -27,6 +28,7 @@ on:
       - "app/api/**"
       - "app/quiz/**"
       - "configs/nginx/**"
+      - "configs/systemd/**"
       - "scripts/ci/**"
       - "scripts/deploy_*.sh"
       - "scripts/lib/**"
@@ -96,6 +98,8 @@ jobs:
 
           tls_dir = Path(os.environ['TLS_TEST_DIR'])
           routes = Path('configs/nginx/softerr-routes.conf.template').read_text()
+          assert 'location = /api/index.php' in routes
+          assert 'location ~ ^/api/.*\\.php$' in routes
           routes = routes.replace('__PHP_FPM_SOCK__', '/run/php/php-fpm.sock')
           assert '__PHP_FPM_SOCK__' not in routes
           (tls_dir / 'routes.conf').write_text(routes)

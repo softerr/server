@@ -14,10 +14,7 @@ test_auth_signup_success() {
   assert_json_value '.verified' "false" || return 1
   assert_json_expression '.id | type == "number"' || return 1
   assert_json_expression '.created != null and .created != ""' || return 1
-  assert_json_expression '.verification_email_sent | type == "boolean"' || return 1
-  if [[ "${API_TEST_REQUIRE_EMAIL:-0}" == "1" ]]; then
-    assert_json_value '.verification_email_sent' 'true' || return 1
-  fi
+  assert_json_value '.verification_email_queued' 'true' || return 1
 }
 
 test_auth_signup_duplicate_conflict() {

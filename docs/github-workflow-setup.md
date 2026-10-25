@@ -138,6 +138,8 @@ This workflow requires GitHub secret:
 
 It also requires the `production` environment variables `API_APP_BASE_URL`, `API_TLS_CERT_FILE`, and `API_TLS_KEY_FILE`. `API_APP_BASE_URL` must be an HTTPS origin; setup fails if either certificate file is missing or unreadable on the server. Local runner and QEMU setups continue to use HTTP only with a loopback `API_APP_BASE_URL`.
 
+Setup also installs `softerr-send-email.timer` and a worker configuration file at `/etc/softerr/email-worker.env`. The worker reads the same database and mail settings as the API. Run Setup PostgreSQL before deploying the API version that writes to `verification_email_outbox`, then run Setup Nginx to enable the worker.
+
 After setup, confirm that HTTP redirects and HTTPS serves the app with HSTS (replace the domain):
 
 ```bash
@@ -171,7 +173,7 @@ Execution:
 Database creation behavior:
 - Script executes `configs/postgresql/init.sql`
 - API role `auth_api` password is set from `POSTGRES_AUTH_API_PASSWORD`
-- Verification-token lookup and expiry indexes are created, and expired verification tokens are removed
+- Verification-token lookup and expiry indexes and the email outbox are created, and expired verification tokens are removed
 - A daily systemd timer keeps removing expired verification tokens; missed runs are caught up after restart
 
 This workflow requires GitHub secret:
