@@ -164,6 +164,9 @@ This workflow uploads:
 
 For `quiz` and `all`, the quiz build runs on the GitHub runner (`npm ci && npm run build`) before upload. API-only deployments skip the Node build. `node_modules` is never uploaded.
 
+The `Test Deployment` workflow runs on pull requests and main-branch pushes that change app sources, deployment scripts, or Nginx configuration. It checks shell syntax, atomic directory replacement, the quiz build, and the rendered Nginx configuration.
+To make failures block merges, require its `test-deploy` job in branch protection.
+
 Execution:
 - `apps=all` runs `scripts/provision.sh` with `PROVISION_COMPONENTS=apps` (runs all `deploy_*.sh`)
 - `apps=quiz` runs `scripts/provision.sh` with `PROVISION_COMPONENTS=quiz`

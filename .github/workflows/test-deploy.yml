@@ -1,0 +1,91 @@
+name: Test Deployment
+
+on:
+  pull_request:
+    paths:
+      - "app/api/**"
+      - "app/quiz/**"
+      - "configs/nginx/**"
+      - "scripts/ci/**"
+      - "scripts/deploy_*.sh"
+      - "scripts/lib/**"
+      - "scripts/provision.sh"
+      - "scripts/qemu.sh"
+      - "scripts/setup_nginx.sh"
+      - "scripts/setup_postgresql.sh"
+      - "scripts/create_github_workflow_user.sh"
+      - "tests/deploy/**"
+      - ".github/workflows/deploy-apps.yml"
+      - ".github/workflows/setup-nginx.yml"
+      - ".github/workflows/setup-postgresql.yml"
+      - ".github/workflows/test-deploy.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "app/api/**"
+      - "app/quiz/**"
+      - "configs/nginx/**"
+      - "scripts/ci/**"
+      - "scripts/deploy_*.sh"
+      - "scripts/lib/**"
+      - "scripts/provision.sh"
+      - "scripts/qemu.sh"
+      - "scripts/setup_nginx.sh"
+      - "scripts/setup_postgresql.sh"
+      - "scripts/create_github_workflow_user.sh"
+      - "tests/deploy/**"
+      - ".github/workflows/deploy-apps.yml"
+      - ".github/workflows/setup-nginx.yml"
+      - ".github/workflows/setup-postgresql.yml"
+      - ".github/workflows/test-deploy.yml"
+
+jobs:
+  test-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check shell syntax
+        run: bash -n scripts/*.sh scripts/ci/*.sh scripts/lib/*.sh tests/deploy/*.sh
+
+      - name: Check atomic app replacement
+        run: bash tests/deploy/atomic_deploy.sh
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/quiz/package-lock.json
+
+      - name: Build quiz
+        working-directory: app/quiz
+        run: |
+          npm ci
+          npm run build
+          test -f dist/index.html
+
+      - name: Install Nginx for config validation
+        run: |
+          if ! command -v nginx >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq nginx
+          fi
+
+      - name: Check rendered Nginx config
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          template = Path('configs/nginx/softerr.conf.template').read_text()
+          site = template.replace('__PHP_FPM_SOCK__', '/run/php/php-fpm.sock')
+          assert '__PHP_FPM_SOCK__' not in site
+          Path('/tmp/softerr-nginx-test.conf').write_text('events {}\nhttp {\n' + site + '\n}\n')
+          PY
+          sudo install -m 644 /tmp/softerr-nginx-test.conf /etc/nginx/softerr-ci.conf
+          trap 'sudo rm -f /etc/nginx/softerr-ci.conf' EXIT
+          sudo nginx -t -c /etc/nginx/softerr-ci.conf
