@@ -18,6 +18,13 @@ location = /api {
     return 301 /api/;
 }
 
+location ~ ^/api/auth/signup/*$ {
+    client_max_body_size 4k;
+    limit_req zone=softerr_signup burst=20 nodelay;
+    limit_req_status 429;
+    try_files $uri /api/index.php?$query_string;
+}
+
 location /api/ {
     root /var/www;
     index index.php;

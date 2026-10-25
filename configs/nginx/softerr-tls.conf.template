@@ -1,3 +1,5 @@
+limit_req_zone $binary_remote_addr zone=softerr_signup:10m rate=20r/m;
+
 server {
     listen 80 default_server;
     listen [::]:80 default_server;

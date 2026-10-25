@@ -42,7 +42,11 @@ Request body:
 Validation rules:
 - `username`, `password`, `email` are required.
 - `username` max length is `100`.
+- `password` max length is `1024` bytes.
 - `email` must be a valid email format.
+- `email` max length is `255` characters.
+- The signup request body must be at most `4096` bytes.
+- Public signup requests are limited per client IP to 20 per minute, with a burst allowance of 20.
 - `verified` is always controlled by backend (not accepted from user).
 
 Timezone for verification email expiry is resolved automatically in this order:
@@ -79,7 +83,11 @@ Common errors:
 - `400 {"error":"Invalid JSON body"}`
 - `400 {"error":"username, password and email are required"}`
 - `400 {"error":"username must be at most 100 characters"}`
+- `400 {"error":"password must be at most 1024 bytes"}`
+- `400 {"error":"email must be at most 255 characters"}`
 - `400 {"error":"email is invalid"}`
+- `413` when the request body exceeds `4096` bytes
+- `429` when the signup rate limit is exceeded
 - `409 {"error":"username or email already exists"}`
 - `500 {"error":"Database connection failed"}`
 - `500 {"error":"DB_PASSWORD is not configured"}`

@@ -77,15 +77,24 @@ function handleReadiness(): never
 
 function handleSignup(): never
 {
-    $rawBody = file_get_contents('php://input');
+    $rawBody = file_get_contents('php://input', false, null, 0, 4097);
+    if ($rawBody === false || strlen($rawBody) > 4096) {
+        respond(413, ['error' => 'Request body is too large']);
+    }
     $payload = json_decode($rawBody ?: '', true);
     if (!is_array($payload)) {
         respond(400, ['error' => 'Invalid JSON body']);
     }
 
-    $username = trim((string)($payload['username'] ?? ''));
-    $password = (string)($payload['password'] ?? '');
-    $email = strtolower(trim((string)($payload['email'] ?? '')));
+    if (!is_string($payload['username'] ?? null)
+        || !is_string($payload['password'] ?? null)
+        || !is_string($payload['email'] ?? null)) {
+        respond(400, ['error' => 'username, password and email are required']);
+    }
+
+    $username = trim($payload['username']);
+    $password = $payload['password'];
+    $email = strtolower(trim($payload['email']));
     $timezone = detectUserTimezone($payload);
 
     if ($username === '' || $password === '' || $email === '') {
@@ -94,16 +103,17 @@ function handleSignup(): never
     if (strlen($username) > 100) {
         respond(400, ['error' => 'username must be at most 100 characters']);
     }
+    if (strlen($password) > 1024) {
+        respond(400, ['error' => 'password must be at most 1024 bytes']);
+    }
+    if (strlen($email) > 255) {
+        respond(400, ['error' => 'email must be at most 255 characters']);
+    }
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         respond(400, ['error' => 'email is invalid']);
     }
     if (appBaseUrl() === null) {
         respond(503, ['error' => 'Verification email is not configured']);
-    }
-
-    $passwordHash = password_hash($password, PASSWORD_DEFAULT);
-    if ($passwordHash === false) {
-        respond(500, ['error' => 'Failed to hash password']);
     }
 
     $db = connectDb();
@@ -121,6 +131,11 @@ function handleSignup(): never
     }
     if (pg_fetch_assoc($duplicateCheckResult) !== false) {
         respond(409, ['error' => 'username or email already exists']);
+    }
+
+    $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+    if ($passwordHash === false) {
+        respond(500, ['error' => 'Failed to hash password']);
     }
 
     if (@pg_query($db, 'BEGIN') === false) {
