@@ -20,31 +20,30 @@ sudo bash scripts/create_github_workflow_user.sh
 What this configures:
 - Creates SSH user `github-workflow` (if missing)
 - Adds an SSH public key to `/home/github-workflow/.ssh/authorized_keys`
-- Creates sudoers rules for scripts under `/tmp/workflow-artifacts/runs/<run-id>-<attempt>/scripts/` (and the legacy shared path)
+- Creates sudoers rules for scripts under `/tmp/workflow-artifacts/runs/<run-id>-<attempt>/scripts/`
 
 The workflow user can upload scripts into those directories and run them as root. Treat its SSH private key as a root credential. The bootstrap creates a dedicated keypair by default; it no longer reuses an administrator's personal or root SSH key. `--pubkey` and `--pubkey-file` remain available when you supply a dedicated key yourself.
 
-If the workflow user already exists, rerun this bootstrap script before using the updated workflows so its sudoers rule includes run-specific paths.
+If the workflow user already exists, rerun this bootstrap script before using the updated workflows so its sudoers rule allows only run-specific paths.
 Rerunning adds the dedicated public key but does not remove older keys. After switching the GitHub secret, remove any obsolete personal keys from the workflow user's `authorized_keys`.
 
 ## 2. Configure SSH key for GitHub Actions
 
-You must set `SERVER_SSH_KEY` to a private key matching the public key installed by step 1.
+Set `SERVER_SSH_KEY_B64` to the base64-encoded private key matching the public key installed by step 1. Raw multi-line content in `SERVER_SSH_KEY` is also supported.
 
-If script output says it generated a keypair, print private key from server:
+If the bootstrap generated a keypair, print its base64 value on the server:
 
 ```bash
-sudo cat /root/.ssh/github-workflow_github_actions_ed25519
+sudo base64 -w 0 /root/.ssh/github-workflow_github_actions_ed25519
 ```
 
-Copy that full output into the `production` environment secret `SERVER_SSH_KEY`.
-Recommended alternative (less formatting risk): set `SERVER_SSH_KEY_B64` as a `production` environment secret with the base64-encoded private key.
+Copy that output into the `production` environment secret `SERVER_SSH_KEY_B64`.
 
 If you supplied `--pubkey` or `--pubkey-file`, use the matching dedicated private key.
 
-`SERVER_SSH_KEY` format notes:
-- Recommended: paste raw multi-line private key, including `-----BEGIN ... PRIVATE KEY-----` and `-----END ... PRIVATE KEY-----`.
-- Alternative: base64-encode the private key and store that string in `SERVER_SSH_KEY`.
+SSH key format notes:
+- Paste raw multi-line private key, including `-----BEGIN ... PRIVATE KEY-----` and `-----END ... PRIVATE KEY-----`.
+- Store base64 content only in `SERVER_SSH_KEY_B64`. If `SERVER_SSH_KEY` currently contains base64 or literal `\n` escapes, migrate it to one of the supported formats before updating the workflow.
 - The key must be unencrypted (no passphrase), because workflow runs non-interactively.
 
 ## 3. Protect deployment access and add secrets
@@ -59,7 +58,7 @@ Secret names used by the workflows:
 - `SERVER_HOST`: server IP or domain
 - `SERVER_USER`: `github-workflow`
 - `SERVER_SSH_KEY_B64`: base64 of private SSH key (recommended)
-- `SERVER_SSH_KEY`: private SSH key (multi-line content, fallback)
+- `SERVER_SSH_KEY`: raw multi-line private SSH key (alternative)
 - `SERVER_PORT`: optional SSH port (default `22`)
 - `POSTGRES_AUTH_API_PASSWORD`: DB password for `auth_api` role
 - `API_DB_PASSWORD`: API runtime DB password (use same value as `POSTGRES_AUTH_API_PASSWORD`)
@@ -86,7 +85,11 @@ Place executable scripts in repository `scripts/` directory, for example:
 - `scripts/deploy_quiz.sh`
 
 Each GitHub workflow run stages files under `/tmp/workflow-artifacts/runs/<run-id>-<attempt>` and removes that directory after the remote script runs. Concurrent uploads use separate directories.
-For manual use of the CI helper scripts, set the same unique `REMOTE_DIR` for both upload and execution; the manual default remains the legacy shared path.
+For manual use of the CI helper scripts, set the same unique `REMOTE_DIR` for both upload and execution. There is no shared-directory default:
+
+```bash
+export REMOTE_DIR="/tmp/workflow-artifacts/runs/$(date +%s)-${RANDOM}"
+```
 
 Deploy apps workflow uploads:
 - `scripts/provision.sh` and only the selected app's deploy script(s)
@@ -135,6 +138,7 @@ Execution:
 Database creation behavior:
 - Script executes `configs/postgresql/init.sql`
 - API role `auth_api` password is set from `POSTGRES_AUTH_API_PASSWORD`
+- Existing `user_token` tables receive the `email_attempted_at` column if it is missing
 
 This workflow requires GitHub secret:
 - `POSTGRES_AUTH_API_PASSWORD`

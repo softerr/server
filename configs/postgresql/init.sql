@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS public.user_token (
     email_attempted_at TIMESTAMP
 );
 
+-- CREATE TABLE IF NOT EXISTS does not add columns to an existing table.
+ALTER TABLE public.user_token
+    ADD COLUMN IF NOT EXISTS email_attempted_at TIMESTAMP;
+
 GRANT CONNECT ON DATABASE auth TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, UPDATE ON TABLE public."user" TO auth_api;

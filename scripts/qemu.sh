@@ -390,15 +390,7 @@ case "${SCRIPT_REL}" in
       bash "${SCRIPT_REL}"
     ;;
   scripts/deploy_quiz.sh)
-    mkdir -p /tmp/workflow-artifacts
-    if command -v rsync >/dev/null 2>&1; then
-      rsync -a --delete /home/ubuntu/server/app/ /tmp/workflow-artifacts/app/
-    else
-      rm -rf /tmp/workflow-artifacts/app
-      mkdir -p /tmp/workflow-artifacts/app
-      cp -a /home/ubuntu/server/app/. /tmp/workflow-artifacts/app/
-    fi
-    sudo bash "${SCRIPT_REL}"
+    sudo QUIZ_DIST_DIR="${PWD}/app/quiz/dist" bash "${SCRIPT_REL}"
     ;;
   *)
     sudo bash "${SCRIPT_REL}"

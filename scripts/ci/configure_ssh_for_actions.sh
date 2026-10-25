@@ -18,26 +18,7 @@ if [[ -n "${SERVER_SSH_KEY_B64:-}" ]]; then
     exit 1
   fi
 else
-  RAW_KEY="$(printf '%s' "${SERVER_SSH_KEY:-}" | tr -d '\r')"
-  RAW_KEY="${RAW_KEY#\"}"
-  RAW_KEY="${RAW_KEY%\"}"
-  RAW_KEY="${RAW_KEY#\'}"
-  RAW_KEY="${RAW_KEY%\'}"
-
-  if [[ -z "$RAW_KEY" ]]; then
-    echo "SERVER_SSH_KEY is empty."
-    exit 1
-  fi
-
-  if [[ "$RAW_KEY" == *"BEGIN "*"PRIVATE KEY"* ]]; then
-    RAW_KEY="${RAW_KEY//\\n/$'\n'}"
-    printf '%s' "$RAW_KEY" > "$KEY_PATH"
-  else
-    if ! printf '%s' "$RAW_KEY" | tr -d '\n ' | base64 -d > "$KEY_PATH" 2>/dev/null; then
-      echo "SERVER_SSH_KEY is neither a raw private key nor valid base64-encoded key content."
-      exit 1
-    fi
-  fi
+  printf '%s\n' "$SERVER_SSH_KEY" | tr -d '\r' > "$KEY_PATH"
 fi
 
 if [[ ! -s "$KEY_PATH" ]]; then
@@ -47,7 +28,7 @@ fi
 
 chmod 600 "$KEY_PATH"
 if ! ssh-keygen -y -f "$KEY_PATH" >/dev/null 2>&1; then
-  echo "Invalid SSH key secret. Set SERVER_SSH_KEY_B64 (recommended) or SERVER_SSH_KEY."
+  echo "Invalid SSH key secret. SERVER_SSH_KEY_B64 must be base64; SERVER_SSH_KEY must be raw multiline key content."
   exit 1
 fi
 

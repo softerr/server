@@ -124,7 +124,7 @@ fi
 SUDOERS_FILE="/etc/sudoers.d/${WORKFLOW_USER}-workflow-scripts"
 TMP_SUDOERS="$(mktemp)"
 cat > "${TMP_SUDOERS}" <<EOF
-${WORKFLOW_USER} ALL=(root) NOPASSWD:SETENV: /bin/bash ${SCRIPTS_DIR}/scripts/*.sh, /usr/bin/bash ${SCRIPTS_DIR}/scripts/*.sh, /bin/bash ${SCRIPTS_DIR}/runs/*/scripts/*.sh, /usr/bin/bash ${SCRIPTS_DIR}/runs/*/scripts/*.sh
+${WORKFLOW_USER} ALL=(root) NOPASSWD:SETENV: /bin/bash ${SCRIPTS_DIR}/runs/*/scripts/*.sh, /usr/bin/bash ${SCRIPTS_DIR}/runs/*/scripts/*.sh
 EOF
 
 if command -v visudo >/dev/null 2>&1; then
@@ -136,18 +136,12 @@ rm -f "${TMP_SUDOERS}"
 
 echo "Configured sudoers: ${SUDOERS_FILE}"
 echo "User '${WORKFLOW_USER}' can run:"
-echo "  sudo bash ${SCRIPTS_DIR}/scripts/<script>.sh"
 echo "  sudo bash ${SCRIPTS_DIR}/runs/<run-id>-<attempt>/scripts/<script>.sh"
 echo "This SSH key grants effective root access: the user can upload scripts that sudo runs as root."
 
 if [[ -n "${GENERATED_PRIVATE_KEY}" ]]; then
   echo
-  echo "Set GitHub secret SERVER_SSH_KEY to the private key content from:"
-  echo "  ${GENERATED_PRIVATE_KEY}"
-  echo
-  echo "Command to print it:"
-  echo "  cat ${GENERATED_PRIVATE_KEY}"
-  echo
-  echo "Recommended: set SERVER_SSH_KEY_B64 with:"
+  echo "Set GitHub production environment secret SERVER_SSH_KEY_B64 with:"
   echo "  base64 -w 0 ${GENERATED_PRIVATE_KEY}"
+  echo "Alternatively, set SERVER_SSH_KEY to the raw multi-line content of ${GENERATED_PRIVATE_KEY}."
 fi
