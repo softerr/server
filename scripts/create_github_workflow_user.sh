@@ -11,13 +11,12 @@ Options:
   --user <name>             SSH user to create (default: github-workflow)
   --pubkey <key>            Public key content (optional override)
   --pubkey-file <path>      Path to public key file (optional override)
-  --scripts-dir <path>      Directory of allowed scripts (default: /tmp/workflow-artifacts)
+  --scripts-dir <path>      Directory of staged scripts (default: /tmp/workflow-artifacts)
   -h, --help                Show help
 
 No-argument mode:
-  1) Tries SSH public key from invoking user (~/.ssh/*.pub)
-  2) Falls back to root key (~root/.ssh/*.pub)
-  3) If none found, generates a dedicated keypair under /root/.ssh/
+  Generates or reuses a dedicated deployment keypair under /root/.ssh/.
+  This key grants effective root access because its user can upload scripts run with sudo.
 EOF
 }
 
@@ -76,36 +75,16 @@ if [[ -n "${PUBLIC_KEY_FILE}" ]]; then
 fi
 
 if [[ -z "${PUBLIC_KEY}" ]]; then
-  SOURCE_HOME="/root"
-  if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER}" != "root" ]]; then
-    SOURCE_HOME="$(getent passwd "${SUDO_USER}" | cut -d: -f6)"
-  fi
-
-  for key_file in \
-    "${SOURCE_HOME}/.ssh/id_ed25519.pub" \
-    "${SOURCE_HOME}/.ssh/id_rsa.pub" \
-    "${SOURCE_HOME}/.ssh/id_ecdsa.pub" \
-    "${SOURCE_HOME}/.ssh/id_dsa.pub" \
-    /root/.ssh/id_ed25519.pub \
-    /root/.ssh/id_rsa.pub \
-    /root/.ssh/id_ecdsa.pub \
-    /root/.ssh/id_dsa.pub
-  do
-    if [[ -f "${key_file}" ]]; then
-      PUBLIC_KEY="$(cat "${key_file}")"
-      echo "Using public key: ${key_file}"
-      break
-    fi
-  done
-fi
-
-if [[ -z "${PUBLIC_KEY}" ]]; then
+  install -d -m 700 /root/.ssh
   GEN_BASE="/root/.ssh/${WORKFLOW_USER}_github_actions_ed25519"
   if [[ ! -f "${GEN_BASE}" ]]; then
     ssh-keygen -t ed25519 -N "" -C "${WORKFLOW_USER}@github-actions" -f "${GEN_BASE}" >/dev/null
     echo "Generated new keypair: ${GEN_BASE}"
   else
     echo "Reusing existing generated keypair: ${GEN_BASE}"
+  fi
+  if [[ ! -f "${GEN_BASE}.pub" ]]; then
+    ssh-keygen -y -f "${GEN_BASE}" > "${GEN_BASE}.pub"
   fi
   PUBLIC_KEY="$(cat "${GEN_BASE}.pub")"
   GENERATED_PRIVATE_KEY="${GEN_BASE}"
@@ -159,6 +138,7 @@ echo "Configured sudoers: ${SUDOERS_FILE}"
 echo "User '${WORKFLOW_USER}' can run:"
 echo "  sudo bash ${SCRIPTS_DIR}/scripts/<script>.sh"
 echo "  sudo bash ${SCRIPTS_DIR}/runs/<run-id>-<attempt>/scripts/<script>.sh"
+echo "This SSH key grants effective root access: the user can upload scripts that sudo runs as root."
 
 if [[ -n "${GENERATED_PRIVATE_KEY}" ]]; then
   echo

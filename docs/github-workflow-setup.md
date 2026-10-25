@@ -22,7 +22,10 @@ What this configures:
 - Adds an SSH public key to `/home/github-workflow/.ssh/authorized_keys`
 - Creates sudoers rules for scripts under `/tmp/workflow-artifacts/runs/<run-id>-<attempt>/scripts/` (and the legacy shared path)
 
+The workflow user can upload scripts into those directories and run them as root. Treat its SSH private key as a root credential. The bootstrap creates a dedicated keypair by default; it no longer reuses an administrator's personal or root SSH key. `--pubkey` and `--pubkey-file` remain available when you supply a dedicated key yourself.
+
 If the workflow user already exists, rerun this bootstrap script before using the updated workflows so its sudoers rule includes run-specific paths.
+Rerunning adds the dedicated public key but does not remove older keys. After switching the GitHub secret, remove any obsolete personal keys from the workflow user's `authorized_keys`.
 
 ## 2. Configure SSH key for GitHub Actions
 
@@ -34,21 +37,25 @@ If script output says it generated a keypair, print private key from server:
 sudo cat /root/.ssh/github-workflow_github_actions_ed25519
 ```
 
-Copy that full output into GitHub secret `SERVER_SSH_KEY`.
-Recommended alternative (less formatting risk): set `SERVER_SSH_KEY_B64` with base64-encoded private key.
+Copy that full output into the `production` environment secret `SERVER_SSH_KEY`.
+Recommended alternative (less formatting risk): set `SERVER_SSH_KEY_B64` as a `production` environment secret with the base64-encoded private key.
 
-If script output says it used an existing public key (for example `Using public key: ...`), use the matching private key for that public key as `SERVER_SSH_KEY`.
+If you supplied `--pubkey` or `--pubkey-file`, use the matching dedicated private key.
 
 `SERVER_SSH_KEY` format notes:
 - Recommended: paste raw multi-line private key, including `-----BEGIN ... PRIVATE KEY-----` and `-----END ... PRIVATE KEY-----`.
 - Alternative: base64-encode the private key and store that string in `SERVER_SSH_KEY`.
 - The key must be unencrypted (no passphrase), because workflow runs non-interactively.
 
-## 3. Add repository secrets
+## 3. Protect deployment access and add secrets
 
-In GitHub repo: `Settings -> Secrets and variables -> Actions -> New repository secret`
+Create a `production` environment in the repository's `Settings -> Environments`. The Nginx, PostgreSQL, and app deployment jobs reference it. Restrict deployment to the intended branch and require a reviewer where your GitHub plan supports that rule. An environment name alone does not enforce a review or branch restriction.
 
-Create:
+Store `SERVER_SSH_KEY_B64` (or `SERVER_SSH_KEY`) as a **production environment secret**, then remove any repository-scoped copy of that private key. Repository secrets remain available to other workflows, while an environment secret is released to its jobs only after the environment's configured protection rules pass.
+
+Create the remaining values under `Settings -> Secrets and variables -> Actions`, using environment secrets for production-only credentials:
+
+Secret names used by the workflows:
 - `SERVER_HOST`: server IP or domain
 - `SERVER_USER`: `github-workflow`
 - `SERVER_SSH_KEY_B64`: base64 of private SSH key (recommended)

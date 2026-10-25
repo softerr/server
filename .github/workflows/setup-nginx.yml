@@ -6,6 +6,7 @@ on:
 jobs:
   setup-nginx:
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Checkout repository
