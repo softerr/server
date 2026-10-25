@@ -104,6 +104,8 @@ Request body:
 {"email":"john@example.com"}
 ```
 
+The email must be at most 255 characters, and the request body must be at most 4096 bytes. Public resend requests are limited per client IP to 10 per minute, with a burst allowance of 10. Oversized email values return `400`, oversized bodies return `413`, and requests over the rate limit return `429`.
+
 Returns `202 Accepted` with the same message whether the account exists, is already verified, or is eligible for another email. For an unverified account, a new request is allowed after one minute. A token with less than ten minutes remaining is replaced before queuing. The optional timezone inputs follow the signup rules above.
 If `APP_BASE_URL` is missing or invalid, the endpoint returns `503` before accessing the database.
 
