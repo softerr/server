@@ -107,39 +107,41 @@ Export tokens to CSV:
 sudo -u postgres psql -d auth -c "\copy (SELECT * FROM public.user_token ORDER BY id) TO '/tmp/auth_user_token.csv' CSV HEADER"
 ```
 
-## 6. Full database backup
+## 6. Verified database backups
 
-Create compressed custom backup:
+PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after 03:00 server time, makes a custom-format dump of `auth`, restores the dump into a temporary database, checks the expected tables, and only then publishes the archive under `/var/backups/softerr`. The directory is accessible only to `postgres` and root. Verified archives are kept for 30 days. A failed dump or restore leaves earlier backups in place and makes the service fail. Keep enough free disk space for both the archive and a temporary restored copy of the database.
 
-```bash
-sudo -u postgres pg_dump -Fc -d auth -f /tmp/auth_$(date +%F_%H-%M-%S).dump
-```
-
-Create plain SQL backup:
+Check the timer, run a backup now, and inspect the result:
 
 ```bash
-sudo -u postgres pg_dump -d auth > /tmp/auth_$(date +%F_%H-%M-%S).sql
+sudo systemctl list-timers softerr-backup-postgresql.timer
+sudo systemctl start softerr-backup-postgresql.service
+sudo journalctl -u softerr-backup-postgresql.service -n 100 --no-pager
+sudo ls -lh /var/backups/softerr/*.dump
 ```
 
-## 7. Restore database backup
+These are local backups. Copy them to storage outside the server for protection against host or disk loss. Preserve the archive's restricted access because it contains account data and password hashes. The database role and password also need to be recreated from the bootstrap and setup workflow during disaster recovery.
 
-From custom backup (`.dump`):
+## 7. Restore a backup for inspection
+
+The scheduled job performs a full restore check automatically. To inspect a selected archive manually, restore it into a separate database, then remove that database when finished:
 
 ```bash
-sudo -u postgres pg_restore -d auth --clean --if-exists /tmp/auth_YYYY-MM-DD_HH-MM-SS.dump
+sudo -u postgres createdb -T template0 auth_recovery_check
+sudo -u postgres pg_restore --exit-on-error -d auth_recovery_check /var/backups/softerr/AUTH_ARCHIVE.dump
+sudo -u postgres psql -d auth_recovery_check -c 'SELECT COUNT(*) FROM public."user";'
+sudo -u postgres dropdb auth_recovery_check
 ```
 
-From SQL backup (`.sql`):
-
-```bash
-sudo -u postgres psql -d auth -f /tmp/auth_YYYY-MM-DD_HH-MM-SS.sql
-```
+This does not modify the live `auth` database. For a production recovery, keep the application stopped while validating and switching databases.
 
 ## 8. Timers and redeployment
 
 Use **Set Up Server** for first-time setup. For later changes, run **Setup PostgreSQL On Server**, **Setup Nginx On Server**, or **Deploy Apps On Server** in GitHub Actions. These workflows upload the required files and use the same production environment values.
 
 PostgreSQL setup installs `softerr-prune-user-tokens.timer` to remove expired verification tokens daily. Check its next run with `systemctl list-timers softerr-prune-user-tokens.timer`, or run cleanup immediately with `sudo systemctl start softerr-prune-user-tokens.service`.
+
+The backup timer is installed by the same setup workflow and performs a restore check after each dump. Investigate failures with `sudo journalctl -u softerr-backup-postgresql.service -n 100 --no-pager`.
 
 Nginx setup installs `softerr-send-email.timer` to deliver queued verification emails every minute. Check it with `systemctl list-timers softerr-send-email.timer` and inspect delivery failures with `sudo journalctl -u softerr-send-email.service -n 100 --no-pager`.
 

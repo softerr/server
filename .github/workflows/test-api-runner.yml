@@ -29,6 +29,7 @@ on:
       - "configs/nginx/**"
       - "configs/systemd/**"
       - "scripts/setup_postgresql.sh"
+      - "scripts/backup_postgresql.sh"
       - "scripts/setup_nginx.sh"
       - "tests/db/**"
       - ".github/workflows/test-api-runner.yml"
@@ -44,6 +45,7 @@ on:
       - "configs/nginx/**"
       - "configs/systemd/**"
       - "scripts/setup_postgresql.sh"
+      - "scripts/backup_postgresql.sh"
       - "scripts/setup_nginx.sh"
       - "tests/db/**"
       - ".github/workflows/test-api-runner.yml"
@@ -140,10 +142,18 @@ jobs:
       - name: Check expired-token pruning
         run: bash tests/db/prune_user_tokens.sh
 
+      - name: Check verified database backup
+        run: |
+          set -euo pipefail
+          sudo systemctl start softerr-backup-postgresql.service
+          sudo -u postgres sh -c 'find /var/backups/softerr -maxdepth 1 -type f -name "auth-*.dump" | grep -q .'
+          test "$(sudo -u postgres psql -X -Atqc "SELECT count(*) FROM pg_database WHERE datname LIKE 'softerr_restore_check_%'")" = 0
+
       - name: Print service logs on failure
         if: failure()
         run: |
           sudo journalctl -u nginx --no-pager -n 300 || true
           sudo journalctl -u postgresql --no-pager -n 300 || true
           sudo journalctl -u softerr-prune-user-tokens.service --no-pager -n 100 || true
+          sudo journalctl -u softerr-backup-postgresql.service --no-pager -n 100 || true
           sudo journalctl -u softerr-send-email.service --no-pager -n 100 || true

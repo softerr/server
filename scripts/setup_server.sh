@@ -74,6 +74,7 @@ systemctl is-active --quiet nginx
 systemctl is-active --quiet postgresql
 systemctl is-active --quiet softerr-send-email.timer
 systemctl is-active --quiet softerr-prune-user-tokens.timer
+systemctl is-active --quiet softerr-backup-postgresql.timer
 
 check_https_route() {
   local route="$1"

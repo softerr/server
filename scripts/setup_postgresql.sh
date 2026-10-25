@@ -13,6 +13,9 @@ INIT_SQL_FILE="${REPO_ROOT}/configs/postgresql/init.sql"
 PRUNE_SQL_FILE="${REPO_ROOT}/configs/postgresql/prune_user_tokens.sql"
 PRUNE_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.service"
 PRUNE_TIMER_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.timer"
+BACKUP_SCRIPT_FILE="${SCRIPT_DIR}/backup_postgresql.sh"
+BACKUP_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-backup-postgresql.service"
+BACKUP_TIMER_FILE="${REPO_ROOT}/configs/systemd/softerr-backup-postgresql.timer"
 
 if ! command -v apt-get >/dev/null 2>&1; then
   echo "This script currently supports Debian/Ubuntu systems (apt-get required)."
@@ -25,9 +28,10 @@ if [[ ! -f "${INIT_SQL_FILE}" ]]; then
   exit 1
 fi
 
-for config_file in "${PRUNE_SQL_FILE}" "${PRUNE_SERVICE_FILE}" "${PRUNE_TIMER_FILE}"; do
+for config_file in "${PRUNE_SQL_FILE}" "${PRUNE_SERVICE_FILE}" "${PRUNE_TIMER_FILE}" \
+  "${BACKUP_SCRIPT_FILE}" "${BACKUP_SERVICE_FILE}" "${BACKUP_TIMER_FILE}"; do
   if [[ ! -f "${config_file}" ]]; then
-    echo "Required token-pruning file not found: ${config_file}"
+    echo "Required PostgreSQL setup file not found: ${config_file}"
     exit 1
   fi
 done
@@ -100,6 +104,16 @@ install -m 644 "${PRUNE_SERVICE_FILE}" /etc/systemd/system/softerr-prune-user-to
 install -m 644 "${PRUNE_TIMER_FILE}" /etc/systemd/system/softerr-prune-user-tokens.timer
 systemctl daemon-reload
 systemctl enable --now softerr-prune-user-tokens.timer
+
+echo "Installing verified database backup timer..."
+install -d -m 755 /usr/local/lib/softerr
+install -d -o postgres -g postgres -m 700 /var/backups/softerr
+install -m 755 "${BACKUP_SCRIPT_FILE}" /usr/local/lib/softerr/backup_postgresql.sh
+install -m 644 "${BACKUP_SERVICE_FILE}" /etc/systemd/system/softerr-backup-postgresql.service
+install -m 644 "${BACKUP_TIMER_FILE}" /etc/systemd/system/softerr-backup-postgresql.timer
+systemctl daemon-reload
+systemctl start softerr-backup-postgresql.service
+systemctl enable --now softerr-backup-postgresql.timer
 
 echo "Done."
 echo "PostgreSQL is installed and databases are initialized from ${INIT_SQL_FILE}."

@@ -35,9 +35,9 @@ For verification email delivery, also add your mail provider settings as product
 In GitHub, run **Actions → Set Up Server → Run workflow**. It builds the quiz, uploads the API and configuration, and runs `scripts/setup_server.sh` remotely. The remote script:
 
 1. Serves HTTP temporarily for the certificate challenge and obtains a certificate for the host in `SERVER_HOST`.
-2. Sets up PostgreSQL and the final HTTPS Nginx site.
+2. Sets up PostgreSQL, runs an initial verified backup, and configures the final HTTPS Nginx site.
 3. Deploys the API and quiz.
-4. Checks the database and mail timers, HTTPS quiz page, and API readiness endpoint.
+4. Checks the database backup, token cleanup, and mail timers, HTTPS quiz page, and API readiness endpoint.
 
 The workflow fails at the step that needs attention. Rerunning it reapplies the database schema, Nginx configuration, and apps without deleting user accounts; expired verification tokens are pruned. It reuses a valid certificate with an active renewal timer. Once it succeeds, the site is available over HTTPS at the host in `SERVER_HOST`.
 
