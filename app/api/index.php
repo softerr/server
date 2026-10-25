@@ -12,10 +12,10 @@ function respond(int $statusCode, array $payload): never
 
 require_once __DIR__ . '/mail.php';
 
-function connectDb()
+function openDb(): array
 {
     if (!function_exists('pg_connect')) {
-        respond(500, ['error' => 'PostgreSQL PHP extension is not installed']);
+        return [false, 'PostgreSQL PHP extension is not installed'];
     }
 
     $host = getenv('DB_HOST') ?: '127.0.0.1';
@@ -25,24 +25,54 @@ function connectDb()
     $password = getenv('DB_PASSWORD') ?: '';
 
     if ($password === '') {
-        respond(500, ['error' => 'DB_PASSWORD is not configured']);
+        return [false, 'DB_PASSWORD is not configured'];
     }
 
     $connectionString = sprintf(
-        'host=%s port=%s dbname=%s user=%s password=%s',
+        'host=%s port=%s dbname=%s user=%s password=%s connect_timeout=3',
         quotePgConnectionValue((string)$host),
         quotePgConnectionValue((string)$port),
         quotePgConnectionValue((string)$dbname),
         quotePgConnectionValue((string)$user),
         quotePgConnectionValue((string)$password)
     );
-    $conn = pg_connect($connectionString);
+    $conn = @pg_connect($connectionString);
 
     if ($conn === false) {
-        respond(500, ['error' => 'Database connection failed']);
+        return [false, 'Database connection failed'];
     }
 
+    return [$conn, null];
+}
+
+function connectDb()
+{
+    [$conn, $error] = openDb();
+    if ($conn === false) {
+        respond(500, ['error' => $error]);
+    }
     return $conn;
+}
+
+function handleReadiness(): never
+{
+    if (appBaseUrl() === null) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Verification email is not configured']);
+    }
+
+    [$db, $error] = openDb();
+    if ($db === false) {
+        respond(503, ['status' => 'unavailable', 'error' => $error]);
+    }
+
+    $schema = @pg_query($db, 'SELECT u.id, u.email, t.hash, t.email_attempted_at, o.token_id, o.available_at
+        FROM public."user" u, public.user_token t, public.verification_email_outbox o
+        LIMIT 0');
+    if ($schema === false) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Database schema is not ready']);
+    }
+
+    respond(200, ['status' => 'ok', 'message' => 'API is ready']);
 }
 
 function handleSignup(): never
@@ -370,7 +400,7 @@ if ($normalizedPath === '/') {
     if ($method !== 'GET') {
         respond(405, ['error' => 'Method not allowed']);
     }
-    respond(200, ['status' => 'ok', 'message' => 'API is working']);
+    handleReadiness();
 }
 
 if ($normalizedPath === '/auth/signup') {

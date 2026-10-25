@@ -16,12 +16,13 @@ Success response:
 ```json
 {
   "status": "ok",
-  "message": "API is working"
+  "message": "API is ready"
 }
 ```
 
 Errors:
 - `405` with `{"error":"Method not allowed"}` for non-`GET` methods.
+- `503` with `status: "unavailable"` when the verification URL, PostgreSQL connection, or required database schema is unavailable. Email transport delivery is handled by the background worker and is not checked here.
 
 ## 2. Signup
 

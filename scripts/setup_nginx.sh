@@ -151,7 +151,8 @@ if [[ ! -f /var/www/api/index.php ]]; then
   cat > /var/www/api/index.php <<'EOF'
 <?php
 header('Content-Type: application/json');
-echo json_encode(['status' => 'ok', 'message' => 'API is working']);
+http_response_code(503);
+echo json_encode(['status' => 'unavailable', 'error' => 'API is not deployed']);
 EOF
 fi
 

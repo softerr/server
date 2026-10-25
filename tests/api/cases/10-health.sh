@@ -4,7 +4,7 @@ test_api_health_get() {
   api_request "GET" "/api/"
   assert_status "200" || return 1
   assert_json_value '.status' 'ok' || return 1
-  assert_json_value '.message' 'API is working' || return 1
+  assert_json_value '.message' 'API is ready' || return 1
 }
 
 test_api_health_method_not_allowed() {

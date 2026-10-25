@@ -30,8 +30,8 @@ echo "API DB name: ${API_TEST_DB_NAME}"
 echo "API require DB token checks: ${API_TEST_REQUIRE_DB}"
 echo "API require email delivery checks: ${API_TEST_REQUIRE_EMAIL}"
 
-if ! curl -sS --connect-timeout 5 --max-time 10 "${API_TEST_BASE_URL%/}/api" >/dev/null; then
-  echo "API precheck failed: cannot reach ${API_TEST_BASE_URL%/}/api"
+if ! curl -fsS --connect-timeout 5 --max-time 10 "${API_TEST_BASE_URL%/}/api" >/dev/null; then
+  echo "API precheck failed: ${API_TEST_BASE_URL%/}/api is not ready"
   echo "Ensure API is running and reachable from this host, then rerun tests."
   exit 1
 fi
