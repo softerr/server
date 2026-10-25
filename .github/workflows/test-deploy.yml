@@ -12,6 +12,7 @@ on:
       - "scripts/provision.sh"
       - "scripts/qemu.sh"
       - "scripts/setup_nginx.sh"
+      - "scripts/setup_tls_certificate.sh"
       - "scripts/setup_postgresql.sh"
       - "scripts/create_github_workflow_user.sh"
       - "tests/deploy/**"
@@ -32,6 +33,7 @@ on:
       - "scripts/provision.sh"
       - "scripts/qemu.sh"
       - "scripts/setup_nginx.sh"
+      - "scripts/setup_tls_certificate.sh"
       - "scripts/setup_postgresql.sh"
       - "scripts/create_github_workflow_user.sh"
       - "tests/deploy/**"
@@ -81,14 +83,38 @@ jobs:
 
       - name: Check rendered Nginx config
         run: |
+          set -euo pipefail
+          TLS_TEST_DIR="$(mktemp -d)"
+          export TLS_TEST_DIR
+          trap 'sudo rm -f /etc/nginx/softerr-http-ci.conf /etc/nginx/softerr-tls-ci.conf /etc/nginx/snippets/softerr-routes.conf; rm -rf -- "${TLS_TEST_DIR}"' EXIT
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj '/CN=example.test' \
+            -keyout "${TLS_TEST_DIR}/key.pem" -out "${TLS_TEST_DIR}/cert.pem" >/dev/null 2>&1
           python3 - <<'PY'
+          import os
           from pathlib import Path
 
-          template = Path('configs/nginx/softerr.conf.template').read_text()
-          site = template.replace('__PHP_FPM_SOCK__', '/run/php/php-fpm.sock')
-          assert '__PHP_FPM_SOCK__' not in site
-          Path('/tmp/softerr-nginx-test.conf').write_text('events {}\nhttp {\n' + site + '\n}\n')
+          tls_dir = Path(os.environ['TLS_TEST_DIR'])
+          routes = Path('configs/nginx/softerr-routes.conf.template').read_text()
+          routes = routes.replace('__PHP_FPM_SOCK__', '/run/php/php-fpm.sock')
+          assert '__PHP_FPM_SOCK__' not in routes
+          (tls_dir / 'routes.conf').write_text(routes)
+          for mode, filename in [('http', 'softerr.conf.template'), ('tls', 'softerr-tls.conf.template')]:
+              template = Path('configs/nginx', filename).read_text()
+              site = (template
+                  .replace('__PHP_FPM_SOCK__', '/run/php/php-fpm.sock')
+                  .replace('__TLS_ORIGIN__', 'https://example.test')
+                  .replace('__TLS_CERT_FILE__', str(tls_dir / 'cert.pem'))
+                  .replace('__TLS_KEY_FILE__', str(tls_dir / 'key.pem')))
+              assert '__TLS_' not in site and '__PHP_FPM_SOCK__' not in site
+              if mode == 'tls':
+                  assert 'listen 443 ssl default_server;' in site
+                  assert 'return 308 https://example.test$request_uri;' in site
+                  assert 'Strict-Transport-Security' in site
+              (tls_dir / f'{mode}.conf').write_text('events {}\nhttp {\n' + site + '\n}\n')
           PY
-          sudo install -m 644 /tmp/softerr-nginx-test.conf /etc/nginx/softerr-ci.conf
-          trap 'sudo rm -f /etc/nginx/softerr-ci.conf' EXIT
-          sudo nginx -t -c /etc/nginx/softerr-ci.conf
+          sudo install -m 644 "${TLS_TEST_DIR}/routes.conf" /etc/nginx/snippets/softerr-routes.conf
+          for mode in http tls; do
+            sudo install -m 644 "${TLS_TEST_DIR}/${mode}.conf" "/etc/nginx/softerr-${mode}-ci.conf"
+            sudo nginx -t -c "/etc/nginx/softerr-${mode}-ci.conf"
+          done

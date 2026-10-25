@@ -154,7 +154,10 @@ PostgreSQL setup installs `softerr-prune-user-tokens.timer` to remove expired ve
 Run only Nginx/PHP setup:
 
 ```bash
-sudo API_DB_PASSWORD='your-password' API_APP_BASE_URL='https://example.com' PROVISION_COMPONENTS='nginx' bash scripts/provision.sh
+sudo API_DB_PASSWORD='your-password' API_APP_BASE_URL='https://example.com' \
+  API_TLS_CERT_FILE='/etc/letsencrypt/live/example.com/fullchain.pem' \
+  API_TLS_KEY_FILE='/etc/letsencrypt/live/example.com/privkey.pem' \
+  PROVISION_COMPONENTS='nginx' bash scripts/provision.sh
 ```
 
 Deploy only API:
@@ -176,13 +179,13 @@ API and quiz deployments prepare a complete directory beside the live app, then 
 Health endpoint:
 
 ```bash
-curl -sS http://127.0.0.1/api
+curl -fsS https://example.com/api/
 ```
 
 Signup test:
 
 ```bash
-curl -sS -X POST http://127.0.0.1/api/auth/signup \
+curl -fsS -X POST https://example.com/api/auth/signup \
   -H 'Content-Type: application/json' \
   -d '{"username":"test_user","password":"test_pass","email":"test@example.com"}'
 ```

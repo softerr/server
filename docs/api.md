@@ -150,7 +150,7 @@ Relevant runtime env vars (from php-fpm):
 - `DB_USER` (default `auth_api`)
 - `DB_PASSWORD` (required)
 - `MAIL_FROM` (default `no-reply@localhost`)
-- `APP_BASE_URL` (required HTTP(S) origin for verification links, with no path, credentials, query, or fragment)
+- `APP_BASE_URL` (required HTTPS origin for verification links; loopback HTTP is allowed for local tests)
 - `SMTP_HOST` (optional, enables SMTP path)
 - `SMTP_PORT` (optional, default `587`)
 - `SMTP_ENCRYPTION` (optional: `tls`, `ssl`, `none`; default `tls`)

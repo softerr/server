@@ -10,20 +10,64 @@ fi
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 CONFIG_TEMPLATE="${NGINX_CONFIG_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr.conf.template}"
+TLS_CONFIG_TEMPLATE="${NGINX_TLS_CONFIG_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr-tls.conf.template}"
+ROUTES_TEMPLATE="${NGINX_ROUTES_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr-routes.conf.template}"
 
 if ! command -v apt-get >/dev/null 2>&1; then
   echo "This script currently supports Debian/Ubuntu systems (apt-get required)."
   exit 1
 fi
 
-if [[ ! -f "${CONFIG_TEMPLATE}" ]]; then
-  echo "Nginx config template not found: ${CONFIG_TEMPLATE}"
-  echo "Expected template path: ../configs/nginx/softerr.conf.template relative to this script."
+if [[ "${API_APP_BASE_URL:-}" =~ ^https://[A-Za-z0-9.-]+/?$ ]]; then
+  CONFIG_TEMPLATE="${TLS_CONFIG_TEMPLATE}"
+  TLS_ORIGIN="${API_APP_BASE_URL%/}"
+  TLS_CERT_FILE="${API_TLS_CERT_FILE:-}"
+  TLS_KEY_FILE="${API_TLS_KEY_FILE:-}"
+  for tls_file in "${TLS_CERT_FILE}" "${TLS_KEY_FILE}"; do
+    if [[ ! "${tls_file}" =~ ^/[A-Za-z0-9_./-]+$ || ! -r "${tls_file}" ]]; then
+      echo "API_TLS_CERT_FILE and API_TLS_KEY_FILE must be readable absolute paths."
+      exit 1
+    fi
+  done
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "OpenSSL is required to validate the TLS certificate."
+    exit 1
+  fi
+  tls_host="${TLS_ORIGIN#https://}"
+  if [[ "${tls_host}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    cert_check_option=-checkip
+    expected_host_check="IP ${tls_host} does match certificate"
+  else
+    cert_check_option=-checkhost
+    expected_host_check="Hostname ${tls_host} does match certificate"
+  fi
+  # openssl x509 -checkhost can exit successfully even when it prints a mismatch.
+  if ! host_check="$(openssl x509 -in "${TLS_CERT_FILE}" -noout "${cert_check_option}" "${tls_host}")" \
+    || [[ "${host_check}" != "${expected_host_check}" ]]; then
+    echo "TLS certificate does not match the API_APP_BASE_URL host."
+    exit 1
+  fi
+  if ! openssl x509 -in "${TLS_CERT_FILE}" -noout -checkend 0 >/dev/null; then
+    echo "TLS certificate is expired."
+    exit 1
+  fi
+  if ! cert_public_key="$(openssl x509 -in "${TLS_CERT_FILE}" -pubkey -noout)" \
+    || ! private_public_key="$(openssl pkey -in "${TLS_KEY_FILE}" -pubout -passin pass:)" \
+    || [[ "${cert_public_key}" != "${private_public_key}" ]]; then
+    echo "TLS private key does not match the certificate."
+    exit 1
+  fi
+elif [[ "${API_APP_BASE_URL:-}" =~ ^http://(localhost|127\.0\.0\.1)(:[0-9]+)?/?$ ]]; then
+  TLS_ORIGIN=""
+  TLS_CERT_FILE=""
+  TLS_KEY_FILE=""
+else
+  echo "API_APP_BASE_URL must use HTTPS for a public host; HTTP is allowed only for localhost or 127.0.0.1."
   exit 1
 fi
 
-if [[ ! "${API_APP_BASE_URL:-}" =~ ^https?://[^/@?#[:space:]]+/?$ ]]; then
-  echo "API_APP_BASE_URL must be an HTTP(S) origin without credentials, path, query, or fragment."
+if [[ ! -f "${CONFIG_TEMPLATE}" || ! -f "${ROUTES_TEMPLATE}" ]]; then
+  echo "Nginx config or routes template not found."
   exit 1
 fi
 
@@ -202,7 +246,13 @@ else
 fi
 
 echo "Writing nginx site config..."
-sed "s|__PHP_FPM_SOCK__|${PHP_SOCK}|g" "${CONFIG_TEMPLATE}" > /etc/nginx/sites-available/softerr
+install -d -m 755 /etc/nginx/snippets
+sed "s|__PHP_FPM_SOCK__|${PHP_SOCK}|g" "${ROUTES_TEMPLATE}" > /etc/nginx/snippets/softerr-routes.conf
+sed \
+  -e "s|__TLS_ORIGIN__|${TLS_ORIGIN}|g" \
+  -e "s|__TLS_CERT_FILE__|${TLS_CERT_FILE}|g" \
+  -e "s|__TLS_KEY_FILE__|${TLS_KEY_FILE}|g" \
+  "${CONFIG_TEMPLATE}" > /etc/nginx/sites-available/softerr
 
 rm -f /etc/nginx/sites-enabled/default
 ln -sfn /etc/nginx/sites-available/softerr /etc/nginx/sites-enabled/softerr

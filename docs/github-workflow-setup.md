@@ -72,12 +72,16 @@ Secret names used by the workflows:
 - `POSTGRES_AUTH_API_PASSWORD`: DB password for `auth_api` role
 - `API_DB_PASSWORD`: API runtime DB password (use same value as `POSTGRES_AUTH_API_PASSWORD`)
 - `API_MAIL_FROM`: optional sender email (example: `no-reply@example.com`)
-- `API_APP_BASE_URL`: required public origin used in verification links (example: `https://example.com`); use HTTPS for a public server
+- `API_APP_BASE_URL`: required HTTPS public origin used in verification links (for example, `https://example.com` or `https://YOUR_PUBLIC_IP`)
 - `API_SMTP_HOST`: optional SMTP host for email delivery (example: `smtp.mailgun.org`)
 - `API_SMTP_PORT`: optional SMTP port (default API behavior: `587`)
 - `API_SMTP_ENCRYPTION`: optional `tls`, `ssl`, or `none` (default API behavior: `tls`)
 - `API_SMTP_USERNAME`: optional SMTP username
 - `API_SMTP_PASSWORD`: optional SMTP password
+
+Set these `production` environment variables to certificate files already present on the server:
+- `API_TLS_CERT_FILE`: full certificate chain (example: `/etc/letsencrypt/live/example.com/fullchain.pem`)
+- `API_TLS_KEY_FILE`: matching private key (example: `/etc/letsencrypt/live/example.com/privkey.pem`)
 
 To generate `SERVER_SSH_KEY_B64` on server:
 
@@ -111,6 +115,16 @@ Deploy apps workflow uploads:
 
 In GitHub: `Actions -> Setup Nginx On Server -> Run workflow`
 
+Ensure the existing Nginx site serves `/var/www/home` over public HTTP on port 80. If using a domain, point its DNS records at the server first. Run this on the server from the repository checkout with either your domain or public IPv4 address; replace `YOUR_PUBLIC_IP` with your own address:
+
+```bash
+sudo bash scripts/setup_tls_certificate.sh YOUR_PUBLIC_IP
+```
+
+The script installs a current Certbot snap, requests the certificate, enables automatic renewal, installs a hook to reload Nginx after renewal, tests renewal, and prints the GitHub secret and variables to set before running this workflow. It removes an older apt-installed Certbot package if present. IP address certificates use Let's Encrypt's `shortlived` profile and are valid for about six days, so working automatic renewal is essential. Certbot may prompt for an email address and agreement to its terms on first use.
+
+Port 80 remains available for ACME HTTP challenges; other HTTP requests redirect to the configured HTTPS origin.
+
 This workflow uploads:
 - `scripts/provision.sh` to the run's `scripts/` directory
 - `scripts/setup_nginx.sh` to the run's `scripts/` directory
@@ -121,7 +135,18 @@ Execution:
 
 This workflow requires GitHub secret:
 - `API_DB_PASSWORD`
-- `API_APP_BASE_URL`
+- `API_APP_BASE_URL` (must be an HTTPS origin)
+
+It also requires the `production` environment variables `API_TLS_CERT_FILE` and `API_TLS_KEY_FILE`. Setup fails if either file is missing or unreadable on the server. Local runner and QEMU setups continue to use HTTP only with a loopback `API_APP_BASE_URL`.
+
+After setup, confirm that HTTP redirects and HTTPS serves the app with HSTS (replace the domain):
+
+```bash
+curl -sSI http://example.com/quiz/
+curl -sSI https://example.com/quiz/
+```
+
+The first response should be `308` with a `Location: https://example.com/quiz/` header. The second should be `200` with a `Strict-Transport-Security` header.
 
 Optional for signup verification email delivery without local MTA:
 - `API_SMTP_HOST`
