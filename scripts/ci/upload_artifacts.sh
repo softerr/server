@@ -31,14 +31,31 @@ case "${MODE}" in
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
     ;;
   apps)
-    if [[ ! -d "${REPO_ROOT}/app" ]]; then
-      echo "Missing app directory in repository."
+    app_list="${APP_LIST:-all}"
+    case "${app_list}" in
+      all|api|quiz) ;;
+      *) echo "Invalid APP_LIST: ${app_list}"; exit 1 ;;
+    esac
+
+    if [[ "${app_list}" == "all" || "${app_list}" == "api" ]] && [[ ! -f "${REPO_ROOT}/app/api/index.php" ]]; then
+      echo "Missing app/api/index.php in repository."
       exit 1
     fi
-    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/app'"
+    if [[ "${app_list}" == "all" || "${app_list}" == "quiz" ]] && [[ ! -f "${REPO_ROOT}/app/quiz/dist/index.html" ]]; then
+      echo "Missing built app/quiz/dist/index.html in repository."
+      exit 1
+    fi
+
+    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/quiz/dist'"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-    scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts"/deploy_*.sh "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-    scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/"
+    if [[ "${app_list}" == "all" || "${app_list}" == "api" ]]; then
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_api.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+      scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/api/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/api/"
+    fi
+    if [[ "${app_list}" == "all" || "${app_list}" == "quiz" ]]; then
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_quiz.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+      scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/quiz/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/quiz/dist/"
+    fi
     ;;
   api-tests)
     ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/tests/api/cases'"

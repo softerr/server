@@ -82,8 +82,9 @@ Each GitHub workflow run stages files under `/tmp/workflow-artifacts/runs/<run-i
 For manual use of the CI helper scripts, set the same unique `REMOTE_DIR` for both upload and execution; the manual default remains the legacy shared path.
 
 Deploy apps workflow uploads:
-- `scripts/deploy_*.sh` to the run's `scripts/` directory
-- `app/*` to the run's `app/` directory
+- `scripts/provision.sh` and only the selected app's deploy script(s)
+- `app/api/*` for API deployments
+- built `app/quiz/dist/*` for quiz deployments
 
 `deploy_quiz.sh` deploys only prebuilt `app/quiz/dist` artifacts from workflow upload. Server-side build is disabled.
 
@@ -145,11 +146,11 @@ Mapping:
 - `api` runs `scripts/deploy_api.sh`
 
 This workflow uploads:
-- `scripts/provision.sh` to the run's `scripts/` directory
-- `scripts/deploy_*.sh` to the run's `scripts/` directory
-- `app/*` to the run's `app/` directory
+- `scripts/provision.sh` and only the selected app's deploy script(s)
+- `app/api/*` when `apps=api` or `apps=all`
+- built `app/quiz/dist/*` when `apps=quiz` or `apps=all`
 
-For `quiz`, build is executed on GitHub runner (`npm ci && npm run build`) before upload.
+For `quiz` and `all`, the quiz build runs on the GitHub runner (`npm ci && npm run build`) before upload. API-only deployments skip the Node build. `node_modules` is never uploaded.
 
 Execution:
 - `apps=all` runs `scripts/provision.sh` with `PROVISION_COMPONENTS=apps` (runs all `deploy_*.sh`)
