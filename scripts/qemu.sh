@@ -259,7 +259,20 @@ ensure_quiz_dist() {
 
 sync_repo_to_vm() {
   echo "Syncing project into VM..."
+  # Hide local env files and delete copies left by earlier syncs.
+  local -a secret_filters=(--filter='H /.qemu.env' --filter='R /.qemu.env')
+  if [[ -f "${QEMU_ENV_FILE}" ]]; then
+    local env_file repo_dir relative_env_file
+    env_file="$(realpath -- "${QEMU_ENV_FILE}")"
+    repo_dir="$(realpath -- "${REPO_ROOT}")"
+    if [[ "${env_file}" == "${repo_dir}/"* ]]; then
+      relative_env_file="${env_file#"${repo_dir}/"}"
+      secret_filters+=(--filter="H /${relative_env_file}" --filter="R /${relative_env_file}")
+    fi
+  fi
+
   rsync -az --delete \
+    "${secret_filters[@]}" \
     --exclude=".git" \
     --exclude=".qemu" \
     --exclude="app/quiz/node_modules" \

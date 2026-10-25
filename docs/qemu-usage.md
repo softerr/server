@@ -16,6 +16,7 @@ cp .qemu.env.example .qemu.env
 Then edit `.qemu.env` with your values (passwords, SMTP, ports, test flags).
 
 `scripts/qemu.sh` auto-loads this file on each run.
+The VM sync excludes this file (including a custom `QEMU_ENV_FILE` inside the repository) and removes copies left by earlier syncs.
 
 Optional override:
 
