@@ -29,20 +29,10 @@ fi
 TARGET_DIR="${API_TARGET_DIR:-/var/www/api}"
 WEB_USER="${WEB_USER:-www-data}"
 WEB_GROUP="${WEB_GROUP:-www-data}"
+source "${SCRIPT_DIR}/lib/atomic_deploy.sh"
 
 echo "Deploying API from: ${SOURCE_DIR}"
-mkdir -p "${TARGET_DIR}"
-
-if command -v rsync >/dev/null 2>&1; then
-  rsync -a --delete "${SOURCE_DIR}/" "${TARGET_DIR}/"
-else
-  find "${TARGET_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} \;
-  cp -a "${SOURCE_DIR}/." "${TARGET_DIR}/"
-fi
-
-chown -R "${WEB_USER}:${WEB_GROUP}" "${TARGET_DIR}"
-find "${TARGET_DIR}" -type d -exec chmod 755 {} \;
-find "${TARGET_DIR}" -type f -exec chmod 644 {} \;
+atomic_deploy_dir "${SOURCE_DIR}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}"
 
 echo "API deployed successfully."
 echo "Source: ${SOURCE_DIR}"

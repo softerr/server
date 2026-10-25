@@ -167,6 +167,8 @@ Deploy only quiz (expects built dist in `app/quiz/dist` or `QUIZ_DIST_DIR` set):
 sudo PROVISION_COMPONENTS='quiz' bash scripts/provision.sh
 ```
 
+API and quiz deployments prepare a complete directory beside the live app, then atomically exchange the two directories. The server needs Python 3 and a Linux filesystem that supports `renameat2` directory exchange; deployment fails without changing the live app if the exchange is unsupported.
+
 ## 9. Quick API check
 
 Health endpoint:

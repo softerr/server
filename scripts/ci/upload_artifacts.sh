@@ -46,8 +46,9 @@ case "${MODE}" in
       exit 1
     fi
 
-    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/quiz/dist'"
+    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/quiz/dist'"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+    scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
     if [[ "${app_list}" == "all" || "${app_list}" == "api" ]]; then
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_api.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
       scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/api/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/api/"

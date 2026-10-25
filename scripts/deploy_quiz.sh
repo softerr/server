@@ -7,33 +7,24 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREBUILT_DIST_DIR="${QUIZ_DIST_DIR:-${REMOTE_DIR:-/tmp/workflow-artifacts}/app/quiz/dist}"
 TARGET_DIR="${QUIZ_TARGET_DIR:-/var/www/quiz}"
 WEB_USER="${WEB_USER:-www-data}"
 WEB_GROUP="${WEB_GROUP:-www-data}"
 
-if [[ ! -d "${PREBUILT_DIST_DIR}" ]]; then
+if [[ ! -f "${PREBUILT_DIST_DIR}/index.html" ]]; then
   echo "Prebuilt quiz artifacts not found: ${PREBUILT_DIST_DIR}"
   echo "Build app/quiz in GitHub Actions first, then upload artifacts."
   echo "Optional override: set QUIZ_DIST_DIR to a valid dist directory."
   exit 1
 fi
 
+source "${SCRIPT_DIR}/lib/atomic_deploy.sh"
 DIST_DIR="${PREBUILT_DIST_DIR}"
 echo "Using prebuilt quiz artifacts: ${DIST_DIR}"
 echo "Deploying to: ${TARGET_DIR}"
-mkdir -p "${TARGET_DIR}"
-
-if command -v rsync >/dev/null 2>&1; then
-  rsync -a --delete "${DIST_DIR}/" "${TARGET_DIR}/"
-else
-  find "${TARGET_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} \;
-  cp -a "${DIST_DIR}/." "${TARGET_DIR}/"
-fi
-
-chown -R "${WEB_USER}:${WEB_GROUP}" "${TARGET_DIR}"
-find "${TARGET_DIR}" -type d -exec chmod 755 {} \;
-find "${TARGET_DIR}" -type f -exec chmod 644 {} \;
+atomic_deploy_dir "${DIST_DIR}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}"
 
 echo "Quiz deployed successfully."
 echo "Artifacts: ${DIST_DIR}"
