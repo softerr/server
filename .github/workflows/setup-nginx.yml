@@ -39,8 +39,6 @@ jobs:
           API_DB_PASSWORD: ${{ secrets.API_DB_PASSWORD }}
           API_MAIL_FROM: ${{ secrets.API_MAIL_FROM }}
           API_APP_BASE_URL: ${{ vars.API_APP_BASE_URL }}
-          API_TLS_CERT_FILE: ${{ vars.API_TLS_CERT_FILE }}
-          API_TLS_KEY_FILE: ${{ vars.API_TLS_KEY_FILE }}
           API_SMTP_HOST: ${{ secrets.API_SMTP_HOST }}
           API_SMTP_PORT: ${{ secrets.API_SMTP_PORT }}
           API_SMTP_ENCRYPTION: ${{ secrets.API_SMTP_ENCRYPTION }}
@@ -56,10 +54,6 @@ jobs:
             echo "Set production environment variable API_APP_BASE_URL to an HTTPS origin."
             exit 1
           fi
-          if [[ -z "${API_TLS_CERT_FILE:-}" || -z "${API_TLS_KEY_FILE:-}" ]]; then
-            echo "Set production environment variables API_TLS_CERT_FILE and API_TLS_KEY_FILE."
-            exit 1
-          fi
-          REQUIRED_ENV_VARS="PROVISION_COMPONENTS,API_DB_PASSWORD,API_APP_BASE_URL,API_TLS_CERT_FILE,API_TLS_KEY_FILE" \
+          REQUIRED_ENV_VARS="PROVISION_COMPONENTS,API_DB_PASSWORD,API_APP_BASE_URL" \
           OPTIONAL_ENV_VARS="API_MAIL_FROM,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD" \
             bash scripts/ci/run_remote_setup.sh provision.sh

@@ -11,6 +11,9 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/tls_certificate.sh"
+
 identifier="${1,,}"
 is_ipv4=false
 if [[ "${identifier}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
@@ -56,16 +59,21 @@ if ! dpkg --compare-versions "${certbot_version}" ge 5.4; then
 fi
 
 echo "Obtaining a certificate for ${identifier}..."
+certbot_account_args=()
+if [[ -n "${TLS_CONTACT_EMAIL:-}" ]]; then
+  certbot_account_args=(--non-interactive --agree-tos --email "${TLS_CONTACT_EMAIL}")
+fi
 if [[ "${is_ipv4}" == true ]]; then
-  "${certbot_bin}" certonly --webroot -w /var/www/home \
+  "${certbot_bin}" certonly "${certbot_account_args[@]}" --webroot -w /var/www/home \
     --preferred-profile shortlived --ip-address "${identifier}" --cert-name "${identifier}"
 else
-  "${certbot_bin}" certonly --webroot -w /var/www/home \
+  "${certbot_bin}" certonly "${certbot_account_args[@]}" --webroot -w /var/www/home \
     -d "${identifier}" --cert-name "${identifier}"
 fi
 
-cert_file="/etc/letsencrypt/live/${identifier}/fullchain.pem"
-key_file="/etc/letsencrypt/live/${identifier}/privkey.pem"
+tls_certificate_paths "https://${identifier}" || exit 1
+cert_file="${TLS_CERT_FILE}"
+key_file="${TLS_KEY_FILE}"
 if [[ ! -r "${cert_file}" || ! -r "${key_file}" ]]; then
   echo "Certbot did not create the expected certificate files for ${identifier}." >&2
   exit 1
@@ -88,11 +96,6 @@ fi
 systemctl enable --now snap.certbot.renew.timer
 
 echo "Testing certificate renewal..."
-"${certbot_bin}" renew --dry-run --cert-name "${identifier}"
+"${certbot_bin}" renew --dry-run --non-interactive --cert-name "${identifier}"
 
-echo
-echo "Certificate and renewal are ready. Set these in the GitHub production environment:"
-printf 'Variable API_APP_BASE_URL=https://%s\n' "${identifier}"
-printf 'Variable API_TLS_CERT_FILE=%s\n' "${cert_file}"
-printf 'Variable API_TLS_KEY_FILE=%s\n' "${key_file}"
-echo "Then run the Setup Nginx On Server workflow to enable HTTPS."
+echo "Certificate and renewal are ready for ${identifier}."

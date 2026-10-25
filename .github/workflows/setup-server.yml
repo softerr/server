@@ -1,0 +1,65 @@
+name: Set Up Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-server:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/quiz/package-lock.json
+
+      - name: Build quiz
+        working-directory: app/quiz
+        run: |
+          npm ci
+          npm run build
+          test -f dist/index.html
+
+      - name: Configure SSH
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KEY_B64: ${{ secrets.SERVER_SSH_KEY_B64 }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+        run: bash scripts/ci/configure_ssh_for_actions.sh
+
+      - name: Upload setup files and apps
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+        run: bash scripts/ci/upload_artifacts.sh server
+
+      - name: Set up server and check readiness
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          POSTGRES_AUTH_API_PASSWORD: ${{ secrets.POSTGRES_AUTH_API_PASSWORD }}
+          API_DB_PASSWORD: ${{ secrets.API_DB_PASSWORD }}
+          API_APP_BASE_URL: ${{ vars.API_APP_BASE_URL }}
+          TLS_CONTACT_EMAIL: ${{ vars.TLS_CONTACT_EMAIL }}
+          API_MAIL_FROM: ${{ secrets.API_MAIL_FROM }}
+          API_SMTP_HOST: ${{ secrets.API_SMTP_HOST }}
+          API_SMTP_PORT: ${{ secrets.API_SMTP_PORT }}
+          API_SMTP_ENCRYPTION: ${{ secrets.API_SMTP_ENCRYPTION }}
+          API_SMTP_USERNAME: ${{ secrets.API_SMTP_USERNAME }}
+          API_SMTP_PASSWORD: ${{ secrets.API_SMTP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          REQUIRED_ENV_VARS="POSTGRES_AUTH_API_PASSWORD,API_DB_PASSWORD,API_APP_BASE_URL,TLS_CONTACT_EMAIL" \
+          OPTIONAL_ENV_VARS="API_MAIL_FROM,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD" \
+            bash scripts/ci/run_remote_setup.sh setup_server.sh

@@ -9,6 +9,7 @@ fi
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/lib/tls_certificate.sh"
 CONFIG_TEMPLATE="${NGINX_CONFIG_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr.conf.template}"
 TLS_CONFIG_TEMPLATE="${NGINX_TLS_CONFIG_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr-tls.conf.template}"
 ROUTES_TEMPLATE="${NGINX_ROUTES_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr-routes.conf.template}"
@@ -20,45 +21,10 @@ if ! command -v apt-get >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ "${API_APP_BASE_URL:-}" =~ ^https://[A-Za-z0-9.-]+/?$ ]]; then
+if [[ "${API_APP_BASE_URL:-}" == https://* ]]; then
   CONFIG_TEMPLATE="${TLS_CONFIG_TEMPLATE}"
-  TLS_ORIGIN="${API_APP_BASE_URL%/}"
-  TLS_CERT_FILE="${API_TLS_CERT_FILE:-}"
-  TLS_KEY_FILE="${API_TLS_KEY_FILE:-}"
-  for tls_file in "${TLS_CERT_FILE}" "${TLS_KEY_FILE}"; do
-    if [[ ! "${tls_file}" =~ ^/[A-Za-z0-9_./-]+$ || ! -r "${tls_file}" ]]; then
-      echo "API_TLS_CERT_FILE and API_TLS_KEY_FILE must be readable absolute paths."
-      exit 1
-    fi
-  done
-  if ! command -v openssl >/dev/null 2>&1; then
-    echo "OpenSSL is required to validate the TLS certificate."
-    exit 1
-  fi
-  tls_host="${TLS_ORIGIN#https://}"
-  if [[ "${tls_host}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-    cert_check_option=-checkip
-    expected_host_check="IP ${tls_host} does match certificate"
-  else
-    cert_check_option=-checkhost
-    expected_host_check="Hostname ${tls_host} does match certificate"
-  fi
-  # openssl x509 -checkhost can exit successfully even when it prints a mismatch.
-  if ! host_check="$(openssl x509 -in "${TLS_CERT_FILE}" -noout "${cert_check_option}" "${tls_host}")" \
-    || [[ "${host_check}" != "${expected_host_check}" ]]; then
-    echo "TLS certificate does not match the API_APP_BASE_URL host."
-    exit 1
-  fi
-  if ! openssl x509 -in "${TLS_CERT_FILE}" -noout -checkend 0 >/dev/null; then
-    echo "TLS certificate is expired."
-    exit 1
-  fi
-  if ! cert_public_key="$(openssl x509 -in "${TLS_CERT_FILE}" -pubkey -noout)" \
-    || ! private_public_key="$(openssl pkey -in "${TLS_KEY_FILE}" -pubout -passin pass:)" \
-    || [[ "${cert_public_key}" != "${private_public_key}" ]]; then
-    echo "TLS private key does not match the certificate."
-    exit 1
-  fi
+  tls_certificate_paths "${API_APP_BASE_URL}" || exit 1
+  tls_certificate_valid "${TLS_HOST}" "${TLS_CERT_FILE}" "${TLS_KEY_FILE}" || exit 1
 elif [[ "${API_APP_BASE_URL:-}" =~ ^http://(localhost|127\.0\.0\.1)(:[0-9]+)?/?$ ]]; then
   TLS_ORIGIN=""
   TLS_CERT_FILE=""
@@ -282,6 +248,7 @@ sed \
   "${CONFIG_TEMPLATE}" > /etc/nginx/sites-available/softerr
 
 rm -f /etc/nginx/sites-enabled/default
+rm -f /etc/nginx/sites-enabled/softerr-bootstrap
 ln -sfn /etc/nginx/sites-available/softerr /etc/nginx/sites-enabled/softerr
 
 echo "Validating nginx configuration..."

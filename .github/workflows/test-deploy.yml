@@ -13,12 +13,14 @@ on:
       - "scripts/provision.sh"
       - "scripts/qemu.sh"
       - "scripts/setup_nginx.sh"
+      - "scripts/setup_server.sh"
+      - "scripts/bootstrap_server.sh"
       - "scripts/setup_tls_certificate.sh"
       - "scripts/setup_postgresql.sh"
-      - "scripts/create_github_workflow_user.sh"
       - "tests/deploy/**"
       - ".github/workflows/deploy-apps.yml"
       - ".github/workflows/setup-nginx.yml"
+      - ".github/workflows/setup-server.yml"
       - ".github/workflows/setup-postgresql.yml"
       - ".github/workflows/test-deploy.yml"
   push:
@@ -35,12 +37,14 @@ on:
       - "scripts/provision.sh"
       - "scripts/qemu.sh"
       - "scripts/setup_nginx.sh"
+      - "scripts/setup_server.sh"
+      - "scripts/bootstrap_server.sh"
       - "scripts/setup_tls_certificate.sh"
       - "scripts/setup_postgresql.sh"
-      - "scripts/create_github_workflow_user.sh"
       - "tests/deploy/**"
       - ".github/workflows/deploy-apps.yml"
       - ".github/workflows/setup-nginx.yml"
+      - ".github/workflows/setup-server.yml"
       - ".github/workflows/setup-postgresql.yml"
       - ".github/workflows/test-deploy.yml"
 
@@ -61,6 +65,9 @@ jobs:
 
       - name: Check pinned SSH host key
         run: bash tests/deploy/ssh_host_key.sh
+
+      - name: Check TLS certificate validation
+        run: bash tests/deploy/tls_certificate.sh
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -116,9 +123,12 @@ jobs:
                   assert 'return 308 https://example.test$request_uri;' in site
                   assert 'Strict-Transport-Security' in site
               (tls_dir / f'{mode}.conf').write_text('events {}\nhttp {\n' + site + '\n}\n')
+          bootstrap = Path('configs/nginx/softerr-bootstrap.conf').read_text()
+          assert 'location ^~ /.well-known/acme-challenge/' in bootstrap
+          (tls_dir / 'bootstrap.conf').write_text('events {}\nhttp {\n' + bootstrap + '\n}\n')
           PY
           sudo install -m 644 "${TLS_TEST_DIR}/routes.conf" /etc/nginx/snippets/softerr-routes.conf
-          for mode in http tls; do
+          for mode in http tls bootstrap; do
             sudo install -m 644 "${TLS_TEST_DIR}/${mode}.conf" "/etc/nginx/softerr-${mode}-ci.conf"
             sudo nginx -t -c "/etc/nginx/softerr-${mode}-ci.conf"
           done

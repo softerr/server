@@ -135,44 +135,13 @@ From SQL backup (`.sql`):
 sudo -u postgres psql -d auth -f /tmp/auth_YYYY-MM-DD_HH-MM-SS.sql
 ```
 
-## 8. Run setup/provision scripts manually on server
+## 8. Timers and redeployment
 
-From repository root:
-
-```bash
-cd /home/ubuntu/server
-```
-
-Run only PostgreSQL setup:
-
-```bash
-sudo POSTGRES_AUTH_API_PASSWORD='your-password' PROVISION_COMPONENTS='postgresql' bash scripts/provision.sh
-```
+Use **Set Up Server** for first-time setup. For later changes, run **Setup PostgreSQL On Server**, **Setup Nginx On Server**, or **Deploy Apps On Server** in GitHub Actions. These workflows upload the required files and use the same production environment values.
 
 PostgreSQL setup installs `softerr-prune-user-tokens.timer` to remove expired verification tokens daily. Check its next run with `systemctl list-timers softerr-prune-user-tokens.timer`, or run cleanup immediately with `sudo systemctl start softerr-prune-user-tokens.service`.
 
 Nginx setup installs `softerr-send-email.timer` to deliver queued verification emails every minute. Check it with `systemctl list-timers softerr-send-email.timer` and inspect delivery failures with `sudo journalctl -u softerr-send-email.service -n 100 --no-pager`.
-
-Run only Nginx/PHP setup:
-
-```bash
-sudo API_DB_PASSWORD='your-password' API_APP_BASE_URL='https://example.com' \
-  API_TLS_CERT_FILE='/etc/letsencrypt/live/example.com/fullchain.pem' \
-  API_TLS_KEY_FILE='/etc/letsencrypt/live/example.com/privkey.pem' \
-  PROVISION_COMPONENTS='nginx' bash scripts/provision.sh
-```
-
-Deploy only API:
-
-```bash
-sudo PROVISION_COMPONENTS='api' bash scripts/provision.sh
-```
-
-Deploy only quiz (expects built dist in `app/quiz/dist` or `QUIZ_DIST_DIR` set):
-
-```bash
-sudo PROVISION_COMPONENTS='quiz' bash scripts/provision.sh
-```
 
 API and quiz deployments prepare a complete directory beside the live app, then atomically exchange the two directories. The server needs Python 3 and a Linux filesystem that supports `renameat2` directory exchange; deployment fails without changing the live app if the exchange is unsupported.
 
