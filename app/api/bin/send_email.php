@@ -29,31 +29,34 @@ if ($db === false) {
 
 $failed = false;
 for ($processed = 0; $processed < 20; $processed++) {
-    if (@pg_query($db, 'BEGIN') === false) {
-        fwrite(STDERR, "Email worker could not start a transaction.\n");
-        exit(1);
-    }
-
-    $result = @pg_query($db, 'SELECT o.id, o.timezone, u.username, u.email, t.hash, t.expires
-        FROM public.verification_email_outbox o
-        JOIN public.user_token t ON t.id = o.token_id
-        JOIN public."user" u ON u.id = t.user_id
-        WHERE o.available_at <= CURRENT_TIMESTAMP
-          AND t.type = \'verify\'
-          AND t.expires > CURRENT_TIMESTAMP
-          AND u.verified = FALSE
-        ORDER BY o.available_at, o.id
-        LIMIT 1
-        FOR UPDATE OF o SKIP LOCKED');
+    // available_at also acts as a claim marker. The claim expires if this process dies.
+    $result = @pg_query($db, 'WITH next_job AS (
+            SELECT o.id, o.timezone, u.username, u.email, t.hash, t.expires
+            FROM public.verification_email_outbox o
+            JOIN public.user_token t ON t.id = o.token_id
+            JOIN public."user" u ON u.id = t.user_id
+            WHERE o.available_at <= CURRENT_TIMESTAMP
+              AND t.type = \'verify\'
+              AND t.expires > CURRENT_TIMESTAMP
+              AND u.verified = FALSE
+            ORDER BY o.available_at, o.id
+            LIMIT 1
+            FOR UPDATE OF o SKIP LOCKED
+        )
+        UPDATE public.verification_email_outbox o
+        SET available_at = CURRENT_TIMESTAMP + INTERVAL \'15 minutes\'
+        FROM next_job
+        WHERE o.id = next_job.id
+        RETURNING o.id, o.available_at AS claimed_until,
+                  next_job.timezone, next_job.username, next_job.email,
+                  next_job.hash, next_job.expires');
     if ($result === false) {
-        @pg_query($db, 'ROLLBACK');
         fwrite(STDERR, "Email worker could not fetch queued mail.\n");
         exit(1);
     }
 
     $job = pg_fetch_assoc($result);
     if ($job === false) {
-        @pg_query($db, 'COMMIT');
         break;
     }
 
@@ -67,20 +70,20 @@ for ($processed = 0; $processed < 20; $processed++) {
 
     if ($sent) {
         $saved = @pg_query_params($db,
-            'DELETE FROM public.verification_email_outbox WHERE id = $1',
-            [$job['id']]);
+            'DELETE FROM public.verification_email_outbox
+             WHERE id = $1 AND available_at = $2::timestamp',
+            [$job['id'], $job['claimed_until']]);
     } else {
         $failed = true;
         $saved = @pg_query_params($db,
             'UPDATE public.verification_email_outbox
              SET attempts = attempts + 1,
                  available_at = CURRENT_TIMESTAMP + INTERVAL \'2 minutes\'
-             WHERE id = $1',
-            [$job['id']]);
+             WHERE id = $1 AND available_at = $2::timestamp',
+            [$job['id'], $job['claimed_until']]);
         error_log('Verification email delivery failed for outbox job ' . $job['id']);
     }
-    if ($saved === false || @pg_query($db, 'COMMIT') === false) {
-        @pg_query($db, 'ROLLBACK');
+    if ($saved === false) {
         fwrite(STDERR, "Email worker could not save delivery outcome.\n");
         exit(1);
     }

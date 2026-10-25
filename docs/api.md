@@ -146,7 +146,7 @@ Common errors:
 
 ## 5. Email delivery behavior
 
-The `verification_email_queued` response field confirms that the job was committed to PostgreSQL. It does not mean the mail transport accepted or delivered the message. The systemd email worker checks the outbox every minute. Failed deliveries remain queued and are retried after two minutes while the token is valid. Delivery may happen more than once if the worker stops after SMTP accepts a message but before it deletes the outbox row.
+The `verification_email_queued` response field confirms that the job was committed to PostgreSQL. It does not mean the mail transport accepted or delivered the message. The systemd email worker checks the outbox every minute. It claims each job for 15 minutes, then sends without holding a database transaction open. Failed deliveries remain queued and are retried after two minutes while the token is valid. If the worker stops during delivery, the claim expires and the job becomes available again. Delivery may happen more than once if the worker stops after SMTP accepts a message but before it deletes the outbox row.
 
 The worker uses SMTP when `SMTP_HOST` is configured and PHP `mail()` otherwise. An SMTP failure does not fall back to `mail()`. Verification or token expiry removes obsolete queued jobs. The client can request another attempt with `POST /api/auth/resend-verification` after the one-minute cooldown.
 
