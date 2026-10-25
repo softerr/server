@@ -65,7 +65,8 @@ function handleReadiness(): never
         respond(503, ['status' => 'unavailable', 'error' => $error]);
     }
 
-    $schema = @pg_query($db, 'SELECT u.id, u.email, t.hash, t.email_attempted_at, o.token_id, o.available_at
+    $schema = @pg_query($db, 'SELECT u.id, u.email, t.hash, t.email_attempted_at,
+            o.token_id, o.available_at, o.claimed_until, o.claim_id
         FROM public."user" u, public.user_token t, public.verification_email_outbox o
         LIMIT 0');
     if ($schema === false) {
@@ -312,6 +313,8 @@ function handleResendVerification(): never
         respond(500, ['error' => 'Failed to prepare verification email']);
     }
 
+    // A resend schedules the job now, but an active delivery claim stays in place.
+    // That delivery can satisfy this request without creating a second send.
     $queueResult = @pg_query_params(
         $db,
         'INSERT INTO public.verification_email_outbox (token_id, timezone)

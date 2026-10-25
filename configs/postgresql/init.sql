@@ -35,8 +35,14 @@ CREATE TABLE IF NOT EXISTS public.verification_email_outbox (
     timezone TEXT,
     queued_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     available_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    claimed_until TIMESTAMP,
+    claim_id UUID,
     attempts INTEGER NOT NULL DEFAULT 0
 );
+
+ALTER TABLE public.verification_email_outbox
+    ADD COLUMN IF NOT EXISTS claimed_until TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS claim_id UUID;
 
 CREATE INDEX IF NOT EXISTS verification_email_outbox_available_idx
     ON public.verification_email_outbox (available_at, id);

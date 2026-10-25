@@ -29,13 +29,14 @@ if ($db === false) {
 
 $failed = false;
 for ($processed = 0; $processed < 20; $processed++) {
-    // available_at also acts as a claim marker. The claim expires if this process dies.
+    // The claim expires if this process dies; available_at remains the send schedule.
     $result = @pg_query($db, 'WITH next_job AS (
             SELECT o.id, o.timezone, u.username, u.email, t.hash, t.expires
             FROM public.verification_email_outbox o
             JOIN public.user_token t ON t.id = o.token_id
             JOIN public."user" u ON u.id = t.user_id
             WHERE o.available_at <= CURRENT_TIMESTAMP
+              AND (o.claimed_until IS NULL OR o.claimed_until <= CURRENT_TIMESTAMP)
               AND t.type = \'verify\'
               AND t.expires > CURRENT_TIMESTAMP
               AND u.verified = FALSE
@@ -44,10 +45,11 @@ for ($processed = 0; $processed < 20; $processed++) {
             FOR UPDATE OF o SKIP LOCKED
         )
         UPDATE public.verification_email_outbox o
-        SET available_at = CURRENT_TIMESTAMP + INTERVAL \'15 minutes\'
+        SET claimed_until = CURRENT_TIMESTAMP + INTERVAL \'15 minutes\',
+            claim_id = gen_random_uuid()
         FROM next_job
         WHERE o.id = next_job.id
-        RETURNING o.id, o.available_at AS claimed_until,
+        RETURNING o.id, o.claim_id,
                   next_job.timezone, next_job.username, next_job.email,
                   next_job.hash, next_job.expires');
     if ($result === false) {
@@ -71,16 +73,18 @@ for ($processed = 0; $processed < 20; $processed++) {
     if ($sent) {
         $saved = @pg_query_params($db,
             'DELETE FROM public.verification_email_outbox
-             WHERE id = $1 AND available_at = $2::timestamp',
-            [$job['id'], $job['claimed_until']]);
+             WHERE id = $1 AND claim_id = $2::uuid',
+            [$job['id'], $job['claim_id']]);
     } else {
         $failed = true;
         $saved = @pg_query_params($db,
             'UPDATE public.verification_email_outbox
              SET attempts = attempts + 1,
-                 available_at = CURRENT_TIMESTAMP + INTERVAL \'2 minutes\'
-             WHERE id = $1 AND available_at = $2::timestamp',
-            [$job['id'], $job['claimed_until']]);
+                 available_at = CURRENT_TIMESTAMP + INTERVAL \'2 minutes\',
+                 claimed_until = NULL,
+                 claim_id = NULL
+             WHERE id = $1 AND claim_id = $2::uuid',
+            [$job['id'], $job['claim_id']]);
         error_log('Verification email delivery failed for outbox job ' . $job['id']);
     }
     if ($saved === false) {

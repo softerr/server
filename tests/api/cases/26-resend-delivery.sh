@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
 
+resend_delivery_psql() {
+  local sql="$1"
+  if [[ -n "${API_TEST_DB_HOST:-}" ]]; then
+    PGPASSWORD="${API_TEST_DB_PASSWORD:-}" psql -X -v ON_ERROR_STOP=1 \
+      -h "${API_TEST_DB_HOST}" -p "${API_TEST_DB_PORT:-5432}" \
+      -U "${API_TEST_DB_USER:-${API_TEST_DB_SUPERUSER}}" \
+      -d "${API_TEST_DB_NAME}" -Atqc "${sql}"
+  else
+    sudo -n -u "${API_TEST_DB_SUPERUSER}" psql -X -v ON_ERROR_STOP=1 \
+      -d "${API_TEST_DB_NAME}" -Atqc "${sql}"
+  fi
+}
+
 test_auth_resend_after_delivery_failure_impl() (
   local mailpit_url="${API_TEST_MAILPIT_URL%/}"
-  local email query request_body mailbox aged_token escaped_email sql failed_attempts
+  local email query request_body mailbox aged_token escaped_email sql failed_state claim_id claim_state expired remaining
 
   create_test_identity
   email="${TEST_EMAIL}"
@@ -32,21 +45,14 @@ test_auth_resend_after_delivery_failure_impl() (
   sudo -n systemctl start softerr-send-email.service >/dev/null 2>&1 || true
 
   escaped_email="$(sql_escape_literal "${email}")"
-  sql="SELECT COALESCE(MAX(o.attempts), 0)
+  sql="SELECT o.attempts, o.claim_id IS NULL, o.claimed_until IS NULL
        FROM public.verification_email_outbox o
        JOIN public.user_token t ON t.id = o.token_id
        JOIN public.\"user\" u ON u.id = t.user_id
        WHERE u.email = '${escaped_email}';"
-  if [[ -n "${API_TEST_DB_HOST:-}" ]]; then
-    failed_attempts="$(PGPASSWORD="${API_TEST_DB_PASSWORD:-}" psql -h "${API_TEST_DB_HOST}" \
-      -p "${API_TEST_DB_PORT:-5432}" -U "${API_TEST_DB_USER:-${API_TEST_DB_SUPERUSER}}" \
-      -d "${API_TEST_DB_NAME}" -Atqc "${sql}")" || return 1
-  else
-    failed_attempts="$(sudo -n -u "${API_TEST_DB_SUPERUSER}" psql \
-      -d "${API_TEST_DB_NAME}" -Atqc "${sql}")" || return 1
-  fi
-  if [[ "${failed_attempts}" != 1 ]]; then
-    fail_test "expected one failed queued email attempt, got ${failed_attempts}"
+  failed_state="$(resend_delivery_psql "${sql}")" || return 1
+  if [[ "${failed_state}" != '1|t|t' ]]; then
+    fail_test "expected a failed queued email with no active claim, got ${failed_state}"
     return 1
   fi
 
@@ -71,32 +77,52 @@ test_auth_resend_after_delivery_failure_impl() (
        FROM public.\"user\" u
        WHERE t.user_id = u.id AND u.email = '${escaped_email}' AND t.type = 'verify'
        RETURNING t.id;"
-  if [[ -n "${API_TEST_DB_HOST:-}" ]]; then
-    aged_token="$(PGPASSWORD="${API_TEST_DB_PASSWORD:-}" psql -h "${API_TEST_DB_HOST}" \
-      -p "${API_TEST_DB_PORT:-5432}" -U "${API_TEST_DB_USER:-${API_TEST_DB_SUPERUSER}}" \
-      -d "${API_TEST_DB_NAME}" -Atqc "${sql}")" || {
-        fail_test 'could not clear resend cooldown in PostgreSQL'
-        return 1
-      }
-  else
-    aged_token="$(sudo -n -u "${API_TEST_DB_SUPERUSER}" psql \
-      -d "${API_TEST_DB_NAME}" -Atqc "${sql}")" || {
-        fail_test 'could not clear resend cooldown in PostgreSQL'
-        return 1
-      }
-  fi
-  if [[ -z "${aged_token}" ]]; then
+  aged_token="$(resend_delivery_psql "${sql}")" || {
+    fail_test 'could not clear resend cooldown in PostgreSQL'
+    return 1
+  }
+  if [[ ! "${aged_token}" =~ ^[0-9]+$ ]]; then
     fail_test 'signup did not leave a verification token for resend'
     return 1
   fi
 
-  # The resend requeues the failed job for immediate delivery.
+  # Simulate an active worker claim while the public resend request arrives.
+  claim_id="$(resend_delivery_psql "UPDATE public.verification_email_outbox
+    SET claim_id = gen_random_uuid(), claimed_until = CURRENT_TIMESTAMP + INTERVAL '15 minutes'
+    WHERE token_id = ${aged_token} RETURNING claim_id;")" || return 1
+  if [[ ! "${claim_id}" =~ ^[a-f0-9-]{36}$ ]]; then
+    fail_test 'could not claim the queued email for resend test'
+    return 1
+  fi
 
   request_body="$(jq -nc --arg email "${email}" '{email:$email}')"
   api_request 'POST' '/api/auth/resend-verification' "${request_body}"
   assert_status '202' || return 1
+  claim_state="$(resend_delivery_psql "SELECT claim_id, claimed_until > CURRENT_TIMESTAMP,
+      available_at <= CURRENT_TIMESTAMP FROM public.verification_email_outbox
+      WHERE token_id = ${aged_token};")" || return 1
+  if [[ "${claim_state}" != "${claim_id}|t|t" ]]; then
+    fail_test "resend changed the active email claim: ${claim_state}"
+    return 1
+  fi
+
+  expired="$(resend_delivery_psql "UPDATE public.verification_email_outbox
+    SET claimed_until = CURRENT_TIMESTAMP - INTERVAL '1 minute'
+    WHERE token_id = ${aged_token} AND claim_id = '${claim_id}'::uuid
+    RETURNING token_id;")" || return 1
+  if [[ "${expired}" != "${aged_token}" ]]; then
+    fail_test 'could not expire the simulated worker claim'
+    return 1
+  fi
+
   if ! sudo -n systemctl start softerr-send-email.service; then
     fail_test 'email worker could not deliver the queued resend'
+    return 1
+  fi
+  remaining="$(resend_delivery_psql "SELECT count(*) FROM public.verification_email_outbox
+    WHERE token_id = ${aged_token};")" || return 1
+  if [[ "${remaining}" != 0 ]]; then
+    fail_test 'email worker did not finish the reclaimed job'
     return 1
   fi
 
