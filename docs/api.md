@@ -134,13 +134,14 @@ Example response:
 
 Behavior:
 - Validates token from `public.user_token`.
-- Token must be unexpired (`expires > CURRENT_TIMESTAMP`).
-- Marks user as verified and deletes all verification tokens for that user.
+- Token must still be unexpired when the account lock is acquired.
+- Locks the account, rechecks the token, then marks the user as verified and deletes all verification tokens in one transaction. A token removed by a concurrent resend or another verification request is rejected.
 
 Common errors:
 - `400 {"error":"Invalid verification token"}`
 - `400 {"error":"Verification token is invalid or expired"}`
 - `500 {"error":"Failed to validate verification token"}`
+- `500 {"error":"Failed to lock account for verification"}`
 - `500 {"error":"Failed to verify account"}`
 - `500 {"error":"Failed to finalize verification"}`
 

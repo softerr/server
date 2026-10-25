@@ -336,11 +336,7 @@ function handleVerify(): never
 
     $db = connectDb();
 
-    if (@pg_query($db, 'BEGIN') === false) {
-        respond(500, ['error' => 'Failed to start transaction']);
-    }
-
-    $tokenResult = @pg_query_params(
+    $lookupResult = @pg_query_params(
         $db,
         'SELECT id, user_id
          FROM public.user_token
@@ -350,13 +346,48 @@ function handleVerify(): never
          LIMIT 1',
         [$token, 'verify']
     );
+    if ($lookupResult === false) {
+        respond(500, ['error' => 'Failed to validate verification token']);
+    }
+
+    $candidate = pg_fetch_assoc($lookupResult);
+    if ($candidate === false) {
+        respond(400, ['error' => 'Verification token is invalid or expired']);
+    }
+
+    if (@pg_query($db, 'BEGIN') === false) {
+        respond(500, ['error' => 'Failed to start transaction']);
+    }
+
+    $accountLock = @pg_query_params(
+        $db,
+        'SELECT id FROM public."user" WHERE id = $1 FOR UPDATE',
+        [$candidate['user_id']]
+    );
+    if ($accountLock === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(500, ['error' => 'Failed to lock account for verification']);
+    }
+    if (pg_fetch_assoc($accountLock) === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(400, ['error' => 'Verification token is invalid or expired']);
+    }
+
+    // Resend holds the same account lock before replacing tokens. Check again
+    // after acquiring it, and lock the token against concurrent pruning.
+    $tokenResult = @pg_query_params(
+        $db,
+        'SELECT id FROM public.user_token
+         WHERE id = $1 AND user_id = $2 AND hash = $3
+           AND type = $4 AND expires > clock_timestamp()
+         FOR UPDATE',
+        [$candidate['id'], $candidate['user_id'], $token, 'verify']
+    );
     if ($tokenResult === false) {
         @pg_query($db, 'ROLLBACK');
         respond(500, ['error' => 'Failed to validate verification token']);
     }
-
-    $tokenRow = pg_fetch_assoc($tokenResult);
-    if ($tokenRow === false) {
+    if (pg_fetch_assoc($tokenResult) === false) {
         @pg_query($db, 'ROLLBACK');
         respond(400, ['error' => 'Verification token is invalid or expired']);
     }
@@ -367,7 +398,7 @@ function handleVerify(): never
          SET verified = TRUE
          WHERE id = $1
          RETURNING id, username, email, verified, created',
-        [$tokenRow['user_id']]
+        [$candidate['user_id']]
     );
     if ($verifyResult === false) {
         @pg_query($db, 'ROLLBACK');
@@ -383,7 +414,7 @@ function handleVerify(): never
     $deleteResult = @pg_query_params(
         $db,
         'DELETE FROM public.user_token WHERE user_id = $1 AND type = $2',
-        [$tokenRow['user_id'], 'verify']
+        [$candidate['user_id'], 'verify']
     );
     if ($deleteResult === false) {
         @pg_query($db, 'ROLLBACK');

@@ -26,6 +26,10 @@ test_auth_verify_success() {
   assert_json_value '.username' "${TEST_USERNAME}" || return 1
   assert_json_value '.email' "${TEST_EMAIL}" || return 1
   assert_json_value '.verified' "true" || return 1
+
+  api_request "GET" "/api/auth/verify?token=${TEST_VERIFY_TOKEN}"
+  assert_status "400" || return 1
+  assert_json_value '.error' 'Verification token is invalid or expired' || return 1
 }
 
 register_test_case test_auth_verify_invalid_token
