@@ -64,8 +64,8 @@ wait_for_apt_locks() {
   done
 }
 
-if [[ -z "${POSTGRES_AUTH_API_PASSWORD:-}" ]]; then
-  echo "POSTGRES_AUTH_API_PASSWORD is required."
+if [[ -z "${API_DB_PASSWORD:-}" ]]; then
+  echo "API_DB_PASSWORD is required."
   echo "Set it in server environment before running this script."
   exit 1
 fi
@@ -86,7 +86,7 @@ systemctl enable --now postgresql
 echo "Applying PostgreSQL init SQL: ${INIT_SQL_FILE}"
 sudo -u postgres psql \
   -v ON_ERROR_STOP=1 \
-  -v auth_api_password="${POSTGRES_AUTH_API_PASSWORD}" \
+  -v auth_api_password="${API_DB_PASSWORD}" \
   -d postgres \
   < "${INIT_SQL_FILE}"
 

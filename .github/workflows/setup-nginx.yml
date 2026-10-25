@@ -38,7 +38,7 @@ jobs:
           PROVISION_COMPONENTS: nginx
           API_DB_PASSWORD: ${{ secrets.API_DB_PASSWORD }}
           API_MAIL_FROM: ${{ secrets.API_MAIL_FROM }}
-          API_APP_BASE_URL: ${{ vars.API_APP_BASE_URL }}
+          API_APP_BASE_URL: https://${{ secrets.SERVER_HOST }}
           API_SMTP_HOST: ${{ secrets.API_SMTP_HOST }}
           API_SMTP_PORT: ${{ secrets.API_SMTP_PORT }}
           API_SMTP_ENCRYPTION: ${{ secrets.API_SMTP_ENCRYPTION }}
@@ -51,7 +51,7 @@ jobs:
             exit 1
           fi
           if [[ ! "${API_APP_BASE_URL:-}" =~ ^https:// ]]; then
-            echo "Set production environment variable API_APP_BASE_URL to an HTTPS origin."
+            echo "Set production secret SERVER_HOST to the public HTTPS host."
             exit 1
           fi
           REQUIRED_ENV_VARS="PROVISION_COMPONENTS,API_DB_PASSWORD,API_APP_BASE_URL" \

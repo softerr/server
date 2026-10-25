@@ -82,19 +82,15 @@ jobs:
         run: |
           set -euo pipefail
           DB_PASS="runner_$(date +%s)_$RANDOM"
-          {
-            echo "POSTGRES_AUTH_API_PASSWORD=${DB_PASS}"
-            echo "API_DB_PASSWORD=${DB_PASS}"
-          } >> "$GITHUB_ENV"
+          echo "API_DB_PASSWORD=${DB_PASS}" >> "$GITHUB_ENV"
 
       - name: Provision runner via setup scripts
         run: |
           set -euo pipefail
-          sudo --preserve-env=PROVISION_COMPONENTS,POSTGRES_AUTH_API_PASSWORD,API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION \
+          sudo --preserve-env=PROVISION_COMPONENTS,API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION \
             bash scripts/provision.sh
         env:
           PROVISION_COMPONENTS: postgresql,nginx,api
-          POSTGRES_AUTH_API_PASSWORD: ${{ env.POSTGRES_AUTH_API_PASSWORD }}
           API_DB_PASSWORD: ${{ env.API_DB_PASSWORD }}
           API_MAIL_FROM: ${{ env.API_MAIL_FROM }}
           API_APP_BASE_URL: ${{ env.API_APP_BASE_URL }}

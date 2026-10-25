@@ -48,9 +48,8 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          POSTGRES_AUTH_API_PASSWORD: ${{ secrets.POSTGRES_AUTH_API_PASSWORD }}
           API_DB_PASSWORD: ${{ secrets.API_DB_PASSWORD }}
-          API_APP_BASE_URL: ${{ vars.API_APP_BASE_URL }}
+          API_APP_BASE_URL: https://${{ secrets.SERVER_HOST }}
           TLS_CONTACT_EMAIL: ${{ vars.TLS_CONTACT_EMAIL }}
           API_MAIL_FROM: ${{ secrets.API_MAIL_FROM }}
           API_SMTP_HOST: ${{ secrets.API_SMTP_HOST }}
@@ -60,6 +59,6 @@ jobs:
           API_SMTP_PASSWORD: ${{ secrets.API_SMTP_PASSWORD }}
         run: |
           set -euo pipefail
-          REQUIRED_ENV_VARS="POSTGRES_AUTH_API_PASSWORD,API_DB_PASSWORD,API_APP_BASE_URL,TLS_CONTACT_EMAIL" \
+          REQUIRED_ENV_VARS="API_DB_PASSWORD,API_APP_BASE_URL,TLS_CONTACT_EMAIL" \
           OPTIONAL_ENV_VARS="API_MAIL_FROM,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD" \
             bash scripts/ci/run_remote_setup.sh setup_server.sh

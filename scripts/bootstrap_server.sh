@@ -127,11 +127,9 @@ printf 'SERVER_USER=%s\n' 'github-workflow'
 printf 'SERVER_PORT=%s\n' "${ssh_port}"
 printf 'SERVER_SSH_KEY_B64=%s\n' "$(base64 -w 0 "${private_key}")"
 printf 'SERVER_SSH_KNOWN_HOSTS=%s %s %s\n' "${known_host}" "${key_type}" "${key_value}"
-printf 'POSTGRES_AUTH_API_PASSWORD=%s\n' "${db_password}"
 printf 'API_DB_PASSWORD=%s\n' "${db_password}"
 echo
 echo "Variables:"
-printf 'API_APP_BASE_URL=https://%s\n' "${public_host}"
 printf 'TLS_CONTACT_EMAIL=%s\n' "${contact_email}"
 echo
 echo "Verification email also needs your SMTP provider settings (API_MAIL_FROM and API_SMTP_* secrets)."

@@ -43,7 +43,6 @@ jobs:
           set -euo pipefail
 
           DB_PASS="ci_$(date +%s)_$RANDOM"
-          echo "POSTGRES_AUTH_API_PASSWORD=${DB_PASS}" >> "$GITHUB_ENV"
           echo "API_DB_PASSWORD=${DB_PASS}" >> "$GITHUB_ENV"
           echo "SSH_PORT=22022" >> "$GITHUB_ENV"
           echo "HTTP_PORT=18080" >> "$GITHUB_ENV"

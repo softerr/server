@@ -313,7 +313,6 @@ run_remote_script() {
   local env_names=(
     SCRIPT_REL
     PROVISION_COMPONENTS
-    POSTGRES_AUTH_API_PASSWORD
     API_DB_PASSWORD
     API_MAIL_FROM
     API_APP_BASE_URL
@@ -363,8 +362,8 @@ chmod +x "${SCRIPT_REL}"
 
 case "${SCRIPT_REL}" in
   scripts/provision.sh)
-    export PROVISION_COMPONENTS POSTGRES_AUTH_API_PASSWORD API_DB_PASSWORD API_MAIL_FROM API_APP_BASE_URL API_SMTP_HOST API_SMTP_PORT API_SMTP_ENCRYPTION API_SMTP_USERNAME API_SMTP_PASSWORD
-    sudo --preserve-env=PROVISION_COMPONENTS,POSTGRES_AUTH_API_PASSWORD,API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD \
+    export PROVISION_COMPONENTS API_DB_PASSWORD API_MAIL_FROM API_APP_BASE_URL API_SMTP_HOST API_SMTP_PORT API_SMTP_ENCRYPTION API_SMTP_USERNAME API_SMTP_PASSWORD
+    sudo --preserve-env=PROVISION_COMPONENTS,API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD \
       bash "${SCRIPT_REL}"
     ;;
   scripts/test_api.sh)
@@ -373,12 +372,12 @@ case "${SCRIPT_REL}" in
       bash "${SCRIPT_REL}"
     ;;
   scripts/setup_postgresql.sh)
-    if [[ -z "${POSTGRES_AUTH_API_PASSWORD}" ]]; then
-      echo "POSTGRES_AUTH_API_PASSWORD is required to run ${SCRIPT_REL}"
+    if [[ -z "${API_DB_PASSWORD}" ]]; then
+      echo "API_DB_PASSWORD is required to run ${SCRIPT_REL}"
       exit 1
     fi
-    export POSTGRES_AUTH_API_PASSWORD
-    sudo --preserve-env=POSTGRES_AUTH_API_PASSWORD bash "${SCRIPT_REL}"
+    export API_DB_PASSWORD
+    sudo --preserve-env=API_DB_PASSWORD bash "${SCRIPT_REL}"
     ;;
   scripts/setup_nginx.sh)
     if [[ -z "${API_DB_PASSWORD}" ]]; then
@@ -405,10 +404,6 @@ provision_vm() {
     return
   fi
 
-  if [[ -z "${POSTGRES_AUTH_API_PASSWORD:-}" ]]; then
-    echo "POSTGRES_AUTH_API_PASSWORD is required for provisioning."
-    exit 1
-  fi
   if [[ -z "${API_DB_PASSWORD:-}" ]]; then
     echo "API_DB_PASSWORD is required for provisioning."
     exit 1
@@ -495,7 +490,6 @@ Commands:
   test-api Sync repo and run scripts/test_api.sh in VM
 
 Environment variables:
-  POSTGRES_AUTH_API_PASSWORD   Required for provisioning
   API_DB_PASSWORD              Required for provisioning
   API_MAIL_FROM                Optional sender address
   API_APP_BASE_URL             Verification-link origin (default: http://127.0.0.1:<HTTP_PORT>)

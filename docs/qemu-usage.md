@@ -29,7 +29,6 @@ QEMU_ENV_FILE=/path/to/my-qemu.env bash scripts/qemu.sh start
 Before first provisioning (`start`), set:
 
 ```bash
-export POSTGRES_AUTH_API_PASSWORD='change-me'
 export API_DB_PASSWORD='change-me'
 ```
 

@@ -12,13 +12,8 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/tls_certificate.sh"
 BOOTSTRAP_CONFIG="${REPO_ROOT}/configs/nginx/softerr-bootstrap.conf"
 
-: "${POSTGRES_AUTH_API_PASSWORD:?POSTGRES_AUTH_API_PASSWORD is required}"
 : "${API_DB_PASSWORD:?API_DB_PASSWORD is required}"
 : "${TLS_CONTACT_EMAIL:?TLS_CONTACT_EMAIL is required for unattended certificate setup}"
-if [[ "${API_DB_PASSWORD}" != "${POSTGRES_AUTH_API_PASSWORD}" ]]; then
-  echo "API_DB_PASSWORD and POSTGRES_AUTH_API_PASSWORD must match." >&2
-  exit 1
-fi
 
 tls_certificate_paths "${API_APP_BASE_URL:-}" || exit 1
 if [[ ! -f "${BOOTSTRAP_CONFIG}" ]]; then
