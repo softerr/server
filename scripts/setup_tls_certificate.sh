@@ -92,7 +92,7 @@ echo "Testing certificate renewal..."
 
 echo
 echo "Certificate and renewal are ready. Set these in the GitHub production environment:"
-printf 'Secret API_APP_BASE_URL=https://%s\n' "${identifier}"
+printf 'Variable API_APP_BASE_URL=https://%s\n' "${identifier}"
 printf 'Variable API_TLS_CERT_FILE=%s\n' "${cert_file}"
 printf 'Variable API_TLS_KEY_FILE=%s\n' "${key_file}"
 echo "Then run the Setup Nginx On Server workflow to enable HTTPS."

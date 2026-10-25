@@ -72,14 +72,14 @@ Secret names used by the workflows:
 - `POSTGRES_AUTH_API_PASSWORD`: DB password for `auth_api` role
 - `API_DB_PASSWORD`: API runtime DB password (use same value as `POSTGRES_AUTH_API_PASSWORD`)
 - `API_MAIL_FROM`: optional sender email (example: `no-reply@example.com`)
-- `API_APP_BASE_URL`: required HTTPS public origin used in verification links (for example, `https://example.com` or `https://YOUR_PUBLIC_IP`)
 - `API_SMTP_HOST`: optional SMTP host for email delivery (example: `smtp.mailgun.org`)
 - `API_SMTP_PORT`: optional SMTP port (default API behavior: `587`)
 - `API_SMTP_ENCRYPTION`: optional `tls`, `ssl`, or `none` (default API behavior: `tls`)
 - `API_SMTP_USERNAME`: optional SMTP username
 - `API_SMTP_PASSWORD`: optional SMTP password
 
-Set these `production` environment variables to certificate files already present on the server:
+Set these `production` environment variables:
+- `API_APP_BASE_URL`: required HTTPS public origin used in verification links (for example, `https://example.com` or `https://YOUR_PUBLIC_IP`)
 - `API_TLS_CERT_FILE`: full certificate chain (example: `/etc/letsencrypt/live/example.com/fullchain.pem`)
 - `API_TLS_KEY_FILE`: matching private key (example: `/etc/letsencrypt/live/example.com/privkey.pem`)
 
@@ -135,9 +135,8 @@ Execution:
 
 This workflow requires GitHub secret:
 - `API_DB_PASSWORD`
-- `API_APP_BASE_URL` (must be an HTTPS origin)
 
-It also requires the `production` environment variables `API_TLS_CERT_FILE` and `API_TLS_KEY_FILE`. Setup fails if either file is missing or unreadable on the server. Local runner and QEMU setups continue to use HTTP only with a loopback `API_APP_BASE_URL`.
+It also requires the `production` environment variables `API_APP_BASE_URL`, `API_TLS_CERT_FILE`, and `API_TLS_KEY_FILE`. `API_APP_BASE_URL` must be an HTTPS origin; setup fails if either certificate file is missing or unreadable on the server. Local runner and QEMU setups continue to use HTTP only with a loopback `API_APP_BASE_URL`.
 
 After setup, confirm that HTTP redirects and HTTPS serves the app with HSTS (replace the domain):
 
