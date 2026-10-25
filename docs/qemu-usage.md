@@ -13,7 +13,7 @@ Create a local env file once:
 cp .qemu.env.example .qemu.env
 ```
 
-Then edit `.qemu.env` with your values (passwords, SMTP, ports, test flags).
+Then edit `.qemu.env` with your values (passwords, local Mailpit, ports, test flags).
 
 `scripts/qemu.sh` auto-loads this file on each run.
 The VM sync excludes this file (including a custom `QEMU_ENV_FILE` inside the repository) and removes copies left by earlier syncs.
@@ -33,19 +33,19 @@ export POSTGRES_AUTH_API_PASSWORD='change-me'
 export API_DB_PASSWORD='change-me'
 ```
 
-Optional URL override and email settings:
+Optional URL override and local email settings:
 
 ```bash
-export API_MAIL_FROM='no-reply@example.com'
+export API_MAIL_FROM='no-reply@example.test'
 export API_APP_BASE_URL='http://127.0.0.1:8080'
-export API_SMTP_HOST='smtp.example.com'
-export API_SMTP_PORT='587'
-export API_SMTP_ENCRYPTION='tls'
-export API_SMTP_USERNAME='smtp-user'
-export API_SMTP_PASSWORD='smtp-pass'
+export API_SMTP_HOST='10.0.2.2'
+export API_SMTP_PORT='1025'
+export API_SMTP_ENCRYPTION='none'
+export API_TEST_MAILPIT_URL='http://10.0.2.2:8025'
 ```
 
 QEMU defaults `API_APP_BASE_URL` to `http://127.0.0.1:<HTTP_PORT>` when unset. Set it explicitly if you access the VM through another origin.
+For email tests, run Mailpit on the host with SMTP port 1025, HTTP port 8025, and Chaos enabled (`MP_ENABLE_CHAOS=true`) before starting the VM. The VM reaches host services at `10.0.2.2`.
 
 ## 3. Start VM and provision everything
 

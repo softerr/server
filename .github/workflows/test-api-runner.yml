@@ -44,13 +44,17 @@ jobs:
     services:
       mailpit:
         image: axllent/mailpit:latest
+        env:
+          MP_ENABLE_CHAOS: "true"
         ports:
           - 1025:1025
+          - 8025:8025
 
     env:
       API_TEST_REQUIRE_DB: ${{ github.event.inputs.require_db_checks || '1' }}
       API_TEST_REQUIRE_EMAIL: ${{ github.event.inputs.require_email_checks || '1' }}
       API_TEST_BASE_URL: http://127.0.0.1
+      API_TEST_MAILPIT_URL: http://127.0.0.1:8025
       API_TEST_DB_NAME: auth
       API_SMTP_HOST: 127.0.0.1
       API_SMTP_PORT: "1025"
@@ -92,6 +96,18 @@ jobs:
           command -v curl
           command -v jq
           command -v psql
+
+      - name: Wait for local mail catcher
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if curl -fsS "${API_TEST_MAILPIT_URL}/api/v1/chaos" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Mailpit did not become ready."
+          exit 1
 
       - name: Wait for API
         run: |

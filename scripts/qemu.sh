@@ -327,6 +327,7 @@ run_remote_script() {
     API_TEST_DB_SUPERUSER
     API_TEST_REQUIRE_DB
     API_TEST_REQUIRE_EMAIL
+    API_TEST_MAILPIT_URL
   )
   local assignments=()
   local env_name env_value env_b64
@@ -367,8 +368,8 @@ case "${SCRIPT_REL}" in
       bash "${SCRIPT_REL}"
     ;;
   scripts/test_api.sh)
-    export API_TEST_BASE_URL API_TEST_DB_NAME API_TEST_DB_SUPERUSER API_TEST_REQUIRE_DB API_TEST_REQUIRE_EMAIL
-    sudo --preserve-env=API_TEST_BASE_URL,API_TEST_DB_NAME,API_TEST_DB_SUPERUSER,API_TEST_REQUIRE_DB,API_TEST_REQUIRE_EMAIL \
+    export API_TEST_BASE_URL API_TEST_DB_NAME API_TEST_DB_SUPERUSER API_TEST_REQUIRE_DB API_TEST_REQUIRE_EMAIL API_TEST_MAILPIT_URL
+    sudo --preserve-env=API_TEST_BASE_URL,API_TEST_DB_NAME,API_TEST_DB_SUPERUSER,API_TEST_REQUIRE_DB,API_TEST_REQUIRE_EMAIL,API_TEST_MAILPIT_URL \
       bash "${SCRIPT_REL}"
     ;;
   scripts/setup_postgresql.sh)
@@ -483,6 +484,7 @@ test_api_vm() {
   export API_TEST_DB_SUPERUSER="${API_TEST_DB_SUPERUSER:-postgres}"
   export API_TEST_REQUIRE_DB="${API_TEST_REQUIRE_DB:-1}"
   export API_TEST_REQUIRE_EMAIL="${API_TEST_REQUIRE_EMAIL:-1}"
+  export API_TEST_MAILPIT_URL="${API_TEST_MAILPIT_URL:-}"
 
   run_remote_script "scripts/test_api.sh"
 }
@@ -515,6 +517,7 @@ Environment variables:
   API_TEST_DB_SUPERUSER        Default: postgres
   API_TEST_REQUIRE_DB          Default: 1
   API_TEST_REQUIRE_EMAIL       Default: 1 (require signup email delivery checks)
+  API_TEST_MAILPIT_URL         Optional Mailpit API URL for resend delivery test
   VM_NAME                      Default: server-clone
   VM_DIR                       Default: ./.qemu/<VM_NAME>
   SSH_PORT                     Default: 2222

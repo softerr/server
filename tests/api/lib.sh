@@ -92,7 +92,7 @@ create_test_identity() {
   local suffix
   suffix="$(date +%s)-${RANDOM}"
   TEST_USERNAME="api_test_${suffix}"
-  TEST_EMAIL="softerr.dev+${suffix}@gmail.com"
+  TEST_EMAIL="api_test_${suffix}@example.test"
 }
 
 sql_escape_literal() {

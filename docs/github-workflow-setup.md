@@ -179,13 +179,8 @@ Input:
 
 Execution:
 - Starts a fresh local QEMU VM on GitHub runner
+- Starts a local Mailpit service for SMTP and mailbox checks
 - Provisions it via `scripts/qemu.sh start` (shared `scripts/provision.sh` flow)
 - Runs API tests via `scripts/qemu.sh test-api`
 
-When `require_email_checks=1`, set SMTP-related secrets so signup email delivery can succeed:
-- `API_SMTP_HOST` (required for strict email checks)
-- `API_SMTP_PORT`
-- `API_SMTP_ENCRYPTION`
-- `API_SMTP_USERNAME`
-- `API_SMTP_PASSWORD`
-- `API_MAIL_FROM`
+Email checks send only to `example.test` addresses through the local Mailpit service. No SMTP secrets are needed. The tests also simulate an SMTP rejection, then check that a resend reaches Mailpit after the cooldown is cleared in the test database.
