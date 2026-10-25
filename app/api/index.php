@@ -297,6 +297,11 @@ function sendVerificationEmail(string $email, string $username, string $token, s
     return mail($email, $subject, $body, implode("\r\n", $headers));
 }
 
+function quotePgConnectionValue(string $value): string
+{
+    return "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], $value) . "'";
+}
+
 function connectDb()
 {
     if (!function_exists('pg_connect')) {
@@ -313,9 +318,15 @@ function connectDb()
         respond(500, ['error' => 'DB_PASSWORD is not configured']);
     }
 
-    $conn = pg_connect(
-        "host={$host} port={$port} dbname={$dbname} user={$user} password={$password}"
+    $connectionString = sprintf(
+        'host=%s port=%s dbname=%s user=%s password=%s',
+        quotePgConnectionValue((string)$host),
+        quotePgConnectionValue((string)$port),
+        quotePgConnectionValue((string)$dbname),
+        quotePgConnectionValue((string)$user),
+        quotePgConnectionValue((string)$password)
     );
+    $conn = pg_connect($connectionString);
 
     if ($conn === false) {
         respond(500, ['error' => 'Database connection failed']);
