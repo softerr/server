@@ -9,7 +9,7 @@ fi
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_API_DIR="${SCRIPT_DIR}/../app/api"
-REMOTE_API_DIR="/tmp/workflow-artifacts/app/api"
+REMOTE_API_DIR="${REMOTE_DIR:-/tmp/workflow-artifacts}/app/api"
 
 SOURCE_DIR="${API_SOURCE_DIR:-}"
 if [[ -z "${SOURCE_DIR}" ]]; then

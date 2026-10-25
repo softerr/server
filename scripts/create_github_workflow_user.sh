@@ -145,7 +145,7 @@ fi
 SUDOERS_FILE="/etc/sudoers.d/${WORKFLOW_USER}-workflow-scripts"
 TMP_SUDOERS="$(mktemp)"
 cat > "${TMP_SUDOERS}" <<EOF
-${WORKFLOW_USER} ALL=(root) NOPASSWD:SETENV: /bin/bash ${SCRIPTS_DIR}/scripts/*.sh, /usr/bin/bash ${SCRIPTS_DIR}/scripts/*.sh
+${WORKFLOW_USER} ALL=(root) NOPASSWD:SETENV: /bin/bash ${SCRIPTS_DIR}/scripts/*.sh, /usr/bin/bash ${SCRIPTS_DIR}/scripts/*.sh, /bin/bash ${SCRIPTS_DIR}/runs/*/scripts/*.sh, /usr/bin/bash ${SCRIPTS_DIR}/runs/*/scripts/*.sh
 EOF
 
 if command -v visudo >/dev/null 2>&1; then
@@ -158,6 +158,7 @@ rm -f "${TMP_SUDOERS}"
 echo "Configured sudoers: ${SUDOERS_FILE}"
 echo "User '${WORKFLOW_USER}' can run:"
 echo "  sudo bash ${SCRIPTS_DIR}/scripts/<script>.sh"
+echo "  sudo bash ${SCRIPTS_DIR}/runs/<run-id>-<attempt>/scripts/<script>.sh"
 
 if [[ -n "${GENERATED_PRIVATE_KEY}" ]]; then
   echo

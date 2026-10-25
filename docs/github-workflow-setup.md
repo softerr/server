@@ -20,7 +20,9 @@ sudo bash scripts/create_github_workflow_user.sh
 What this configures:
 - Creates SSH user `github-workflow` (if missing)
 - Adds an SSH public key to `/home/github-workflow/.ssh/authorized_keys`
-- Creates sudoers rule so this user can run only `sudo bash /tmp/workflow-artifacts/scripts/<script>.sh`
+- Creates sudoers rules for scripts under `/tmp/workflow-artifacts/runs/<run-id>-<attempt>/scripts/` (and the legacy shared path)
+
+If the workflow user already exists, rerun this bootstrap script before using the updated workflows so its sudoers rule includes run-specific paths.
 
 ## 2. Configure SSH key for GitHub Actions
 
@@ -76,9 +78,12 @@ Place executable scripts in repository `scripts/` directory, for example:
 - `scripts/deploy_api.sh`
 - `scripts/deploy_quiz.sh`
 
+Each GitHub workflow run stages files under `/tmp/workflow-artifacts/runs/<run-id>-<attempt>` and removes that directory after the remote script runs. Concurrent uploads use separate directories.
+For manual use of the CI helper scripts, set the same unique `REMOTE_DIR` for both upload and execution; the manual default remains the legacy shared path.
+
 Deploy apps workflow uploads:
-- `scripts/deploy_*.sh` to `/tmp/workflow-artifacts/scripts`
-- `app/*` to `/tmp/workflow-artifacts/app`
+- `scripts/deploy_*.sh` to the run's `scripts/` directory
+- `app/*` to the run's `app/` directory
 
 `deploy_quiz.sh` deploys only prebuilt `app/quiz/dist` artifacts from workflow upload. Server-side build is disabled.
 
@@ -87,9 +92,9 @@ Deploy apps workflow uploads:
 In GitHub: `Actions -> Setup Nginx On Server -> Run workflow`
 
 This workflow uploads:
-- `scripts/provision.sh` to `/tmp/workflow-artifacts/scripts`
-- `scripts/setup_nginx.sh` to `/tmp/workflow-artifacts/scripts`
-- `configs/*` to `/tmp/workflow-artifacts/configs`
+- `scripts/provision.sh` to the run's `scripts/` directory
+- `scripts/setup_nginx.sh` to the run's `scripts/` directory
+- `configs/*` to the run's `configs/` directory
 
 Execution:
 - Runs `scripts/provision.sh` with `PROVISION_COMPONENTS=nginx`
@@ -111,9 +116,9 @@ In GitHub: `Actions -> Setup PostgreSQL On Server -> Run workflow`
 No inputs required.
 
 This workflow uploads:
-- `scripts/provision.sh` to `/tmp/workflow-artifacts/scripts`
-- `scripts/setup_postgresql.sh` to `/tmp/workflow-artifacts/scripts`
-- `configs/*` to `/tmp/workflow-artifacts/configs`
+- `scripts/provision.sh` to the run's `scripts/` directory
+- `scripts/setup_postgresql.sh` to the run's `scripts/` directory
+- `configs/*` to the run's `configs/` directory
 
 Execution:
 - Runs `scripts/provision.sh` with `PROVISION_COMPONENTS=postgresql`
@@ -140,9 +145,9 @@ Mapping:
 - `api` runs `scripts/deploy_api.sh`
 
 This workflow uploads:
-- `scripts/provision.sh` to `/tmp/workflow-artifacts/scripts`
-- `scripts/deploy_*.sh` to `/tmp/workflow-artifacts/scripts`
-- `app/*` to `/tmp/workflow-artifacts/app`
+- `scripts/provision.sh` to the run's `scripts/` directory
+- `scripts/deploy_*.sh` to the run's `scripts/` directory
+- `app/*` to the run's `app/` directory
 
 For `quiz`, build is executed on GitHub runner (`npm ci && npm run build`) before upload.
 

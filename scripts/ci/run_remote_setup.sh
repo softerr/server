@@ -86,9 +86,9 @@ else
   remote_env_prefix="${remote_assignments[*]} "
 fi
 
-preserve_csv=""
+preserve_csv="REMOTE_DIR"
 if [[ "${#all_vars[@]}" -gt 0 ]]; then
-  preserve_csv="$(IFS=,; printf '%s' "${all_vars[*]}")"
+  preserve_csv+=",$(IFS=,; printf '%s' "${all_vars[*]}")"
 fi
 
 all_vars_csv=""
@@ -98,6 +98,10 @@ fi
 
 ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "${remote_env_prefix}REMOTE_DIR='${REMOTE_DIR}' REMOTE_SCRIPT='${REMOTE_SCRIPT}' ALL_VARS_CSV='${all_vars_csv}' PRESERVE_VARS='${preserve_csv}' bash -s" <<'EOF'
 set -euo pipefail
+
+if [[ "${REMOTE_DIR}" =~ ^/tmp/workflow-artifacts/runs/[0-9]+-[0-9]+$ ]]; then
+  trap 'rm -rf -- "${REMOTE_DIR}"' EXIT
+fi
 
 if [[ -n "${ALL_VARS_CSV}" ]]; then
   all_vars_normalized="${ALL_VARS_CSV//,/ }"

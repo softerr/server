@@ -7,7 +7,7 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
-PREBUILT_DIST_DIR="${QUIZ_DIST_DIR:-/tmp/workflow-artifacts/app/quiz/dist}"
+PREBUILT_DIST_DIR="${QUIZ_DIST_DIR:-${REMOTE_DIR:-/tmp/workflow-artifacts}/app/quiz/dist}"
 TARGET_DIR="${QUIZ_TARGET_DIR:-/var/www/quiz}"
 WEB_USER="${WEB_USER:-www-data}"
 WEB_GROUP="${WEB_GROUP:-www-data}"
