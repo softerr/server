@@ -149,6 +149,8 @@ Run only PostgreSQL setup:
 sudo POSTGRES_AUTH_API_PASSWORD='your-password' PROVISION_COMPONENTS='postgresql' bash scripts/provision.sh
 ```
 
+PostgreSQL setup installs `softerr-prune-user-tokens.timer` to remove expired verification tokens daily. Check its next run with `systemctl list-timers softerr-prune-user-tokens.timer`, or run cleanup immediately with `sudo systemctl start softerr-prune-user-tokens.service`.
+
 Run only Nginx/PHP setup:
 
 ```bash

@@ -139,6 +139,8 @@ Database creation behavior:
 - Script executes `configs/postgresql/init.sql`
 - API role `auth_api` password is set from `POSTGRES_AUTH_API_PASSWORD`
 - Existing `user_token` tables receive the `email_attempted_at` column if it is missing
+- Verification-token lookup and expiry indexes are created, and expired verification tokens are removed
+- A daily systemd timer keeps removing expired verification tokens; missed runs are caught up after restart
 
 This workflow requires GitHub secret:
 - `POSTGRES_AUTH_API_PASSWORD`

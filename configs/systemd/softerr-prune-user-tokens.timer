@@ -1,0 +1,9 @@
+[Unit]
+Description=Prune expired API verification tokens daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

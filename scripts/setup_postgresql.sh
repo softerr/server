@@ -10,6 +10,9 @@ fi
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 INIT_SQL_FILE="${REPO_ROOT}/configs/postgresql/init.sql"
+PRUNE_SQL_FILE="${REPO_ROOT}/configs/postgresql/prune_user_tokens.sql"
+PRUNE_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.service"
+PRUNE_TIMER_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.timer"
 
 if ! command -v apt-get >/dev/null 2>&1; then
   echo "This script currently supports Debian/Ubuntu systems (apt-get required)."
@@ -21,6 +24,13 @@ if [[ ! -f "${INIT_SQL_FILE}" ]]; then
   echo "Expected path: ../configs/postgresql/init.sql relative to this script."
   exit 1
 fi
+
+for config_file in "${PRUNE_SQL_FILE}" "${PRUNE_SERVICE_FILE}" "${PRUNE_TIMER_FILE}"; do
+  if [[ ! -f "${config_file}" ]]; then
+    echo "Required token-pruning file not found: ${config_file}"
+    exit 1
+  fi
+done
 
 wait_for_apt_locks() {
   local timeout="${APT_LOCK_TIMEOUT_SECONDS:-300}"
@@ -79,6 +89,17 @@ sudo -u postgres psql \
   -v auth_api_password="${POSTGRES_AUTH_API_PASSWORD}" \
   -d postgres \
   < "${INIT_SQL_FILE}"
+
+echo "Pruning expired verification tokens..."
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth -f "${PRUNE_SQL_FILE}"
+
+echo "Installing expired-token cleanup timer..."
+install -d -m 755 /etc/softerr
+install -m 644 "${PRUNE_SQL_FILE}" /etc/softerr/prune_user_tokens.sql
+install -m 644 "${PRUNE_SERVICE_FILE}" /etc/systemd/system/softerr-prune-user-tokens.service
+install -m 644 "${PRUNE_TIMER_FILE}" /etc/systemd/system/softerr-prune-user-tokens.timer
+systemctl daemon-reload
+systemctl enable --now softerr-prune-user-tokens.timer
 
 echo "Done."
 echo "PostgreSQL is installed and databases are initialized from ${INIT_SQL_FILE}."

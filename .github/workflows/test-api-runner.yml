@@ -25,6 +25,10 @@ on:
       - "tests/api/**"
       - "scripts/test_api.sh"
       - "configs/postgresql/init.sql"
+      - "configs/postgresql/prune_user_tokens.sql"
+      - "configs/systemd/**"
+      - "scripts/setup_postgresql.sh"
+      - "tests/db/**"
       - ".github/workflows/test-api-runner.yml"
   push:
     branches:
@@ -34,6 +38,10 @@ on:
       - "tests/api/**"
       - "scripts/test_api.sh"
       - "configs/postgresql/init.sql"
+      - "configs/postgresql/prune_user_tokens.sql"
+      - "configs/systemd/**"
+      - "scripts/setup_postgresql.sh"
+      - "tests/db/**"
       - ".github/workflows/test-api-runner.yml"
 
 jobs:
@@ -129,8 +137,12 @@ jobs:
           set -euo pipefail
           bash scripts/test_api.sh
 
+      - name: Check expired-token pruning
+        run: bash tests/db/prune_user_tokens.sh
+
       - name: Print service logs on failure
         if: failure()
         run: |
           sudo journalctl -u nginx --no-pager -n 300 || true
           sudo journalctl -u postgresql --no-pager -n 300 || true
+          sudo journalctl -u softerr-prune-user-tokens.service --no-pager -n 100 || true

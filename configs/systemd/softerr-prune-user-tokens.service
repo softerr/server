@@ -1,0 +1,9 @@
+[Unit]
+Description=Prune expired API verification tokens
+Requires=postgresql.service
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=postgres
+ExecStart=/usr/bin/psql -X -v ON_ERROR_STOP=1 -d auth -f /etc/softerr/prune_user_tokens.sql
