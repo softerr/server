@@ -246,25 +246,118 @@ install -m 644 "${EMAIL_TIMER_FILE}" /etc/systemd/system/softerr-send-email.time
 systemctl daemon-reload
 systemctl enable --now softerr-send-email.timer
 
-echo "Writing nginx site config..."
-install -d -m 755 /etc/nginx/snippets
-sed "s|__PHP_FPM_SOCK__|${PHP_SOCK}|g" "${ROUTES_TEMPLATE}" > /etc/nginx/snippets/softerr-routes.conf
+echo "Staging nginx site config..."
+install -d -m 755 /etc/nginx/snippets /etc/nginx/sites-available /etc/nginx/sites-enabled
+nginx_stage="$(mktemp -d /etc/nginx/.softerr-stage.XXXXXXXX)"
+nginx_installed=false
+nginx_committed=false
+nginx_was_active=false
+nginx_preserve_stage=false
+routes_next=""
+site_next=""
+nginx_paths=(
+  /etc/nginx/snippets/softerr-routes.conf
+  /etc/nginx/sites-available/softerr
+  /etc/nginx/sites-enabled/default
+  /etc/nginx/sites-enabled/softerr-bootstrap
+  /etc/nginx/sites-enabled/softerr
+)
+
+restore_nginx_config() {
+  local index path result=0
+  for index in "${!nginx_paths[@]}"; do
+    path="${nginx_paths[index]}"
+    rm -f -- "${path}" || result=1
+    if [[ -e "${nginx_stage}/backup/${index}" || -L "${nginx_stage}/backup/${index}" ]]; then
+      cp -a -- "${nginx_stage}/backup/${index}" "${path}" || result=1
+    fi
+  done
+  return "${result}"
+}
+
+cleanup_nginx_stage() {
+  local result=$?
+  trap - EXIT HUP INT TERM
+  if [[ "${nginx_installed}" == true && "${nginx_committed}" != true ]]; then
+    echo "Nginx update failed; restoring the previous configuration." >&2
+    if ! restore_nginx_config || ! nginx -t; then
+      echo "Could not fully restore the previous Nginx configuration." >&2
+      nginx_preserve_stage=true
+      result=1
+    elif [[ "${nginx_was_active}" == true ]] && ! systemctl reload nginx; then
+      echo "Could not reload the restored Nginx configuration." >&2
+      nginx_preserve_stage=true
+      result=1
+    fi
+  fi
+  [[ -z "${routes_next}" ]] || rm -f -- "${routes_next}" || result=1
+  [[ -z "${site_next}" ]] || rm -f -- "${site_next}" || result=1
+  if [[ "${nginx_preserve_stage}" == true ]]; then
+    echo "Nginx config backups remain at ${nginx_stage}/backup for manual recovery." >&2
+  else
+    rm -rf -- "${nginx_stage}" || result=1
+  fi
+  exit "${result}"
+}
+trap cleanup_nginx_stage EXIT
+trap 'exit 1' HUP INT TERM
+
+sed "s|__PHP_FPM_SOCK__|${PHP_SOCK}|g" "${ROUTES_TEMPLATE}" > "${nginx_stage}/routes.conf"
 sed \
   -e "s|__TLS_ORIGIN__|${TLS_ORIGIN}|g" \
   -e "s|__TLS_CERT_FILE__|${TLS_CERT_FILE}|g" \
   -e "s|__TLS_KEY_FILE__|${TLS_KEY_FILE}|g" \
-  "${CONFIG_TEMPLATE}" > /etc/nginx/sites-available/softerr
+  "${CONFIG_TEMPLATE}" > "${nginx_stage}/site.conf"
 
+if ! grep -Fq 'include /etc/nginx/snippets/softerr-routes.conf;' "${nginx_stage}/site.conf"; then
+  echo "Staged Nginx site does not include the Softerr routes snippet." >&2
+  exit 1
+fi
+sed "s|include /etc/nginx/snippets/softerr-routes.conf;|include ${nginx_stage}/routes.conf;|g" \
+  "${nginx_stage}/site.conf" > "${nginx_stage}/test-site.conf"
+{
+  echo 'events {}'
+  echo 'http {'
+  cat "${nginx_stage}/test-site.conf"
+  echo '}'
+} > "${nginx_stage}/nginx.conf"
+
+echo "Validating staged nginx configuration..."
+nginx -t -c "${nginx_stage}/nginx.conf"
+
+mkdir -p -- "${nginx_stage}/backup"
+for index in "${!nginx_paths[@]}"; do
+  path="${nginx_paths[index]}"
+  if [[ -e "${path}" || -L "${path}" ]]; then
+    cp -a -- "${path}" "${nginx_stage}/backup/${index}"
+  fi
+done
+if systemctl is-active --quiet nginx; then
+  nginx_was_active=true
+fi
+
+nginx_installed=true
+routes_next="$(mktemp /etc/nginx/snippets/.softerr-routes.next.XXXXXXXX)"
+install -m 644 "${nginx_stage}/routes.conf" "${routes_next}"
+mv -f -- "${routes_next}" /etc/nginx/snippets/softerr-routes.conf
+site_next="$(mktemp /etc/nginx/sites-available/.softerr.next.XXXXXXXX)"
+install -m 644 "${nginx_stage}/site.conf" "${site_next}"
+mv -f -- "${site_next}" /etc/nginx/sites-available/softerr
 rm -f /etc/nginx/sites-enabled/default
 rm -f /etc/nginx/sites-enabled/softerr-bootstrap
 ln -sfn /etc/nginx/sites-available/softerr /etc/nginx/sites-enabled/softerr
 
-echo "Validating nginx configuration..."
+echo "Validating full nginx configuration..."
 nginx -t
 
-echo "Restarting services..."
+echo "Activating nginx configuration..."
 systemctl enable nginx
-systemctl restart nginx
+if [[ "${nginx_was_active}" == true ]]; then
+  systemctl reload nginx
+else
+  systemctl start nginx
+fi
+nginx_committed=true
 
 echo "Done."
 echo "Mapped routes:"

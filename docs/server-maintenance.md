@@ -137,7 +137,7 @@ This does not modify the live `auth` database. For a production recovery, keep t
 
 ## 8. Timers and redeployment
 
-Use **Set Up Server** for first-time setup. For later changes, run **Setup PostgreSQL On Server**, **Setup Nginx On Server**, or **Deploy Apps On Server** in GitHub Actions. These workflows upload the required files and use the same production environment values.
+Use **Set Up Server** for first-time setup. For later changes, run **Setup PostgreSQL On Server**, **Setup Nginx On Server**, or **Deploy Apps On Server** in GitHub Actions. These workflows upload the required files and use the same production environment values. Nginx setup validates staged site and route files before installation, then checks the full configuration and restores the previous files if activation fails.
 
 PostgreSQL setup installs `softerr-prune-user-tokens.timer` to remove expired verification tokens daily. Check its next run with `systemctl list-timers softerr-prune-user-tokens.timer`, or run cleanup immediately with `sudo systemctl start softerr-prune-user-tokens.service`.
 
