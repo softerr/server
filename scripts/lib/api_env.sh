@@ -2,16 +2,21 @@
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/tls_certificate.sh"
 
+validate_api_app_base_url() {
+  local origin="${1:-}"
+  if [[ "${origin}" == https://* ]]; then
+    tls_certificate_paths "${origin}" || return 1
+  elif [[ ! "${origin}" =~ ^http://(localhost|127\.0\.0\.1)(:[0-9]+)?/?$ ]]; then
+    echo "API_APP_BASE_URL must use HTTPS for a public host; HTTP is allowed only for localhost or 127.0.0.1." >&2
+    return 1
+  fi
+}
+
 load_api_env() {
   : "${API_DB_PASSWORD:?API_DB_PASSWORD is required}"
   : "${API_APP_BASE_URL:?API_APP_BASE_URL is required}"
 
-  if [[ "${API_APP_BASE_URL}" == https://* ]]; then
-    tls_certificate_paths "${API_APP_BASE_URL}" || return 1
-  elif [[ ! "${API_APP_BASE_URL}" =~ ^http://(localhost|127\.0\.0\.1)(:[0-9]+)?/?$ ]]; then
-    echo "API_APP_BASE_URL must use HTTPS for a public host; HTTP is allowed only for localhost or 127.0.0.1." >&2
-    return 1
-  fi
+  validate_api_app_base_url "${API_APP_BASE_URL}" || return 1
 
   API_DB_HOST="${API_DB_HOST:-127.0.0.1}"
   API_DB_PORT="${API_DB_PORT:-5432}"

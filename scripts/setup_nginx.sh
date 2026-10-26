@@ -9,7 +9,7 @@ fi
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
-source "${SCRIPT_DIR}/lib/tls_certificate.sh"
+source "${SCRIPT_DIR}/lib/api_env.sh"
 source "${SCRIPT_DIR}/lib/apt_locks.sh"
 CONFIG_TEMPLATE="${NGINX_CONFIG_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr.conf.template}"
 TLS_CONFIG_TEMPLATE="${NGINX_TLS_CONFIG_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr-tls.conf.template}"
@@ -20,17 +20,14 @@ if ! command -v apt-get >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ "${API_APP_BASE_URL:-}" == https://* ]]; then
+validate_api_app_base_url "${API_APP_BASE_URL:-}" || exit 1
+if [[ "${API_APP_BASE_URL}" == https://* ]]; then
   CONFIG_TEMPLATE="${TLS_CONFIG_TEMPLATE}"
-  tls_certificate_paths "${API_APP_BASE_URL}" || exit 1
   tls_certificate_valid "${TLS_HOST}" "${TLS_CERT_FILE}" "${TLS_KEY_FILE}" || exit 1
-elif [[ "${API_APP_BASE_URL:-}" =~ ^http://(localhost|127\.0\.0\.1)(:[0-9]+)?/?$ ]]; then
+else
   TLS_ORIGIN=""
   TLS_CERT_FILE=""
   TLS_KEY_FILE=""
-else
-  echo "API_APP_BASE_URL must use HTTPS for a public host; HTTP is allowed only for localhost or 127.0.0.1."
-  exit 1
 fi
 
 if [[ ! -f "${CONFIG_TEMPLATE}" || ! -f "${ROUTES_TEMPLATE}" ]]; then
