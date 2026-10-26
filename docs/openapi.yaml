@@ -1,0 +1,353 @@
+openapi: 3.1.0
+info:
+  title: Softerr API
+  version: 1.0.0
+  description: |
+    Public account signup and email verification API. No login or session
+    endpoint is currently available. PHP responses are JSON. Nginx may return
+    redirects or HTML error pages before a request reaches PHP, notably for
+    oversized or rate-limited requests. Clients should use HTTP status codes
+    and should not assume every error response has a JSON body.
+servers:
+  - url: /api
+    description: API path on the same host as the client-configured origin
+tags:
+  - name: Health
+  - name: Verification
+paths:
+  /:
+    get:
+      tags: [Health]
+      operationId: getReadiness
+      summary: Check API readiness
+      description: |
+        Checks the verification URL configuration, PostgreSQL connection, and
+        required database schema. It does not check email delivery.
+        Use `/api/`; Nginx redirects `/api` to `/api/`.
+      responses:
+        '200':
+          description: API is ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+              example:
+                status: ok
+                message: API is ready
+        '503':
+          description: API configuration or database is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessUnavailable'
+              example:
+                status: unavailable
+                error: Database connection failed
+
+  /auth/signup:
+    post:
+      tags: [Verification]
+      operationId: signup
+      summary: Create an account and queue a verification email
+      description: |
+        The JSON request body is limited to 4096 bytes. Username is trimmed;
+        email is trimmed and lowercased. Username is limited to 100 bytes,
+        password to 1024 bytes, and email to 255 bytes after normalization.
+        The server checks email syntax. A verification token expires after one
+        hour. `verification_email_queued` means the email job was committed,
+        not that a message was delivered. Requests are rate limited per client
+        IP at 20 per minute with a burst allowance of 20.
+      parameters:
+        - $ref: '#/components/parameters/XTimezone'
+        - $ref: '#/components/parameters/TimezoneHeader'
+        - $ref: '#/components/parameters/TimezoneCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+            example:
+              username: john
+              password: secret123
+              email: john@example.com
+              timezone: Europe/Vilnius
+      responses:
+        '201':
+          description: Account created and verification email queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignupResponse'
+              example:
+                id: 1
+                username: john
+                email: john@example.com
+                verified: false
+                created: '2026-10-26 14:30:00'
+                verification_email_queued: true
+        '400':
+          description: Invalid JSON or missing or invalid account fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidJson:
+                  value: { error: Invalid JSON body }
+                invalidEmail:
+                  value: { error: email is invalid }
+        '409':
+          description: Username or email already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: username or email already exists
+        '413':
+          description: Request body is too large; Nginx may return a non-JSON body.
+        '429':
+          description: Rate limit exceeded; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/VerificationUnavailable'
+
+  /auth/resend-verification:
+    post:
+      tags: [Verification]
+      operationId: resendVerification
+      summary: Request another verification email
+      description: |
+        The response is the same whether the account is unknown, already
+        verified, still within the one-minute resend cooldown, or eligible for
+        another email. A token with ten minutes or less remaining is replaced.
+        The JSON request body is limited to 4096 bytes. Email is trimmed,
+        lowercased, and limited to 255 bytes. Requests are rate limited per
+        client IP at 10 per minute with a burst allowance of 10.
+      parameters:
+        - $ref: '#/components/parameters/XTimezone'
+        - $ref: '#/components/parameters/TimezoneHeader'
+        - $ref: '#/components/parameters/TimezoneCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendRequest'
+            example:
+              email: john@example.com
+      responses:
+        '202':
+          description: Request accepted; no delivery guarantee or account disclosure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResendResponse'
+              example:
+                message: Verification email request accepted
+        '400':
+          description: Invalid JSON or missing or invalid email.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: A valid email is required
+        '413':
+          description: Request body is too large; Nginx may return a non-JSON body.
+        '429':
+          description: Rate limit exceeded; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/VerificationUnavailable'
+
+  /auth/verify:
+    get:
+      tags: [Verification]
+      operationId: verifyAccount
+      summary: Verify an account using an emailed token
+      description: |
+        The token is a one-time value. It must be unexpired when the account
+        is locked for verification. On success, all verification tokens for
+        the account are deleted. This URL is included in the email; opening it
+        returns JSON rather than a web page or app redirect.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: 64-character hexadecimal verification token from the email.
+          schema:
+            type: string
+            pattern: '^[A-Fa-f0-9]{64}$'
+      responses:
+        '200':
+          description: Account verified.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+              example:
+                id: 1
+                username: john
+                email: john@example.com
+                verified: true
+                created: '2026-10-26 14:30:00'
+        '400':
+          description: Token is malformed, invalid, expired, or already used.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                malformed:
+                  value: { error: Invalid verification token }
+                expiredOrUsed:
+                  value: { error: Verification token is invalid or expired }
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  parameters:
+    XTimezone:
+      name: X-Timezone
+      in: header
+      required: false
+      description: |
+        Preferred IANA timezone name for the email expiry timestamp, such as
+        `Europe/Vilnius`. Invalid values are ignored. Precedence is this header,
+        then the `Timezone` header, `timezone` cookie, and JSON `timezone` field.
+      schema:
+        type: string
+      example: Europe/Vilnius
+    TimezoneHeader:
+      name: Timezone
+      in: header
+      required: false
+      description: Fallback timezone if X-Timezone is absent or invalid.
+      schema:
+        type: string
+    TimezoneCookie:
+      name: timezone
+      in: cookie
+      required: false
+      description: Fallback timezone if both timezone headers are absent or invalid.
+      schema:
+        type: string
+
+  responses:
+    InternalError:
+      description: Internal or database failure; the error text may vary.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    VerificationUnavailable:
+      description: Verification email URL is not configured.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Verification email is not configured
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable error; clients should use the HTTP status.
+    Readiness:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          const: ok
+        message:
+          type: string
+          const: API is ready
+    ReadinessUnavailable:
+      type: object
+      required: [status, error]
+      properties:
+        status:
+          type: string
+          const: unavailable
+        error:
+          type: string
+    SignupRequest:
+      type: object
+      required: [username, password, email]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          description: Trimmed before validation; must be nonempty and at most 100 bytes.
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          description: Must be nonempty and at most 1024 bytes.
+        email:
+          type: string
+          format: email
+          minLength: 1
+          description: Trimmed and lowercased; must be at most 255 bytes.
+        timezone:
+          type: string
+          description: Fallback IANA timezone if no valid header or cookie is supplied.
+    ResendRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+          description: Trimmed and lowercased; must be at most 255 bytes.
+        timezone:
+          type: string
+          description: Fallback IANA timezone if no valid header or cookie is supplied.
+    User:
+      type: object
+      required: [id, username, email, verified, created]
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        verified:
+          type: boolean
+        created:
+          type: string
+          description: |
+            PostgreSQL timestamp without timezone, usually formatted as
+            `YYYY-MM-DD HH:MM:SS`. No timezone or UTC guarantee is encoded;
+            clients should not parse it as an instant without an agreed timezone.
+          example: '2026-10-26 14:30:00'
+    SignupResponse:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [verification_email_queued]
+          properties:
+            verification_email_queued:
+              type: boolean
+              const: true
+    ResendResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          const: Verification email request accepted

@@ -1,15 +1,17 @@
 # API Documentation
 
+Machine-readable contract: [OpenAPI specification](openapi.yaml).
+
 Base path:
 - `/api`
 
 Content type:
-- All responses are JSON.
+- PHP responses are JSON. Nginx redirects and errors (including some `413` and `429` responses) may not be JSON.
 
 ## 1. Health check
 
 Endpoint:
-- `GET /api`
+- `GET /api/` (`/api` redirects to `/api/` through Nginx)
 
 Success response:
 
@@ -41,10 +43,10 @@ Request body:
 
 Validation rules:
 - `username`, `password`, `email` are required.
-- `username` max length is `100`.
+- `username` max length is `100` bytes after trimming.
 - `password` max length is `1024` bytes.
 - `email` must be a valid email format.
-- `email` max length is `255` characters.
+- `email` max length is `255` bytes after trimming and lowercasing.
 - The signup request body must be at most `4096` bytes.
 - Public signup requests are limited per client IP to 20 per minute, with a burst allowance of 20.
 - `verified` is always controlled by backend (not accepted from user).
@@ -68,10 +70,12 @@ Example response:
   "username": "john",
   "email": "john@example.com",
   "verified": false,
-  "created": "2026-05-17 14:30:00+00",
+  "created": "2026-05-17 14:30:00",
   "verification_email_queued": true
 }
 ```
+
+`created` is a database timestamp without timezone information; clients should not treat it as UTC without an agreed timezone.
 
 Side effects:
 - Stores user in `public."user"`.
@@ -104,7 +108,7 @@ Request body:
 {"email":"john@example.com"}
 ```
 
-The email must be at most 255 characters, and the request body must be at most 4096 bytes. Public resend requests are limited per client IP to 10 per minute, with a burst allowance of 10. Oversized email values return `400`, oversized bodies return `413`, and requests over the rate limit return `429`.
+The email must be at most 255 bytes after trimming and lowercasing, and the request body must be at most 4096 bytes. Public resend requests are limited per client IP to 10 per minute, with a burst allowance of 10. Oversized email values return `400`, oversized bodies return `413`, and requests over the rate limit return `429`.
 
 Returns `202 Accepted` with the same message whether the account exists, is already verified, or is eligible for another email. For an unverified account, a new request is allowed after one minute. A token with less than ten minutes remaining is replaced before queuing. The optional timezone inputs follow the signup rules above.
 If `APP_BASE_URL` is missing or invalid, the endpoint returns `503` before accessing the database.
@@ -128,7 +132,7 @@ Example response:
   "username": "john",
   "email": "john@example.com",
   "verified": true,
-  "created": "2026-05-17 14:30:00+00"
+  "created": "2026-05-17 14:30:00"
 }
 ```
 
@@ -179,6 +183,23 @@ Known routes with wrong HTTP method:
 
 ## 7. Automated endpoint tests
 
+Check live responses against the OpenAPI specification from the host after
+starting the local QEMU VM:
+
+```bash
+bash scripts/qemu.sh start
+bash scripts/test_openapi.sh
+```
+
+The contract check sends a small number of signup and resend requests, so use
+the local test VM rather than production. It checks response status, content
+type, and schema. It cannot create a valid one-time verification token, so run
+the endpoint tests below for the full signup and verification flow. If the VM
+uses a different HTTP port, set `API_TEST_BASE_URL` to its local origin. The
+generated data may produce schema-validation warnings for signup and
+verification even when the response checks pass; inspect the reported status
+codes and use the endpoint tests to cover successful requests.
+
 Run against local QEMU VM:
 
 ```bash
@@ -199,7 +220,8 @@ Optional test env vars:
 - `API_TEST_REQUIRE_EMAIL` (`1` or `0`, default `1` in both `qemu.sh test-api` and `scripts/test_api.sh`)
 
 GitHub workflow:
-- `.github/workflows/test-api-qemu.yml` (`Test API In QEMU`)
+- `.github/workflows/test-api-runner.yml` (`Test API On Runner`) runs the OpenAPI contract check and endpoint tests for API, spec, and test-script changes.
+- `.github/workflows/test-api-qemu.yml` (`Test API In QEMU`) runs the endpoint tests in a VM when dispatched.
 
 How to add a new endpoint test:
 1. Add a new case file in `tests/api/cases/` (for example `40-password-reset.sh`).
