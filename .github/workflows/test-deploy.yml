@@ -61,7 +61,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check shell syntax
         run: bash -n scripts/*.sh scripts/ci/*.sh scripts/lib/*.sh tests/deploy/*.sh
