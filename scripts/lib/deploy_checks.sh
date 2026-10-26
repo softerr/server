@@ -32,10 +32,11 @@ verify_local_app_route() {
     if status="$(curl -sS --noproxy '*' --connect-timeout 3 --max-time 10 \
       --output "${response_file}" --write-out '%{http_code}' \
       --connect-to "${host}:${url_port}:127.0.0.1:${local_port}" \
-      "${origin}${route}")" && [[ "${status}" == 200 ]]; then
+      "${origin}${route}")"; then
       case "${mode}" in
-        api) if grep -Fq '"status":"ok"' "${response_file}"; then rm -f -- "${response_file}"; return 0; fi ;;
-        file) if cmp -s -- "${response_file}" "${expected}"; then rm -f -- "${response_file}"; return 0; fi ;;
+        api) if [[ "${status}" == 200 ]] && grep -Fq '"status":"ok"' "${response_file}"; then rm -f -- "${response_file}"; return 0; fi ;;
+        auth-required) if [[ "${status}" == 401 ]] && grep -Fq '"error":"Not authenticated"' "${response_file}"; then rm -f -- "${response_file}"; return 0; fi ;;
+        file) if [[ "${status}" == 200 ]] && cmp -s -- "${response_file}" "${expected}"; then rm -f -- "${response_file}"; return 0; fi ;;
         *) echo "Unknown deployment check: ${mode}" >&2; rm -f -- "${response_file}"; return 1 ;;
       esac
     fi

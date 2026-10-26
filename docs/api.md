@@ -8,6 +8,36 @@ Base path:
 Content type:
 - PHP responses are JSON. Nginx redirects and errors (including some `413` and `429` responses) may not be JSON.
 
+The API uses separate PHP entrypoints: `/api/auth/*` is handled by the shared
+auth app, `/api/quiz/*` by the quiz app, and `/api/` by the readiness endpoint.
+The PHP files are internal to Nginx and are not public API URLs.
+
+## Quiz library
+
+Quiz app routes use `/api/quiz/`; shared account routes use `/api/auth/`.
+
+These routes require the `softerr_session` cookie from a successful login. The
+quiz app sends it automatically on same-origin requests. Account identities
+live in the shared `auth` database. The `quiz` database has its own `user`
+table, whose `auth_user_id` maps to the shared account. Each quiz has a foreign
+key to its local user. The API creates the local user on the first quiz create.
+
+- `GET /api/quiz/quizzes` returns `{ "quizzes": [...] }`, newest first. Each quiz has
+  `id`, `name`, and `created` fields.
+- `POST /api/quiz/quizzes` with `{ "name": "Geography" }` creates a quiz and returns
+  the quiz with HTTP `201`. The name is trimmed, must be 1–100 bytes, and the
+  request body must be at most 4096 bytes. An account may have 100 quizzes;
+  further creation returns `409`.
+- `PATCH /api/quiz/quizzes/{quizId}` with `{ "name": "New name" }` renames a quiz
+  owned by the account and returns the updated quiz. Name validation matches
+  creation. A missing or other account's quiz returns `404`.
+- `DELETE /api/quiz/quizzes/{quizId}` deletes an owned quiz and returns `204` with
+  no body. A missing or other account's quiz returns `404`.
+
+Run **Setup PostgreSQL On Server** before deploying this API version so the
+new `quiz.public."user"` and `quiz.public.quiz` tables and grants exist. Then run **Deploy Apps On Server**
+with `all` to publish the API and quiz app.
+
 ## 1. Health check
 
 Endpoint:
@@ -213,6 +243,9 @@ Both PHP-FPM and the systemd email worker receive these runtime env vars:
 - `DB_USER` (default `auth_api`)
 - `DB_PASSWORD` (required)
 - `APP_BASE_URL` (required HTTPS origin for verification links; loopback HTTP is allowed for local tests)
+
+PHP-FPM also connects to the `quiz` database with the same server, role, and
+password for quiz routes. The email worker uses only `auth`.
 
 Only the email worker receives the mail transport settings:
 

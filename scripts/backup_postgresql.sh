@@ -8,7 +8,6 @@ if [[ "$(id -un)" != postgres ]]; then
 fi
 
 BACKUP_DIR=/var/backups/softerr
-DB_NAME=auth
 RETENTION_DAYS=30
 
 umask 077
@@ -20,11 +19,8 @@ if ! flock -n 9; then
 fi
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-partial="$(mktemp -- "${BACKUP_DIR}/.${DB_NAME}-${stamp}.XXXXXXXX.partial")"
-partial_name="${partial##*/}"
-archive="${BACKUP_DIR}/${partial_name#.}"
-archive="${archive%.partial}.dump"
-restore_db="softerr_restore_check_$(date -u +%s)_$$"
+partial=''
+restore_db=''
 restore_created=false
 
 cleanup() {
@@ -33,29 +29,45 @@ cleanup() {
   if [[ "${restore_created}" == true ]]; then
     dropdb --if-exists -- "${restore_db}" || result=1
   fi
-  rm -f -- "${partial}"
+  if [[ -n "${partial}" ]]; then
+    rm -f -- "${partial}"
+  fi
   exit "${result}"
 }
 trap cleanup EXIT
 
-echo "Backing up ${DB_NAME}..."
-pg_dump --format=custom --dbname="${DB_NAME}" --file="${partial}"
+backup_database() {
+  local db_name="$1" check_sql="$2" partial_name archive
+  partial="$(mktemp -- "${BACKUP_DIR}/.${db_name}-${stamp}.XXXXXXXX.partial")"
+  partial_name="${partial##*/}"
+  archive="${BACKUP_DIR}/${partial_name#.}"
+  archive="${archive%.partial}.dump"
+  restore_db="softerr_restore_check_${db_name}_$(date -u +%s)_$$"
 
-echo "Restoring backup into temporary database ${restore_db}..."
-createdb --template=template0 -- "${restore_db}"
-restore_created=true
-pg_restore --exit-on-error --dbname="${restore_db}" -- "${partial}"
-psql -X -v ON_ERROR_STOP=1 --dbname="${restore_db}" -Atqc \
-  'SELECT 1 FROM public."user", public.user_token, public.verification_email_outbox LIMIT 0' \
-  >/dev/null
-dropdb -- "${restore_db}"
-restore_created=false
+  echo "Backing up ${db_name}..."
+  pg_dump --format=custom --dbname="${db_name}" --file="${partial}"
 
-if [[ -e "${archive}" ]]; then
-  echo "Refusing to overwrite existing backup: ${archive}" >&2
-  exit 1
-fi
-mv -- "${partial}" "${archive}"
-find "${BACKUP_DIR}" -maxdepth 1 -type f -name "${DB_NAME}-*.dump" \
-  -mmin "+$((RETENTION_DAYS * 1440))" -delete
-echo "Verified backup: ${archive}"
+  echo "Restoring backup into temporary database ${restore_db}..."
+  createdb --template=template0 -- "${restore_db}"
+  restore_created=true
+  pg_restore --exit-on-error --dbname="${restore_db}" -- "${partial}"
+  psql -X -v ON_ERROR_STOP=1 --dbname="${restore_db}" -Atqc "${check_sql}" >/dev/null
+  dropdb -- "${restore_db}"
+  restore_created=false
+  restore_db=''
+
+  if [[ -e "${archive}" ]]; then
+    echo "Refusing to overwrite existing backup: ${archive}" >&2
+    return 1
+  fi
+  mv -- "${partial}" "${archive}"
+  partial=''
+  find "${BACKUP_DIR}" -maxdepth 1 -type f -name "${db_name}-*.dump" \
+    -mmin "+$((RETENTION_DAYS * 1440))" -delete
+  echo "Verified backup: ${archive}"
+}
+
+backup_database auth \
+  'SELECT 1 FROM public."user", public.user_token, public.verification_email_outbox LIMIT 0'
+backup_database quiz \
+  'SELECT q.id, q.user_id, q.name, q.created, u.auth_user_id FROM public.quiz q, public."user" u LIMIT 0'

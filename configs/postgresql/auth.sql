@@ -1,0 +1,49 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS public."user" (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    verified BOOLEAN NOT NULL DEFAULT FALSE,
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.user_token (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES public."user"(id) ON DELETE CASCADE,
+    type VARCHAR(64) NOT NULL,
+    hash TEXT NOT NULL DEFAULT encode(gen_random_bytes(32), 'hex'),
+    expires TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '1 hour'),
+    email_attempted_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.verification_email_outbox (
+    id BIGSERIAL PRIMARY KEY,
+    token_id BIGINT NOT NULL UNIQUE REFERENCES public.user_token(id) ON DELETE CASCADE,
+    timezone TEXT,
+    queued_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    available_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    claimed_until TIMESTAMP,
+    claim_id UUID,
+    attempts INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS verification_email_outbox_available_idx
+    ON public.verification_email_outbox (available_at, id);
+
+CREATE INDEX IF NOT EXISTS user_token_hash_idx
+    ON public.user_token (hash);
+CREATE INDEX IF NOT EXISTS user_token_user_type_id_idx
+    ON public.user_token (user_id, type, id DESC);
+CREATE INDEX IF NOT EXISTS user_token_verify_expiry_idx
+    ON public.user_token (expires) WHERE type = 'verify';
+
+GRANT CONNECT ON DATABASE auth TO auth_api;
+GRANT USAGE ON SCHEMA public TO auth_api;
+GRANT SELECT, INSERT, UPDATE ON TABLE public."user" TO auth_api;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_token TO auth_api;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.verification_email_outbox TO auth_api;
+GRANT USAGE, SELECT ON SEQUENCE public.user_id_seq TO auth_api;
+GRANT USAGE, SELECT ON SEQUENCE public.user_token_id_seq TO auth_api;
+GRANT USAGE, SELECT ON SEQUENCE public.verification_email_outbox_id_seq TO auth_api;

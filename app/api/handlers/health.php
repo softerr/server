@@ -20,5 +20,20 @@ function handleReadiness(): never
         respond(503, ['status' => 'unavailable', 'error' => 'Database schema is not ready']);
     }
 
+    [$quizDb, $quizError] = openQuizDb();
+    if ($quizDb === false) {
+        respond(503, ['status' => 'unavailable', 'error' => $quizError]);
+    }
+    $quizSchema = @pg_query($quizDb, 'SELECT q.id, q.user_id, q.name, q.created, u.auth_user_id
+        FROM public.quiz q, public."user" u LIMIT 0');
+    if ($quizSchema === false) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
+    }
+    $quizOwnerConstraint = @pg_query($quizDb, "SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'public.quiz'::regclass AND conname = 'quiz_user_id_fkey'");
+    if ($quizOwnerConstraint === false || pg_num_rows($quizOwnerConstraint) !== 1) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
+    }
+
     respond(200, ['status' => 'ok', 'message' => 'API is ready']);
 }

@@ -13,5 +13,14 @@ test_api_health_method_not_allowed() {
   assert_json_value '.error' 'Method not allowed' || return 1
 }
 
+test_api_php_entrypoints_are_internal() {
+  local entrypoint
+  for entrypoint in index auth quiz; do
+    api_request GET "/api/${entrypoint}.php"
+    assert_status 404 || return 1
+  done
+}
+
 register_test_case test_api_health_get
 register_test_case test_api_health_method_not_allowed
+register_test_case test_api_php_entrypoints_are_internal

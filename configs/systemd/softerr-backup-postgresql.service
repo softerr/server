@@ -1,5 +1,5 @@
 [Unit]
-Description=Back up and restore-check the auth PostgreSQL database
+Description=Back up and restore-check the auth and quiz PostgreSQL databases
 Requires=postgresql.service
 After=postgresql.service
 

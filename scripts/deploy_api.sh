@@ -22,9 +22,15 @@ fi
 
 if [[ -z "${SOURCE_DIR}" ]] || [[ ! -f "${SOURCE_DIR}/index.php" ]]; then
   echo "Could not find API source directory."
-  echo "Set API_SOURCE_DIR to a directory that contains index.php."
+  echo "Set API_SOURCE_DIR to a directory that contains the API entry files."
   exit 1
 fi
+for entrypoint in index auth quiz; do
+  if [[ ! -f "${SOURCE_DIR}/${entrypoint}.php" ]]; then
+    echo "Missing API entry file: ${SOURCE_DIR}/${entrypoint}.php" >&2
+    exit 1
+  fi
+done
 
 TARGET_DIR="${API_TARGET_DIR:-/var/www/api}"
 WEB_USER="${WEB_USER:-www-data}"
@@ -45,7 +51,9 @@ restart_api_fpm() {
 }
 verify_api_release() {
   restart_api_fpm || return 1
-  verify_local_app_route /api/ api
+  verify_local_app_route /api/ api || return 1
+  verify_local_app_route /api/auth/me auth-required || return 1
+  verify_local_app_route /api/quiz/quizzes auth-required
 }
 if ! atomic_deploy_dir "${SOURCE_DIR}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}" verify_api_release; then
   restart_api_fpm || true

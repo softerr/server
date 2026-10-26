@@ -36,12 +36,12 @@ function respondVerification(int $statusCode, array $payload): never
   <title>{$safeTitle}</title>
   <style>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; }
-    body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #171717; color: #f2f2f2; }
-    main { box-sizing: border-box; width: min(32rem, calc(100% - 2rem)); padding: 2.5rem; border: 1px solid #666666; background: #252525; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #121212; color: #e0e0e0; }
+    main { box-sizing: border-box; width: min(32rem, calc(100% - 2rem)); padding: 2.5rem; border: 1px solid rgb(85 85 85 / 70%); background: #1e1e1e; }
     h1 { margin-top: 0; font-size: 2rem; }
-    p { line-height: 1.6; color: #d0d0d0; }
-    a { display: inline-block; margin-top: 1rem; padding: .75rem 1rem; border: 1px solid #b5b5b5; color: #f2f2f2; text-decoration: none; }
-    a:hover, a:focus-visible { background: #383838; }
+    p { line-height: 1.6; color: #dddddd; }
+    a { display: inline-block; margin-top: 1rem; padding: .75rem 1rem; border: 1px solid #d08b38; color: #d08b38; text-decoration: none; }
+    a:hover, a:focus-visible { background: #555555; }
   </style>
 </head>
 <body>

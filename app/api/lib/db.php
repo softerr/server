@@ -6,7 +6,7 @@ function quotePgConnectionValue(string $value): string
     return "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], $value) . "'";
 }
 
-function openDb(int $connectTimeoutSeconds = 3): array
+function openDb(int $connectTimeoutSeconds = 3, ?string $databaseName = null): array
 {
     if (!function_exists('pg_connect')) {
         return [false, 'PostgreSQL PHP extension is not installed'];
@@ -14,7 +14,7 @@ function openDb(int $connectTimeoutSeconds = 3): array
 
     $host = getenv('DB_HOST') ?: '127.0.0.1';
     $port = getenv('DB_PORT') ?: '5432';
-    $dbname = getenv('DB_NAME') ?: 'auth';
+    $dbname = $databaseName ?? (getenv('DB_NAME') ?: 'auth');
     $user = getenv('DB_USER') ?: 'auth_api';
     $password = getenv('DB_PASSWORD') ?: '';
 
@@ -38,5 +38,10 @@ function openDb(int $connectTimeoutSeconds = 3): array
     }
 
     return [$conn, null];
+}
+
+function openQuizDb(): array
+{
+    return openDb(3, 'quiz');
 }
 

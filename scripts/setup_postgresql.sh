@@ -11,6 +11,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/apt_locks.sh"
 INIT_SQL_FILE="${REPO_ROOT}/configs/postgresql/init.sql"
+AUTH_SQL_FILE="${REPO_ROOT}/configs/postgresql/auth.sql"
+QUIZ_SQL_FILE="${REPO_ROOT}/configs/postgresql/quiz.sql"
 PRUNE_SQL_FILE="${REPO_ROOT}/configs/postgresql/prune_user_tokens.sql"
 PRUNE_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.service"
 PRUNE_TIMER_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.timer"
@@ -23,13 +25,8 @@ if ! command -v apt-get >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ ! -f "${INIT_SQL_FILE}" ]]; then
-  echo "PostgreSQL init SQL file not found: ${INIT_SQL_FILE}"
-  echo "Expected path: ../configs/postgresql/init.sql relative to this script."
-  exit 1
-fi
-
-for config_file in "${PRUNE_SQL_FILE}" "${PRUNE_SERVICE_FILE}" "${PRUNE_TIMER_FILE}" \
+for config_file in "${INIT_SQL_FILE}" "${AUTH_SQL_FILE}" "${QUIZ_SQL_FILE}" \
+  "${PRUNE_SQL_FILE}" "${PRUNE_SERVICE_FILE}" "${PRUNE_TIMER_FILE}" \
   "${BACKUP_SCRIPT_FILE}" "${BACKUP_SERVICE_FILE}" "${BACKUP_TIMER_FILE}"; do
   if [[ ! -f "${config_file}" ]]; then
     echo "Required PostgreSQL setup file not found: ${config_file}"
@@ -57,11 +54,17 @@ echo "Starting PostgreSQL service..."
 systemctl enable --now postgresql
 
 echo "Applying PostgreSQL init SQL: ${INIT_SQL_FILE}"
-sudo -u postgres psql \
+sudo -u postgres psql -X \
   -v ON_ERROR_STOP=1 \
   -v auth_api_password="${API_DB_PASSWORD}" \
   -d postgres \
   < "${INIT_SQL_FILE}"
+
+echo "Applying auth database schema: ${AUTH_SQL_FILE}"
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${AUTH_SQL_FILE}"
+
+echo "Applying quiz database schema: ${QUIZ_SQL_FILE}"
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d quiz < "${QUIZ_SQL_FILE}"
 
 echo "Pruning expired verification tokens..."
 sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${PRUNE_SQL_FILE}"
@@ -85,4 +88,4 @@ systemctl start softerr-backup-postgresql.service
 systemctl enable --now softerr-backup-postgresql.timer
 
 echo "Done."
-echo "PostgreSQL is installed and databases are initialized from ${INIT_SQL_FILE}."
+echo "PostgreSQL is installed and auth and quiz database schemas are initialized."

@@ -20,7 +20,8 @@ source "${REPO_ROOT}/scripts/lib/app_selection.sh"
 
 case "${MODE}" in
   server)
-    if [[ ! -f "${REPO_ROOT}/app/api/index.php" || ! -f "${REPO_ROOT}/app/quiz/dist/index.html" ]]; then
+    if [[ ! -f "${REPO_ROOT}/app/api/index.php" || ! -f "${REPO_ROOT}/app/api/auth.php" \
+      || ! -f "${REPO_ROOT}/app/api/quiz.php" || ! -f "${REPO_ROOT}/app/quiz/dist/index.html" ]]; then
       echo "Build the quiz and include the API before first-time setup."
       exit 1
     fi
@@ -63,9 +64,13 @@ case "${MODE}" in
   apps)
     select_apps "${APP_LIST:-all}"
 
-    if app_selected api && [[ ! -f "${REPO_ROOT}/app/api/index.php" ]]; then
-      echo "Missing app/api/index.php in repository."
-      exit 1
+    if app_selected api; then
+      for entrypoint in index auth quiz; do
+        if [[ ! -f "${REPO_ROOT}/app/api/${entrypoint}.php" ]]; then
+          echo "Missing app/api/${entrypoint}.php in repository."
+          exit 1
+        fi
+      done
     fi
     if app_selected quiz && [[ ! -f "${REPO_ROOT}/app/quiz/dist/index.html" ]]; then
       echo "Missing built app/quiz/dist/index.html in repository."

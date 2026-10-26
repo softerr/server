@@ -26,8 +26,7 @@ on:
       - "tests/api/**"
       - "scripts/test_api.sh"
       - "scripts/test_openapi.sh"
-      - "configs/postgresql/init.sql"
-      - "configs/postgresql/prune_user_tokens.sql"
+      - "configs/postgresql/**"
       - "configs/nginx/**"
       - "configs/systemd/**"
       - "scripts/setup_postgresql.sh"
@@ -49,8 +48,7 @@ on:
       - "tests/api/**"
       - "scripts/test_api.sh"
       - "scripts/test_openapi.sh"
-      - "configs/postgresql/init.sql"
-      - "configs/postgresql/prune_user_tokens.sql"
+      - "configs/postgresql/**"
       - "configs/nginx/**"
       - "configs/systemd/**"
       - "scripts/setup_postgresql.sh"
@@ -174,11 +172,20 @@ jobs:
       - name: Check expired-token pruning
         run: bash tests/db/prune_user_tokens.sh
 
+      - name: Check quiz database separation
+        run: |
+          set -euo pipefail
+          test "$(sudo -u postgres psql -X -Atq -d auth -c "SELECT to_regclass('public.quiz') IS NULL")" = t
+          test "$(sudo -u postgres psql -X -Atq -d quiz -c "SELECT to_regclass('public.quiz') IS NOT NULL")" = t
+          test "$(sudo -u postgres psql -X -Atq -d quiz -c "SELECT to_regclass('public.\"user\"') IS NOT NULL")" = t
+          test "$(sudo -u postgres psql -X -Atq -d quiz -c "SELECT COUNT(*) FROM pg_constraint WHERE conrelid = 'public.quiz'::regclass AND contype = 'f' AND confrelid = 'public.\"user\"'::regclass")" = 1
+
       - name: Check verified database backup
         run: |
           set -euo pipefail
           sudo systemctl start softerr-backup-postgresql.service
           sudo -u postgres sh -c 'find /var/backups/softerr -maxdepth 1 -type f -name "auth-*.dump" | grep -q .'
+          sudo -u postgres sh -c 'find /var/backups/softerr -maxdepth 1 -type f -name "quiz-*.dump" | grep -q .'
           test "$(sudo -u postgres psql -X -Atqc "SELECT count(*) FROM pg_database WHERE datname LIKE 'softerr_restore_check_%'")" = 0
 
       - name: Print service logs on failure

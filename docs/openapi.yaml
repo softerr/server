@@ -3,7 +3,7 @@ info:
   title: Softerr API
   version: 1.0.0
   description: |
-    Account signup, email verification, login, and password reset API. PHP responses are JSON. Nginx may return
+    Account signup, email verification, login, password reset, and quiz library API. PHP responses are JSON. Nginx may return
     redirects or HTML error pages before a request reaches PHP, notably for
     oversized or rate-limited requests. Clients should use HTTP status codes
     and should not assume every error response has a JSON body.
@@ -14,6 +14,7 @@ tags:
   - name: Health
   - name: Verification
   - name: Authentication
+  - name: Quizzes
 paths:
   /:
     get:
@@ -21,8 +22,8 @@ paths:
       operationId: getReadiness
       summary: Check API readiness
       description: |
-        Checks the verification URL configuration, PostgreSQL connection, and
-        required database schema. It does not check email delivery.
+        Checks the verification URL configuration, both PostgreSQL databases,
+        and their required schemas. It does not check email delivery.
         Use `/api/`; Nginx redirects `/api` to `/api/`.
       responses:
         '200':
@@ -407,6 +408,168 @@ paths:
                 type: string
               description: Browser page asking the user to try again later.
 
+  /quiz/quizzes:
+    get:
+      tags: [Quizzes]
+      operationId: listQuizzes
+      summary: List quizzes in the current account's library
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Quizzes, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [quizzes]
+                properties:
+                  quizzes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Quiz'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Quizzes]
+      operationId: createQuiz
+      summary: Create a quiz in the current account's library
+      description: |
+        Name is trimmed and must contain 1–100 bytes. The JSON body is limited
+        to 4096 bytes. Each account can have up to 100 quizzes.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  description: Trimmed before validation; at most 100 bytes.
+            example:
+              name: Geography
+      responses:
+        '201':
+          description: Quiz created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quiz'
+        '400':
+          description: Missing or invalid quiz name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The account already has 100 quizzes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request body is too large; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /quiz/quizzes/{quizId}:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        description: Quiz ID from the account's library.
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    patch:
+      tags: [Quizzes]
+      operationId: updateQuiz
+      summary: Rename a quiz owned by the current account
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  description: Trimmed before validation; at most 100 bytes.
+      responses:
+        '200':
+          description: Updated quiz.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quiz'
+        '400':
+          description: Missing or invalid quiz name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Quiz does not exist or belongs to another account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request body is too large; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Quizzes]
+      operationId: deleteQuiz
+      summary: Delete a quiz owned by the current account
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Quiz deleted; no response body.
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Quiz does not exist or belongs to another account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
   securitySchemes:
     sessionCookie:
@@ -457,6 +620,18 @@ components:
             error: Verification email is not configured
 
   schemas:
+    Quiz:
+      type: object
+      required: [id, name, created]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        created:
+          type: string
+          description: PostgreSQL timestamp without timezone, formatted as YYYY-MM-DD HH:MM:SS.
     PasswordResetRequest:
       type: object
       required: [email]

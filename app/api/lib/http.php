@@ -21,9 +21,34 @@ function readJsonBody(): ?array
     return is_array($payload) ? $payload : null;
 }
 
+function apiRequestPath(string $basePath): ?string
+{
+    $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+    if (!is_string($path)) {
+        return null;
+    }
+    if ($path === $basePath) {
+        return '/';
+    }
+    if (!str_starts_with($path, $basePath . '/')) {
+        return null;
+    }
+    $subpath = rtrim(substr($path, strlen($basePath)), '/');
+    return $subpath === '' ? '/' : $subpath;
+}
+
 function connectDb()
 {
     [$conn, $error] = openDb();
+    if ($conn === false) {
+        respond(500, ['error' => $error]);
+    }
+    return $conn;
+}
+
+function connectQuizDb()
+{
+    [$conn, $error] = openQuizDb();
     if ($conn === false) {
         respond(500, ['error' => $error]);
     }

@@ -22,35 +22,45 @@ location ~ ^/api/auth/signup/*$ {
     client_max_body_size 4k;
     limit_req zone=softerr_signup burst=20 nodelay;
     limit_req_status 429;
-    try_files $uri /api/index.php?$query_string;
+    try_files $uri /api/auth.php?$query_string;
 }
 
 location ~ ^/api/auth/resend-verification/*$ {
     client_max_body_size 4k;
     limit_req zone=softerr_resend burst=10 nodelay;
     limit_req_status 429;
-    try_files $uri /api/index.php?$query_string;
+    try_files $uri /api/auth.php?$query_string;
 }
 
 location ~ ^/api/auth/login/*$ {
     client_max_body_size 4k;
     limit_req zone=softerr_login burst=10 nodelay;
     limit_req_status 429;
-    try_files $uri /api/index.php?$query_string;
+    try_files $uri /api/auth.php?$query_string;
 }
 
 location ~ ^/api/auth/password-reset/request/*$ {
     client_max_body_size 4k;
     limit_req zone=softerr_reset_request burst=5 nodelay;
     limit_req_status 429;
-    try_files $uri /api/index.php?$query_string;
+    try_files $uri /api/auth.php?$query_string;
 }
 
 location ~ ^/api/auth/password-reset/confirm/*$ {
     client_max_body_size 4k;
     limit_req zone=softerr_reset_confirm burst=10 nodelay;
     limit_req_status 429;
-    try_files $uri /api/index.php?$query_string;
+    try_files $uri /api/auth.php?$query_string;
+}
+
+location /api/auth/ {
+    root /var/www;
+    try_files $uri /api/auth.php?$query_string;
+}
+
+location /api/quiz/ {
+    root /var/www;
+    try_files $uri /api/quiz.php?$query_string;
 }
 
 location /api/ {
@@ -59,8 +69,9 @@ location /api/ {
     try_files $uri $uri/ /api/index.php?$query_string;
 }
 
-location = /api/index.php {
+location ~ ^/api/(index|auth|quiz)\.php$ {
     root /var/www;
+    internal;
     include snippets/fastcgi-php.conf;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
     fastcgi_pass unix:__PHP_FPM_SOCK__;
