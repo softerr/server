@@ -1,2 +1,3 @@
 DELETE FROM public.user_token
-WHERE type = 'verify' AND expires <= CURRENT_TIMESTAMP;
+WHERE type IN ('verify', 'password_reset', 'password_changed')
+  AND expires <= CURRENT_TIMESTAMP;

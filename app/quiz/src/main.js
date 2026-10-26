@@ -5,8 +5,8 @@ let signedUpEmail = ''
 let currentUser = null
 
 function currentView() {
-  const view = window.location.hash.slice(1)
-  return view === 'signup' || view === 'login' ? view : 'home'
+  const view = window.location.hash.slice(1).split('?')[0]
+  return ['signup', 'login', 'forgot-password', 'reset'].includes(view) ? view : 'home'
 }
 
 function navigate(view) {
@@ -58,10 +58,11 @@ function renderLogin() {
         <form id="login-form" class="login-form">
           <label class="field"><span>Email</span><input name="email" type="email" autocomplete="email" required /></label>
           <label class="field"><span>Password</span><input name="password" type="password" autocomplete="current-password" required /></label>
-          <button class="auth-button auth-button-secondary" type="submit">Log in</button>
+          <div class="form-help"><button class="text-button" type="button" data-view="forgot-password">Forgot password?</button></div>
+          <button class="auth-button auth-button-primary" type="submit">Log in</button>
         </form>
         <p id="login-status" class="form-status" role="status" aria-live="polite"></p>
-        <button class="auth-button auth-button-primary" type="button" data-view="signup">Sign up</button>
+        <div class="auth-switch"><span>New to Quiz?</span><button class="text-button" type="button" data-view="signup">Sign up</button></div>
       </section>
     </main>
   `
@@ -95,6 +96,101 @@ function renderLogin() {
   })
 }
 
+function renderForgotPassword() {
+  app.innerHTML = `
+    <main id="center">
+      <section class="panel" aria-labelledby="forgot-title">
+        <button class="back-button" type="button" data-view="login">← Back to log in</button>
+        <h1 id="forgot-title">Reset password</h1>
+        <p>Enter your account email to request a reset link.</p>
+        <form id="forgot-form">
+          <label class="field"><span>Email</span><input name="email" type="email" autocomplete="email" required /></label>
+          <button class="auth-button auth-button-primary" type="submit">Send reset link</button>
+        </form>
+        <p id="forgot-status" class="form-status" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+  `
+  const form = app.querySelector('#forgot-form')
+  const status = app.querySelector('#forgot-status')
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const button = form.querySelector('[type="submit"]')
+    if (button.disabled) return
+    const fields = new FormData(form)
+    button.disabled = true
+    setStatus(status, 'Requesting a reset link…')
+    try {
+      const [response, payload] = await postJson('/api/auth/password-reset/request', {
+        email: String(fields.get('email') ?? ''),
+      })
+      if (!app.contains(form)) return
+      setStatus(status, response.ok
+        ? 'If this account exists, a reset link will arrive by email.'
+        : responseError(response, payload), !response.ok)
+    } catch {
+      if (app.contains(form)) setStatus(status, 'Could not connect to the service. Please try again.', true)
+    } finally {
+      button.disabled = false
+    }
+  })
+}
+
+function renderResetPassword() {
+  const fragment = window.location.hash.slice(1)
+  const token = new URLSearchParams(fragment.split('?')[1] ?? '').get('token') ?? ''
+  app.innerHTML = `
+    <main id="center">
+      <section class="panel" aria-labelledby="reset-title">
+        <button class="back-button" type="button" data-view="login">← Back to log in</button>
+        <h1 id="reset-title">New password</h1>
+        <form id="reset-form">
+          <label class="field"><span>New password</span><input name="password" type="password" autocomplete="new-password" required /></label>
+          <label class="field"><span>Confirm password</span><input name="confirm" type="password" autocomplete="new-password" required /></label>
+          <button class="auth-button auth-button-primary" type="submit">Update password</button>
+        </form>
+        <p id="reset-status" class="form-status" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+  `
+  const form = app.querySelector('#reset-form')
+  const status = app.querySelector('#reset-status')
+  if (!/^[a-f0-9]{64}$/i.test(token)) {
+    form.hidden = true
+    setStatus(status, 'This reset link is invalid. Request a new one from the login screen.', true)
+    return
+  }
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const button = form.querySelector('[type="submit"]')
+    if (button.disabled) return
+    const fields = new FormData(form)
+    const password = String(fields.get('password') ?? '')
+    if (password !== String(fields.get('confirm') ?? '')) {
+      setStatus(status, 'Passwords do not match.', true)
+      return
+    }
+    button.disabled = true
+    setStatus(status, 'Updating password…')
+    try {
+      const [response, payload] = await postJson('/api/auth/password-reset/confirm', { token, password })
+      if (!app.contains(form)) return
+      if (!response.ok) {
+        setStatus(status, responseError(response, payload), true)
+        return
+      }
+      currentUser = null
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#login`)
+      renderLogin()
+      setStatus(app.querySelector('#login-status'), 'Password updated. Please log in.')
+    } catch {
+      if (app.contains(form)) setStatus(status, 'Could not connect to the service. Please try again.', true)
+    } finally {
+      button.disabled = false
+    }
+  })
+}
+
 function renderSignup() {
   signedUpEmail = ''
   app.innerHTML = `
@@ -116,6 +212,7 @@ function renderSignup() {
           <p>Open the link in the email to verify your account.</p>
           <button class="auth-button auth-button-secondary" type="button" id="resend-button">Resend verification email</button>
         </div>
+        <div class="auth-switch"><span>Already have an account?</span><button class="text-button" type="button" data-view="login">Log in</button></div>
       </section>
     </main>
   `
@@ -180,6 +277,8 @@ function render() {
   const view = currentView()
   if (view === 'signup') renderSignup()
   else if (view === 'login') renderLogin()
+  else if (view === 'forgot-password') renderForgotPassword()
+  else if (view === 'reset') renderResetPassword()
   else renderHome()
 }
 

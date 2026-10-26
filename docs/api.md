@@ -176,7 +176,30 @@ current session or `401` if unauthenticated. `POST /api/auth/logout` ends the
 session and returns `200` even when no session exists. Native clients must
 store and resend the cookie. No other API route currently requires login.
 
-## 6. Email delivery behavior
+## 6. Password reset
+
+`POST /api/auth/password-reset/request` accepts `{"email":"john@example.com"}`
+and returns `202` with the same message for existing, unknown, unverified, and
+recently requested accounts. A verified account can queue a reset email once
+per ten minutes. Nginx also limits requests to 5 per minute per IP, plus a burst
+of 5. The worker creates a 32-byte random token, stores only its SHA-256
+digest, and emails a quiz link valid for 30 minutes. A retry creates a new
+token and invalidates the previous link.
+
+`POST /api/auth/password-reset/confirm` accepts a JSON object with a 64-character
+hex `token` and a new `password`. The password must be nonempty and at most
+1024 bytes, matching signup. The endpoint returns `200` after changing the
+password, consuming all reset tokens, and queuing a change notification in
+one transaction. Invalid, expired, and used links return `400`. Nginx limits
+requests to 10 per minute per IP, plus a burst of 10. Existing login sessions
+become invalid because each session is tied to the password hash from login.
+The user must log in again; confirmation does not create a session.
+
+Both request bodies are limited to 4096 bytes. The quiz has a forgot-password
+form and a reset form opened by the emailed link. The link carries its token
+in the URL fragment so the initial page request does not send it to Nginx.
+
+## 7. Email delivery behavior
 
 The `verification_email_queued` response field confirms that the job was committed to PostgreSQL. It does not mean the mail transport accepted or delivered the message. The systemd email worker checks the outbox every minute. It claims each job for 15 minutes, then sends without holding a database transaction open. The delivery schedule and claim are stored separately, so a resend during an active delivery leaves that claim intact; the in-flight delivery can satisfy the resend. Failed deliveries remain queued and are retried after two minutes while the token is valid. If the worker stops during delivery, the claim expires and the job becomes available again. Delivery may happen more than once if the worker stops after SMTP accepts a message but before it deletes the outbox row.
 
@@ -200,7 +223,7 @@ Only the email worker receives the mail transport settings:
 - `SMTP_USERNAME` (optional)
 - `SMTP_PASSWORD` (required if `SMTP_USERNAME` is set)
 
-## 7. Not found and method handling
+## 8. Not found and method handling
 
 Any unknown route under `/api`:
 - `404 {"error":"Not found"}`
@@ -208,7 +231,7 @@ Any unknown route under `/api`:
 Known routes with wrong HTTP method:
 - `405 {"error":"Method not allowed"}`
 
-## 8. Automated endpoint tests
+## 9. Automated endpoint tests
 
 Check live responses against the OpenAPI specification from the host after
 starting the local QEMU VM:
@@ -218,14 +241,14 @@ bash scripts/qemu.sh start
 bash scripts/test_openapi.sh
 ```
 
-The contract check sends a small number of signup, resend, and login requests, so use
-the local test VM rather than production. It checks response status, content
+The contract check sends a small number of signup, resend, login, and password
+reset requests, so use the local test VM rather than production. It checks response status, content
 type, and schema. It cannot create a valid one-time verification token, so run
 the endpoint tests below for the full signup, verification, and session flow. If the VM
 uses a different HTTP port, set `API_TEST_BASE_URL` to its local origin. The
-generated data may produce schema-validation warnings for signup and
-verification even when the response checks pass; inspect the reported status
-codes and use the endpoint tests to cover successful requests.
+generated data may produce schema-validation warnings for signup,
+verification, and password reset confirmation even when the response checks
+pass; inspect the reported status codes and use the endpoint tests to cover successful requests.
 
 Run against local QEMU VM:
 
@@ -245,13 +268,14 @@ Optional test env vars:
 - `API_TEST_DB_SUPERUSER` (default `postgres`)
 - `API_TEST_REQUIRE_DB` (`1` or `0`, default `1`)
 - `API_TEST_REQUIRE_EMAIL` (`1` or `0`, default `1` in both `qemu.sh test-api` and `scripts/test_api.sh`)
+- `API_TEST_MAILPIT_URL` (Mailpit origin; required for the full password reset email and session test)
 
 GitHub workflow:
 - `.github/workflows/test-api-runner.yml` (`Test API On Runner`) runs the OpenAPI contract check and endpoint tests for API, spec, and test-script changes.
 - `.github/workflows/test-api-qemu.yml` (`Test API In QEMU`) runs the endpoint tests in a VM when dispatched.
 
 How to add a new endpoint test:
-1. Add a new case file in `tests/api/cases/` (for example `40-password-reset.sh`).
+1. Add a new case file in `tests/api/cases/` (for example `40-account-profile.sh`).
 2. Define one or more `test_*` functions using helpers from `tests/api/lib.sh`.
 3. Register each test with `register_test_case test_function_name`.
 4. Workflow/local runner will auto-discover and execute it.

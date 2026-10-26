@@ -1,13 +1,13 @@
 :root {
-  --text: #c9c7c2;
-  --text-h: #f4f0e8;
+  --text: #c9c9c9;
+  --text-h: #f2f2f2;
   --bg: #171717;
   --button: #cc9657;
-  --button-text: #1e1c19;
-  --button-outline: #6f6b65;
-  --panel: #252422;
+  --button-text: #1b1b1b;
+  --button-outline: #6f6f6f;
+  --panel: #252525;
   --field: #1d1d1d;
-  --border: #595651;
+  --border: #595959;
   --error: #ffad96;
   --sans: 'Trebuchet MS', 'Segoe UI', sans-serif;
 
@@ -96,7 +96,7 @@ h1 {
 
 .auth-button-secondary {
   color: var(--text-h);
-  background: #302f2d;
+  background: #303030;
   border-color: var(--button-outline);
 }
 
@@ -111,7 +111,7 @@ h1 {
 }
 
 .auth-button-secondary:hover:not(:disabled) {
-  background: #3d3a36;
+  background: #3d3d3d;
 }
 
 .auth-button:disabled {
@@ -158,7 +158,45 @@ h1 {
 }
 
 .login-form {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+}
+
+.form-help {
+  justify-self: end;
+  margin-top: -8px;
+}
+
+.auth-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.text-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--button);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.text-button:hover {
+  color: #d9a86b;
+}
+
+.text-button:focus-visible {
+  outline: 3px solid var(--button);
+  outline-offset: 4px;
 }
 
 .field {
@@ -217,6 +255,10 @@ h1 {
 .form-status {
   margin-top: 16px !important;
   color: var(--text-h);
+}
+
+.form-status:empty {
+  display: none;
 }
 
 .form-status.error {

@@ -11,6 +11,7 @@ require_once __DIR__ . '/handlers/signup.php';
 require_once __DIR__ . '/handlers/resend.php';
 require_once __DIR__ . '/handlers/verify.php';
 require_once __DIR__ . '/handlers/login.php';
+require_once __DIR__ . '/handlers/password_reset.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $uriPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
@@ -66,6 +67,20 @@ if ($normalizedPath === '/auth/logout') {
         respond(405, ['error' => 'Method not allowed']);
     }
     handleLogout();
+}
+
+if ($normalizedPath === '/auth/password-reset/request') {
+    if ($method !== 'POST') {
+        respond(405, ['error' => 'Method not allowed']);
+    }
+    handlePasswordResetRequest();
+}
+
+if ($normalizedPath === '/auth/password-reset/confirm') {
+    if ($method !== 'POST') {
+        respond(405, ['error' => 'Method not allowed']);
+    }
+    handlePasswordResetConfirm();
 }
 
 respond(404, ['error' => 'Not found']);

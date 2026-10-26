@@ -39,6 +39,20 @@ location ~ ^/api/auth/login/*$ {
     try_files $uri /api/index.php?$query_string;
 }
 
+location ~ ^/api/auth/password-reset/request/*$ {
+    client_max_body_size 4k;
+    limit_req zone=softerr_reset_request burst=5 nodelay;
+    limit_req_status 429;
+    try_files $uri /api/index.php?$query_string;
+}
+
+location ~ ^/api/auth/password-reset/confirm/*$ {
+    client_max_body_size 4k;
+    limit_req zone=softerr_reset_confirm burst=10 nodelay;
+    limit_req_status 429;
+    try_files $uri /api/index.php?$query_string;
+}
+
 location /api/ {
     root /var/www;
     index index.php;

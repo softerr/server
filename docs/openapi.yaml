@@ -3,7 +3,7 @@ info:
   title: Softerr API
   version: 1.0.0
   description: |
-    Account signup, email verification, and cookie session API. PHP responses are JSON. Nginx may return
+    Account signup, email verification, login, and password reset API. PHP responses are JSON. Nginx may return
     redirects or HTML error pages before a request reaches PHP, notably for
     oversized or rate-limited requests. Clients should use HTTP status codes
     and should not assume every error response has a JSON body.
@@ -208,6 +208,85 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /auth/password-reset/request:
+    post:
+      tags: [Authentication]
+      operationId: requestPasswordReset
+      summary: Request a password reset email
+      description: |
+        Returns the same response for unknown, unverified, and verified
+        accounts. Verified accounts are limited to one queued request per
+        ten minutes. Nginx limits requests per IP to 5 per minute with a burst of 5.
+        The email worker creates a one-use link valid for 30 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '202':
+          description: Request accepted without disclosing account existence.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordResetRequested'
+        '400':
+          description: Missing or invalid email.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request body is too large; Nginx may return a non-JSON body.
+        '429':
+          description: Rate limit exceeded; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: Trusted public URL is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/password-reset/confirm:
+    post:
+      tags: [Authentication]
+      operationId: confirmPasswordReset
+      summary: Set a new password using a reset token
+      description: |
+        The token is a single-use 64-character hexadecimal value from the
+        emailed quiz link. On success, existing sessions become invalid and a
+        password-change notification is queued. The response does not log in
+        the account. Nginx limits requests per IP to 10 per minute with a
+        burst of 10.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirm'
+      responses:
+        '200':
+          description: Password changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordResetCompleted'
+        '400':
+          description: Malformed, expired, or used token, or invalid password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request body is too large; Nginx may return a non-JSON body.
+        '429':
+          description: Rate limit exceeded; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /auth/resend-verification:
     post:
       tags: [Verification]
@@ -378,6 +457,41 @@ components:
             error: Verification email is not configured
 
   schemas:
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Trimmed and lowercased; at most 255 bytes.
+    PasswordResetRequested:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          const: If this account exists, a password reset email will be sent
+    PasswordResetConfirm:
+      type: object
+      required: [token, password]
+      properties:
+        token:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          description: At most 1024 bytes.
+    PasswordResetCompleted:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          const: Password updated. Please log in.
     LoginRequest:
       type: object
       required: [email, password]

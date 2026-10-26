@@ -41,6 +41,31 @@ function sendVerificationEmail(string $email, string $username, string $token, s
         . "{$verifyUrl}\n\n"
         . "This link expires at: {$formattedExpires}\n";
 
+    return sendAccountEmail($email, $subject, $body);
+}
+
+function sendPasswordResetEmail(string $email, string $username, string $token): bool
+{
+    $baseUrl = appBaseUrl();
+    if ($baseUrl === null) {
+        return false;
+    }
+    $resetUrl = $baseUrl . '/quiz/#reset?token=' . rawurlencode($token);
+    $body = "Hello {$username},\n\n"
+        . "To reset your password, open this link:\n{$resetUrl}\n\n"
+        . "This link expires 30 minutes after your request. If you did not request it, ignore this email.\n";
+    return sendAccountEmail($email, 'Reset your password', $body);
+}
+
+function sendPasswordChangedEmail(string $email, string $username): bool
+{
+    $body = "Hello {$username},\n\n"
+        . "Your account password was changed. If this was not you, reset it immediately.\n";
+    return sendAccountEmail($email, 'Your password was changed', $body);
+}
+
+function sendAccountEmail(string $email, string $subject, string $body): bool
+{
     $mailFrom = trim((string)(getenv('MAIL_FROM') ?: 'no-reply@localhost'));
     if (trim((string)(getenv('SMTP_HOST') ?: '')) !== '') {
         return sendViaSmtp($email, $subject, $body, $mailFrom);
@@ -58,7 +83,7 @@ function sendVerificationEmail(string $email, string $username, string $token, s
 
     $accepted = mail($email, $subject, $body, implode("\r\n", $headers));
     if (!$accepted) {
-        error_log('PHP mail() failed to accept verification email');
+        error_log('PHP mail() failed to accept account email');
     }
     return $accepted;
 }

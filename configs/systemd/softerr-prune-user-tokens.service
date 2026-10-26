@@ -1,5 +1,5 @@
 [Unit]
-Description=Prune expired API verification tokens
+Description=Prune expired API account tokens
 Requires=postgresql.service
 After=postgresql.service
 

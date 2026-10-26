@@ -36,17 +36,20 @@ fi
 
 psql_as_postgres "INSERT INTO public.user_token (user_id, type, expires)
   VALUES (${TEST_USER_ID}, 'verify', CURRENT_TIMESTAMP - INTERVAL '1 minute'),
-         (${TEST_USER_ID}, 'verify', CURRENT_TIMESTAMP + INTERVAL '1 hour');" >/dev/null
+         (${TEST_USER_ID}, 'verify', CURRENT_TIMESTAMP + INTERVAL '1 hour'),
+         (${TEST_USER_ID}, 'password_reset', CURRENT_TIMESTAMP - INTERVAL '1 minute'),
+         (${TEST_USER_ID}, 'password_reset', CURRENT_TIMESTAMP + INTERVAL '1 hour'),
+         (${TEST_USER_ID}, 'password_changed', CURRENT_TIMESTAMP - INTERVAL '1 minute');" >/dev/null
 
 sudo -n systemctl start softerr-prune-user-tokens.service
 
 counts="$(psql_as_postgres "SELECT
     count(*) FILTER (WHERE expires <= CURRENT_TIMESTAMP),
     count(*) FILTER (WHERE expires > CURRENT_TIMESTAMP)
-  FROM public.user_token WHERE user_id = ${TEST_USER_ID} AND type = 'verify';")"
-if [[ "${counts}" != '0|1' ]]; then
-  echo "Token pruning returned expired|valid counts ${counts}; expected 0|1."
+  FROM public.user_token WHERE user_id = ${TEST_USER_ID};")"
+if [[ "${counts}" != '0|2' ]]; then
+  echo "Token pruning returned expired|valid counts ${counts}; expected 0|2."
   exit 1
 fi
 
-echo "Verification-token indexes and pruning passed."
+echo "Account-token indexes and pruning passed."

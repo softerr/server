@@ -78,12 +78,13 @@ function handleLogin(): never
         respond(500, ['error' => 'Failed to create session']);
     }
     $_SESSION['user_id'] = (int) $user['id'];
+    $_SESSION['password_fingerprint'] = hash('sha256', $user['password']);
     $_SESSION['last_seen'] = time();
     session_write_close();
     respond(200, publicUser($user));
 }
 
-function currentSessionUserId(): int
+function currentSessionUser(): array
 {
     if (!isset($_COOKIE['softerr_session'])) {
         respond(401, ['error' => 'Not authenticated']);
@@ -91,33 +92,37 @@ function currentSessionUserId(): int
     startAuthSession();
     $userId = $_SESSION['user_id'] ?? null;
     $lastSeen = $_SESSION['last_seen'] ?? null;
-    if (!is_int($userId) || !is_int($lastSeen) || time() - $lastSeen > SESSION_IDLE_SECONDS) {
+    $fingerprint = $_SESSION['password_fingerprint'] ?? null;
+    if (!is_int($userId) || !is_int($lastSeen) || !is_string($fingerprint)
+        || time() - $lastSeen > SESSION_IDLE_SECONDS) {
         $_SESSION = [];
         session_write_close();
         respond(401, ['error' => 'Not authenticated']);
     }
-    $_SESSION['last_seen'] = time();
-    session_write_close();
-    return $userId;
-}
-
-function handleCurrentUser(): never
-{
-    $userId = currentSessionUserId();
     $db = connectDb();
     $result = @pg_query_params(
         $db,
-        'SELECT id, username, email, verified, created FROM public."user" WHERE id = $1',
+        'SELECT id, username, email, password, verified, created FROM public."user" WHERE id = $1',
         [$userId]
     );
     if ($result === false) {
         respond(500, ['error' => 'Failed to look up account']);
     }
     $user = pg_fetch_assoc($result);
-    if ($user === false || $user['verified'] !== 't') {
+    if ($user === false || $user['verified'] !== 't'
+        || !hash_equals(hash('sha256', $user['password']), $fingerprint)) {
+        $_SESSION = [];
+        session_write_close();
         respond(401, ['error' => 'Not authenticated']);
     }
-    respond(200, publicUser($user));
+    $_SESSION['last_seen'] = time();
+    session_write_close();
+    return $user;
+}
+
+function handleCurrentUser(): never
+{
+    respond(200, publicUser(currentSessionUser()));
 }
 
 function handleLogout(): never
