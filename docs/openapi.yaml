@@ -3,8 +3,7 @@ info:
   title: Softerr API
   version: 1.0.0
   description: |
-    Public account signup and email verification API. No login or session
-    endpoint is currently available. PHP responses are JSON. Nginx may return
+    Account signup, email verification, and cookie session API. PHP responses are JSON. Nginx may return
     redirects or HTML error pages before a request reaches PHP, notably for
     oversized or rate-limited requests. Clients should use HTTP status codes
     and should not assume every error response has a JSON body.
@@ -14,6 +13,7 @@ servers:
 tags:
   - name: Health
   - name: Verification
+  - name: Authentication
 paths:
   /:
     get:
@@ -114,6 +114,100 @@ paths:
         '503':
           $ref: '#/components/responses/VerificationUnavailable'
 
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Log in to a verified account
+      description: |
+        Email is trimmed and lowercased. A successful login creates a PHP
+        session and sets an HttpOnly, SameSite=Strict cookie scoped to /api/.
+        The cookie is Secure over HTTPS and expires when the browser closes;
+        the server expires it after two hours of inactivity. Clients must send
+        the cookie on later requests. Login is limited to 10 requests per
+        minute per client IP, with a burst allowance of 10.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Logged in; session cookie set.
+          headers:
+            Set-Cookie:
+              description: HttpOnly session cookie.
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Missing or invalid fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid email or password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Correct credentials, but email is not verified.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request body is too large; Nginx may return a non-JSON body.
+        '429':
+          description: Rate limit exceeded; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      operationId: currentUser
+      summary: Get the account for the current session
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Verified account in the current session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      summary: End the current session
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Logged out; succeeds even when no session exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /auth/resend-verification:
     post:
       tags: [Verification]
@@ -172,8 +266,10 @@ paths:
       description: |
         The token is a one-time value. It must be unexpired when the account
         is locked for verification. On success, all verification tokens for
-        the account are deleted. This URL is included in the email; opening it
-        returns JSON rather than a web page or app redirect.
+        the account are deleted. The emailed URL includes `view=html` so it
+        displays a result page even in webviews with generic Accept headers.
+        Requests with `Accept: text/html` also receive the page; other API
+        requests receive JSON. The response is not cached.
       parameters:
         - name: token
           in: query
@@ -182,6 +278,13 @@ paths:
           schema:
             type: string
             pattern: '^[A-Fa-f0-9]{64}$'
+        - name: view
+          in: query
+          required: false
+          description: Set to `html` in emailed links to display a result page.
+          schema:
+            type: string
+            enum: [html]
       responses:
         '200':
           description: Account verified.
@@ -195,6 +298,10 @@ paths:
                 email: john@example.com
                 verified: true
                 created: '2026-10-26 14:30:00'
+            text/html:
+              schema:
+                type: string
+              description: Browser page confirming successful verification.
         '400':
           description: Token is malformed, invalid, expired, or already used.
           content:
@@ -206,10 +313,27 @@ paths:
                   value: { error: Invalid verification token }
                 expiredOrUsed:
                   value: { error: Verification token is invalid or expired }
+            text/html:
+              schema:
+                type: string
+              description: Browser page explaining that verification failed.
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: Verification could not be completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+            text/html:
+              schema:
+                type: string
+              description: Browser page asking the user to try again later.
 
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: softerr_session
   parameters:
     XTimezone:
       name: X-Timezone
@@ -254,6 +378,27 @@ components:
             error: Verification email is not configured
 
   schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Trimmed and lowercased; at most 255 bytes.
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          description: At most 1024 bytes.
+    LogoutResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          const: Logged out
     Error:
       type: object
       required: [error]

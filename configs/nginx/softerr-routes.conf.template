@@ -32,6 +32,13 @@ location ~ ^/api/auth/resend-verification/*$ {
     try_files $uri /api/index.php?$query_string;
 }
 
+location ~ ^/api/auth/login/*$ {
+    client_max_body_size 4k;
+    limit_req zone=softerr_login burst=10 nodelay;
+    limit_req_status 429;
+    try_files $uri /api/index.php?$query_string;
+}
+
 location /api/ {
     root /var/www;
     index index.php;

@@ -34,7 +34,7 @@ function sendVerificationEmail(string $email, string $username, string $token, s
         // Keep original value when parsing fails.
     }
 
-    $verifyUrl = $baseUrl . '/api/auth/verify?token=' . rawurlencode($token);
+    $verifyUrl = $baseUrl . '/api/auth/verify?token=' . rawurlencode($token) . '&view=html';
     $subject = 'Verify your account';
     $body = "Hello {$username},\n\n"
         . "Please verify your account by opening this link:\n"

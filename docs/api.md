@@ -81,7 +81,7 @@ Side effects:
 - Stores user in `public."user"`.
 - Stores verification token in `public.user_token` (`type='verify'`).
 - Queues a verification email in `public.verification_email_outbox` in the same transaction as the account and token.
-- A background worker sends the email containing `/api/auth/verify?token=...`.
+- A background worker sends the email containing `/api/auth/verify?token=...&view=html`.
 
 Common errors:
 - `400 {"error":"Invalid JSON body"}`
@@ -124,6 +124,13 @@ Token format:
 Success:
 - `200 OK`
 
+Opening the email link shows an HTML page stating whether
+verification succeeded or failed, with a link back to the quiz. API clients
+receive the JSON responses below; send `Accept: application/json` explicitly
+when requesting JSON without the email link's `view=html` parameter. Both
+formats use the same HTTP status codes, and the verification response is not
+cached.
+
 Example response:
 
 ```json
@@ -149,7 +156,27 @@ Common errors:
 - `500 {"error":"Failed to verify account"}`
 - `500 {"error":"Failed to finalize verification"}`
 
-## 5. Email delivery behavior
+## 5. Login and sessions
+
+`POST /api/auth/login` accepts JSON with `email` and `password`. Email is
+trimmed and lowercased. Both fields must be strings and nonempty; email must
+be valid and at most 255 bytes, password at most 1024 bytes, and the body at
+most 4096 bytes. The account must have a verified email. The endpoint returns
+`200` with the same user fields as verification and sets a `softerr_session`
+cookie. Wrong email or password returns `401` with the same error message;
+correct credentials for an unverified account return `403`. Invalid input
+returns `400`. Nginx returns `429` when the per-IP limit of 10 requests per
+minute plus a burst of 10 is exceeded.
+
+The session cookie is `HttpOnly`, `SameSite=Strict`, scoped to `/api/`, and
+`Secure` on HTTPS. It is a browser-session cookie; the server expires the
+session after two hours of inactivity. Web clients on the same origin send
+it automatically. `GET /api/auth/me` returns the verified account for the
+current session or `401` if unauthenticated. `POST /api/auth/logout` ends the
+session and returns `200` even when no session exists. Native clients must
+store and resend the cookie. No other API route currently requires login.
+
+## 6. Email delivery behavior
 
 The `verification_email_queued` response field confirms that the job was committed to PostgreSQL. It does not mean the mail transport accepted or delivered the message. The systemd email worker checks the outbox every minute. It claims each job for 15 minutes, then sends without holding a database transaction open. The delivery schedule and claim are stored separately, so a resend during an active delivery leaves that claim intact; the in-flight delivery can satisfy the resend. Failed deliveries remain queued and are retried after two minutes while the token is valid. If the worker stops during delivery, the claim expires and the job becomes available again. Delivery may happen more than once if the worker stops after SMTP accepts a message but before it deletes the outbox row.
 
@@ -173,7 +200,7 @@ Only the email worker receives the mail transport settings:
 - `SMTP_USERNAME` (optional)
 - `SMTP_PASSWORD` (required if `SMTP_USERNAME` is set)
 
-## 6. Not found and method handling
+## 7. Not found and method handling
 
 Any unknown route under `/api`:
 - `404 {"error":"Not found"}`
@@ -181,7 +208,7 @@ Any unknown route under `/api`:
 Known routes with wrong HTTP method:
 - `405 {"error":"Method not allowed"}`
 
-## 7. Automated endpoint tests
+## 8. Automated endpoint tests
 
 Check live responses against the OpenAPI specification from the host after
 starting the local QEMU VM:
@@ -191,10 +218,10 @@ bash scripts/qemu.sh start
 bash scripts/test_openapi.sh
 ```
 
-The contract check sends a small number of signup and resend requests, so use
+The contract check sends a small number of signup, resend, and login requests, so use
 the local test VM rather than production. It checks response status, content
 type, and schema. It cannot create a valid one-time verification token, so run
-the endpoint tests below for the full signup and verification flow. If the VM
+the endpoint tests below for the full signup, verification, and session flow. If the VM
 uses a different HTTP port, set `API_TEST_BASE_URL` to its local origin. The
 generated data may produce schema-validation warnings for signup and
 verification even when the response checks pass; inspect the reported status

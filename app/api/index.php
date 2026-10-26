@@ -10,6 +10,7 @@ require_once __DIR__ . '/handlers/health.php';
 require_once __DIR__ . '/handlers/signup.php';
 require_once __DIR__ . '/handlers/resend.php';
 require_once __DIR__ . '/handlers/verify.php';
+require_once __DIR__ . '/handlers/login.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $uriPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
@@ -44,6 +45,27 @@ if ($normalizedPath === '/auth/resend-verification') {
         respond(405, ['error' => 'Method not allowed']);
     }
     handleResendVerification();
+}
+
+if ($normalizedPath === '/auth/login') {
+    if ($method !== 'POST') {
+        respond(405, ['error' => 'Method not allowed']);
+    }
+    handleLogin();
+}
+
+if ($normalizedPath === '/auth/me') {
+    if ($method !== 'GET') {
+        respond(405, ['error' => 'Method not allowed']);
+    }
+    handleCurrentUser();
+}
+
+if ($normalizedPath === '/auth/logout') {
+    if ($method !== 'POST') {
+        respond(405, ['error' => 'Method not allowed']);
+    }
+    handleLogout();
 }
 
 respond(404, ['error' => 'Not found']);

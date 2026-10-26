@@ -121,6 +121,8 @@ jobs:
           assert 'limit_req zone=softerr_signup burst=20 nodelay;' in routes
           assert 'location ~ ^/api/auth/resend-verification/*$' in routes
           assert 'limit_req zone=softerr_resend burst=10 nodelay;' in routes
+          assert 'location ~ ^/api/auth/login/*$' in routes
+          assert 'limit_req zone=softerr_login burst=10 nodelay;' in routes
           assert 'limit_req_status 429;' in routes
           routes = routes.replace('__PHP_FPM_SOCK__', '/run/php/php-fpm.sock')
           assert '__PHP_FPM_SOCK__' not in routes
@@ -129,6 +131,7 @@ jobs:
               template = Path('configs/nginx', filename).read_text()
               assert 'limit_req_zone $binary_remote_addr zone=softerr_signup:10m rate=20r/m;' in template
               assert 'limit_req_zone $binary_remote_addr zone=softerr_resend:10m rate=10r/m;' in template
+              assert 'limit_req_zone $binary_remote_addr zone=softerr_login:10m rate=10r/m;' in template
               site = (template
                   .replace('__PHP_FPM_SOCK__', '/run/php/php-fpm.sock')
                   .replace('__TLS_ORIGIN__', 'https://example.test')

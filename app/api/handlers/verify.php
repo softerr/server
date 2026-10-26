@@ -1,11 +1,66 @@
 <?php
 declare(strict_types=1);
 
+function respondVerification(int $statusCode, array $payload): never
+{
+    header('Cache-Control: no-store');
+    header('Vary: Accept');
+    $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+    $emailPage = ($_GET['view'] ?? null) === 'html';
+    if (!$emailPage && (!str_contains($accept, 'text/html') || str_contains($accept, 'application/json'))) {
+        respond($statusCode, $payload);
+    }
+
+    if ($statusCode === 200) {
+        $title = 'Email verified';
+        $message = 'Your account is ready. You can now log in.';
+    } elseif ($statusCode === 400) {
+        $title = 'Verification failed';
+        $message = 'This verification link is invalid, expired, or already used.';
+    } else {
+        $title = 'Verification unavailable';
+        $message = 'We could not verify your email right now. Please try again later.';
+    }
+
+    http_response_code($statusCode);
+    header('Content-Type: text/html; charset=UTF-8');
+    header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'");
+    $safeTitle = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $safeMessage = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    echo <<<HTML
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{$safeTitle}</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #171717; color: #f4f0e8; }
+    main { box-sizing: border-box; width: min(32rem, calc(100% - 2rem)); padding: 2.5rem; border: 1px solid #69645d; background: #252422; }
+    h1 { margin-top: 0; font-size: 2rem; }
+    p { line-height: 1.6; color: #d4cec3; }
+    a { display: inline-block; margin-top: 1rem; padding: .75rem 1rem; border: 1px solid #b9afa0; color: #f4f0e8; text-decoration: none; }
+    a:hover, a:focus-visible { background: #393630; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>{$safeTitle}</h1>
+    <p>{$safeMessage}</p>
+    <a href="/quiz/#login">Go to quiz</a>
+  </main>
+</body>
+</html>
+HTML;
+    exit;
+}
+
 function handleVerify(): never
 {
     $token = trim((string)($_GET['token'] ?? ''));
     if ($token === '' || !preg_match('/^[a-f0-9]{64}$/i', $token)) {
-        respond(400, ['error' => 'Invalid verification token']);
+        respondVerification(400, ['error' => 'Invalid verification token']);
     }
 
     $db = connectDb();
@@ -21,16 +76,16 @@ function handleVerify(): never
         [$token, 'verify']
     );
     if ($lookupResult === false) {
-        respond(500, ['error' => 'Failed to validate verification token']);
+        respondVerification(500, ['error' => 'Failed to validate verification token']);
     }
 
     $candidate = pg_fetch_assoc($lookupResult);
     if ($candidate === false) {
-        respond(400, ['error' => 'Verification token is invalid or expired']);
+        respondVerification(400, ['error' => 'Verification token is invalid or expired']);
     }
 
     if (@pg_query($db, 'BEGIN') === false) {
-        respond(500, ['error' => 'Failed to start transaction']);
+        respondVerification(500, ['error' => 'Failed to start transaction']);
     }
 
     $accountLock = @pg_query_params(
@@ -40,11 +95,11 @@ function handleVerify(): never
     );
     if ($accountLock === false) {
         @pg_query($db, 'ROLLBACK');
-        respond(500, ['error' => 'Failed to lock account for verification']);
+        respondVerification(500, ['error' => 'Failed to lock account for verification']);
     }
     if (pg_fetch_assoc($accountLock) === false) {
         @pg_query($db, 'ROLLBACK');
-        respond(400, ['error' => 'Verification token is invalid or expired']);
+        respondVerification(400, ['error' => 'Verification token is invalid or expired']);
     }
 
     // Resend holds the same account lock before replacing tokens. Check again
@@ -59,11 +114,11 @@ function handleVerify(): never
     );
     if ($tokenResult === false) {
         @pg_query($db, 'ROLLBACK');
-        respond(500, ['error' => 'Failed to validate verification token']);
+        respondVerification(500, ['error' => 'Failed to validate verification token']);
     }
     if (pg_fetch_assoc($tokenResult) === false) {
         @pg_query($db, 'ROLLBACK');
-        respond(400, ['error' => 'Verification token is invalid or expired']);
+        respondVerification(400, ['error' => 'Verification token is invalid or expired']);
     }
 
     $verifyResult = @pg_query_params(
@@ -76,13 +131,13 @@ function handleVerify(): never
     );
     if ($verifyResult === false) {
         @pg_query($db, 'ROLLBACK');
-        respond(500, ['error' => 'Failed to verify account']);
+        respondVerification(500, ['error' => 'Failed to verify account']);
     }
 
     $user = pg_fetch_assoc($verifyResult);
     if ($user === false) {
         @pg_query($db, 'ROLLBACK');
-        respond(500, ['error' => 'Failed to fetch verified account']);
+        respondVerification(500, ['error' => 'Failed to fetch verified account']);
     }
 
     $deleteResult = @pg_query_params(
@@ -92,15 +147,15 @@ function handleVerify(): never
     );
     if ($deleteResult === false) {
         @pg_query($db, 'ROLLBACK');
-        respond(500, ['error' => 'Failed to finalize verification']);
+        respondVerification(500, ['error' => 'Failed to finalize verification']);
     }
 
     if (@pg_query($db, 'COMMIT') === false) {
         @pg_query($db, 'ROLLBACK');
-        respond(500, ['error' => 'Failed to commit verification']);
+        respondVerification(500, ['error' => 'Failed to commit verification']);
     }
 
-    respond(200, [
+    respondVerification(200, [
         'id' => (int)$user['id'],
         'username' => $user['username'],
         'email' => $user['email'],
