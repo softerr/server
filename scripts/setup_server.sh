@@ -10,6 +10,7 @@ fi
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/tls_certificate.sh"
+source "${SCRIPT_DIR}/lib/deploy_checks.sh"
 BOOTSTRAP_CONFIG="${REPO_ROOT}/configs/nginx/softerr-bootstrap.conf"
 
 : "${API_DB_PASSWORD:?API_DB_PASSWORD is required}"
@@ -76,35 +77,7 @@ systemctl is-active --quiet softerr-send-email.timer
 systemctl is-active --quiet softerr-prune-user-tokens.timer
 systemctl is-active --quiet softerr-backup-postgresql.timer
 
-check_https_route() {
-  local route="$1"
-  local response_file status attempt
-  response_file="$(mktemp)"
-  for attempt in {1..6}; do
-    status=""
-    if status="$(curl -sS --noproxy '*' --connect-timeout 5 --max-time 15 \
-      --output "${response_file}" --write-out '%{http_code}' \
-      --connect-to "${public_host}:443:127.0.0.1:443" \
-      "${API_APP_BASE_URL%/}${route}")" && [[ "${status}" == 200 ]]; then
-      rm -f -- "${response_file}"
-      return 0
-    fi
-    if (( attempt < 6 )); then
-      sleep 2
-    fi
-  done
-
-  echo "HTTPS readiness check failed for ${route} (HTTP ${status:-unavailable})." >&2
-  if [[ -s "${response_file}" ]]; then
-    echo "Response body:" >&2
-    head -c 1000 "${response_file}" >&2
-    echo >&2
-  fi
-  rm -f -- "${response_file}"
-  return 1
-}
-
-check_https_route '/api/'
-check_https_route '/quiz/'
+verify_local_app_route /api/ api
+verify_local_app_route /quiz/ file /var/www/quiz/index.html
 
 echo "First-time setup is complete: ${API_APP_BASE_URL%/}"
