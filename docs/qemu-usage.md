@@ -55,10 +55,10 @@ Default access:
 `start` does:
 - boots VM
 - runs `bootstrap_server.sh` and checks the workflow user's SSH key, pinned host key, and deployment sudo access
-- rebuilds the quiz from current source when provisioning includes `quiz`, `apps`, or `all`
+- rebuilds home and quiz from current source when provisioning includes those apps
 - syncs repo into VM (`/home/<VM_USER>/server`; default `/home/ubuntu/server`)
 - runs `scripts/provision.sh` with default `PROVISION_COMPONENTS=all`
-- checks that `/quiz` and `/quiz/` both return HTTP 200 after quiz deployment
+- checks that `/` returns HTTP 200 after home deployment and `/quiz` and `/quiz/` return HTTP 200 after quiz deployment
 
 ## 4. Apply a component to the running VM
 
@@ -68,7 +68,7 @@ After editing a component, run:
 bash scripts/qemu.sh apply nginx
 ```
 
-`apply` reruns the idempotent bootstrap check, syncs the repository, and runs the selected component through `scripts/provision.sh`. Applying `quiz`, `all`, or `apps` when it includes quiz rebuilds the quiz first. Quiz and Nginx applies also check both quiz URLs afterward.
+`apply` reruns the idempotent bootstrap check, syncs the repository, and runs the selected component through `scripts/provision.sh`. Applying `home`, `quiz`, `all`, or `apps` rebuilds the selected web apps first. Home and quiz applies check their routes afterward.
 
 Other examples:
 
@@ -87,8 +87,9 @@ Supported components:
 - `email-worker` (verification email timer and worker environment)
 - `nginx`
 - `api`
+- `home`
 - `quiz`
-- `apps` (deploys `api` then `quiz`; set `APP_LIST=api` or `APP_LIST=quiz` to select one)
+- `apps` (deploys `api`, `home`, then `quiz`; set `APP_LIST=api`, `APP_LIST=home`, or `APP_LIST=quiz` to select one)
 
 ## 5. Run API tests in QEMU (one command)
 

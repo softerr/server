@@ -4,7 +4,9 @@ on:
   pull_request:
     paths:
       - "app/api/**"
+      - "app/home/**"
       - "app/quiz/**"
+      - "app/shared/**"
       - "configs/nginx/**"
       - "configs/systemd/**"
       - "scripts/ci/**"
@@ -31,7 +33,9 @@ on:
       - main
     paths:
       - "app/api/**"
+      - "app/home/**"
       - "app/quiz/**"
+      - "app/shared/**"
       - "configs/nginx/**"
       - "configs/systemd/**"
       - "scripts/ci/**"
@@ -83,7 +87,16 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: app/quiz/package-lock.json
+          cache-dependency-path: |
+            app/home/package-lock.json
+            app/quiz/package-lock.json
+
+      - name: Build home
+        working-directory: app/home
+        run: |
+          npm ci
+          npm run build
+          test -f dist/index.html
 
       - name: Build quiz
         working-directory: app/quiz

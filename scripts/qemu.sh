@@ -295,30 +295,33 @@ bootstrap_vm() {
   echo "Server bootstrap checks passed: workflow SSH, pinned host key, and deployment sudo access."
 }
 
-provision_includes_quiz() {
+provision_includes_app() {
+  local target_app="$1"
   local components="${PROVISION_COMPONENTS:-all}"
   components="${components//,/ }"
   local component
   for component in ${components}; do
     case "${component}" in
-      all|quiz) return 0 ;;
+      all) return 0 ;;
       apps)
         select_apps "${APP_LIST:-all}"
-        app_selected quiz && return 0
+        app_selected "${target_app}" && return 0
         ;;
+      *) [[ "${component}" == "${target_app}" ]] && return 0 ;;
     esac
   done
   return 1
 }
 
-build_quiz_dist() {
-  echo "Building app/quiz from current source..."
+build_app_dist() {
+  local app="$1"
+  echo "Building app/${app} from current source..."
   if ! command -v npm >/dev/null 2>&1; then
-    echo "npm is required to build app/quiz before VM deployment."
+    echo "npm is required to build app/${app} before VM deployment."
     exit 1
   fi
   (
-    cd "${REPO_ROOT}/app/quiz"
+    cd "${REPO_ROOT}/app/${app}"
     if [[ -f package-lock.json ]]; then
       npm ci
     else
@@ -326,6 +329,13 @@ build_quiz_dist() {
     fi
     npm run build
   )
+}
+
+check_home_route() {
+  local status
+  status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 10 "http://127.0.0.1:${HTTP_PORT}/")" || return 1
+  [[ "${status}" == 200 ]] || { echo "Home route returned HTTP ${status}, expected 200." >&2; return 1; }
+  echo "Home route / returned HTTP 200."
 }
 
 check_quiz_routes() {
@@ -363,6 +373,7 @@ sync_repo_to_vm() {
     "${secret_filters[@]}" \
     --exclude=".git" \
     --exclude=".qemu" \
+    --exclude="app/home/node_modules" \
     --exclude="app/quiz/node_modules" \
     -e "${rsync_ssh}" \
     "${REPO_ROOT}/" "${SSH_TARGET}:${REMOTE_APP_DIR}/"
@@ -456,14 +467,20 @@ provision_vm() {
     echo "Signup verification email in VM will fail unless VM has a working local MTA for PHP mail()."
   fi
 
-  if provision_includes_quiz; then
-    build_quiz_dist
+  if provision_includes_app home; then
+    build_app_dist home
+  fi
+  if provision_includes_app quiz; then
+    build_app_dist quiz
   fi
   sync_repo_to_vm
 
   echo "Running server setup scripts inside VM..."
   run_remote_script "scripts/provision.sh"
-  if provision_includes_quiz; then
+  if provision_includes_app home; then
+    check_home_route
+  fi
+  if provision_includes_app quiz; then
     check_quiz_routes
   fi
 }
@@ -471,10 +488,10 @@ provision_vm() {
 apply_component_vm() {
   local component="$1"
   case "${component}" in
-    all|postgresql|php-fpm|email-worker|nginx|api|quiz|apps) ;;
+    all|postgresql|php-fpm|email-worker|nginx|api|home|quiz|apps) ;;
     *)
       echo "Unknown provisioning component: ${component}" >&2
-      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, quiz, apps" >&2
+      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, home, quiz, apps" >&2
       return 1
       ;;
   esac
@@ -493,13 +510,19 @@ apply_component_vm() {
   wait_for_cloud_init
   bootstrap_vm
 
-  if provision_includes_quiz; then
-    build_quiz_dist
+  if provision_includes_app home; then
+    build_app_dist home
+  fi
+  if provision_includes_app quiz; then
+    build_app_dist quiz
   fi
 
   sync_repo_to_vm
   run_remote_script "scripts/provision.sh"
-  if provision_includes_quiz || [[ "${component}" == nginx ]]; then
+  if provision_includes_app home; then
+    check_home_route
+  fi
+  if provision_includes_app quiz || [[ "${component}" == nginx ]]; then
     check_quiz_routes
   fi
   echo "Applied ${component} in VM."
@@ -555,7 +578,7 @@ Environment variables:
   API_TEST_REQUIRE_EMAIL       Default: 1 (require signup email delivery checks)
   API_TEST_MAILPIT_URL         Optional Mailpit API URL for resend delivery test
   PROVISION_COMPONENTS         Components to run during start (default: all)
-  APP_LIST                     all|api|quiz when applying apps (default: all)
+  APP_LIST                     all|api|home|quiz when applying apps (default: all)
   VM_NAME                      Default: server-clone
   VM_USER                      Default: ubuntu (repo syncs to /home/<VM_USER>/server)
   VM_DIR                       Default: ./.qemu/<VM_NAME>

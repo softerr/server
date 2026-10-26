@@ -8,6 +8,7 @@ on:
         type: choice
         options:
           - all
+          - home
           - quiz
           - api
         required: false
@@ -28,8 +29,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Build quiz app on GitHub runner
+      - name: Set up Node.js
         if: ${{ inputs.apps != 'api' }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            app/home/package-lock.json
+            app/quiz/package-lock.json
+
+      - name: Build home app on GitHub runner
+        if: ${{ inputs.apps == 'all' || inputs.apps == 'home' }}
+        working-directory: app/home
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          test -f dist/index.html
+
+      - name: Build quiz app on GitHub runner
+        if: ${{ inputs.apps == 'all' || inputs.apps == 'quiz' }}
         run: |
           set -euo pipefail
           if [[ -d app/quiz ]]; then

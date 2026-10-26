@@ -50,7 +50,7 @@ function sendPasswordResetEmail(string $email, string $username, string $token):
     if ($baseUrl === null) {
         return false;
     }
-    $resetUrl = $baseUrl . '/quiz/#reset?token=' . rawurlencode($token);
+    $resetUrl = $baseUrl . '/#reset?token=' . rawurlencode($token);
     $body = "Hello {$username},\n\n"
         . "To reset your password, open this link:\n{$resetUrl}\n\n"
         . "This link expires 30 minutes after your request. If you did not request it, ignore this email.\n";

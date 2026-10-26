@@ -1,0 +1,51 @@
+@import '../../shared/style.css';
+
+.apps-page {
+  width: min(100%, 960px);
+  margin: 0 auto;
+  padding: 48px 24px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.app-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 150px;
+  padding: 20px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text-h);
+  text-decoration: none;
+}
+
+.app-card:hover,
+.app-card:focus-visible {
+  border-color: var(--accent);
+}
+
+.app-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.app-card-title {
+  font-size: 21px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.app-card-description {
+  color: var(--text-grey);
+  font-size: 14px;
+}

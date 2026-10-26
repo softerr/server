@@ -55,6 +55,13 @@ run_api_deploy() {
   run_root_script "${SCRIPT_DIR}/deploy_api.sh"
 }
 
+run_home_deploy() {
+  if [[ -z "${HOME_DIST_DIR:-}" && -d "${REPO_ROOT}/app/home/dist" ]]; then
+    export HOME_DIST_DIR="${REPO_ROOT}/app/home/dist"
+  fi
+  run_root_script "${SCRIPT_DIR}/deploy_home.sh"
+}
+
 run_quiz_deploy() {
   if [[ -z "${QUIZ_DIST_DIR:-}" && -d "${REPO_ROOT}/app/quiz/dist" ]]; then
     export QUIZ_DIST_DIR="${REPO_ROOT}/app/quiz/dist"
@@ -69,6 +76,7 @@ run_app_deploys() {
   for app in "${SELECTED_APPS[@]}"; do
     case "${app}" in
       api) run_api_deploy ;;
+      home) run_home_deploy ;;
       quiz) run_quiz_deploy ;;
     esac
   done
@@ -92,6 +100,9 @@ run_component() {
     api)
       run_api_deploy
       ;;
+    home)
+      run_home_deploy
+      ;;
     quiz)
       run_quiz_deploy
       ;;
@@ -104,11 +115,12 @@ run_component() {
       run_email_worker
       run_nginx
       run_api_deploy
+      run_home_deploy
       run_quiz_deploy
       ;;
     *)
       echo "Unknown provisioning component: ${component}"
-      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, quiz, apps"
+      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, home, quiz, apps"
       exit 1
       ;;
   esac

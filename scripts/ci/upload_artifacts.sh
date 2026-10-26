@@ -21,16 +21,18 @@ source "${REPO_ROOT}/scripts/lib/app_selection.sh"
 case "${MODE}" in
   server)
     if [[ ! -f "${REPO_ROOT}/app/api/index.php" || ! -f "${REPO_ROOT}/app/api/auth.php" \
-      || ! -f "${REPO_ROOT}/app/api/quiz.php" || ! -f "${REPO_ROOT}/app/quiz/dist/index.html" ]]; then
-      echo "Build the quiz and include the API before first-time setup."
+      || ! -f "${REPO_ROOT}/app/api/quiz.php" || ! -f "${REPO_ROOT}/app/home/dist/index.html" \
+      || ! -f "${REPO_ROOT}/app/quiz/dist/index.html" ]]; then
+      echo "Build home and quiz and include the API before first-time setup."
       exit 1
     fi
-    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/quiz/dist'"
+    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/home/dist' '$REMOTE_DIR/app/quiz/dist'"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "${REPO_ROOT}/scripts/setup_server.sh" \
       "${REPO_ROOT}/scripts/setup_tls_certificate.sh" "${REPO_ROOT}/scripts/setup_postgresql.sh" \
       "${REPO_ROOT}/scripts/backup_postgresql.sh" \
       "${REPO_ROOT}/scripts/setup_php_fpm.sh" "${REPO_ROOT}/scripts/setup_email_worker.sh" \
       "${REPO_ROOT}/scripts/setup_nginx.sh" "${REPO_ROOT}/scripts/deploy_api.sh" \
+      "${REPO_ROOT}/scripts/deploy_home.sh" \
       "${REPO_ROOT}/scripts/deploy_quiz.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
       "${REPO_ROOT}/scripts/lib/app_selection.sh" \
@@ -40,6 +42,7 @@ case "${MODE}" in
       "${REPO_ROOT}/scripts/lib/tls_certificate.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/api/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/api/"
+    scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/home/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/home/dist/"
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/quiz/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/quiz/dist/"
     ;;
   nginx)
@@ -72,12 +75,16 @@ case "${MODE}" in
         fi
       done
     fi
+    if app_selected home && [[ ! -f "${REPO_ROOT}/app/home/dist/index.html" ]]; then
+      echo "Missing built app/home/dist/index.html in repository."
+      exit 1
+    fi
     if app_selected quiz && [[ ! -f "${REPO_ROOT}/app/quiz/dist/index.html" ]]; then
       echo "Missing built app/quiz/dist/index.html in repository."
       exit 1
     fi
 
-    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/quiz/dist'"
+    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/home/dist' '$REMOTE_DIR/app/quiz/dist'"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
       "${REPO_ROOT}/scripts/lib/app_selection.sh" \
@@ -85,6 +92,10 @@ case "${MODE}" in
     if app_selected api; then
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_api.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
       scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/api/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/api/"
+    fi
+    if app_selected home; then
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_home.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+      scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/home/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/home/dist/"
     fi
     if app_selected quiz; then
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_quiz.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"

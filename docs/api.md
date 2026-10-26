@@ -155,7 +155,7 @@ Success:
 - `200 OK`
 
 Opening the email link shows an HTML page stating whether
-verification succeeded or failed, with a link back to the quiz. API clients
+verification succeeded or failed, with a link back to the home app. API clients
 receive the JSON responses below; send `Accept: application/json` explicitly
 when requesting JSON without the email link's `view=html` parameter. Both
 formats use the same HTTP status codes, and the verification response is not
@@ -213,7 +213,7 @@ and returns `202` with the same message for existing, unknown, unverified, and
 recently requested accounts. A verified account can queue a reset email once
 per ten minutes. Nginx also limits requests to 5 per minute per IP, plus a burst
 of 5. The worker creates a 32-byte random token, stores only its SHA-256
-digest, and emails a quiz link valid for 30 minutes. A retry creates a new
+digest, and emails a home app link valid for 30 minutes. A retry creates a new
 token and invalidates the previous link.
 
 `POST /api/auth/password-reset/confirm` accepts a JSON object with a 64-character
@@ -225,7 +225,7 @@ requests to 10 per minute per IP, plus a burst of 10. Existing login sessions
 become invalid because each session is tied to the password hash from login.
 The user must log in again; confirmation does not create a session.
 
-Both request bodies are limited to 4096 bytes. The quiz has a forgot-password
+Both request bodies are limited to 4096 bytes. Home and quiz have a forgot-password
 form and a reset form opened by the emailed link. The link carries its token
 in the URL fragment so the initial page request does not send it to Nginx.
 

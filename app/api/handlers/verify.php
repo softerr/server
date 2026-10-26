@@ -48,7 +48,7 @@ function respondVerification(int $statusCode, array $payload): never
   <main>
     <h1>{$safeTitle}</h1>
     <p>{$safeMessage}</p>
-    <a href="/quiz/#login">Go to quiz</a>
+    <a href="/#login">Go to home</a>
   </main>
 </body>
 </html>

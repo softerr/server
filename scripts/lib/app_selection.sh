@@ -3,10 +3,11 @@
 select_apps() {
   SELECTED_APPS=()
   case "${1:-all}" in
-    all) SELECTED_APPS=(api quiz) ;;
+    all) SELECTED_APPS=(api home quiz) ;;
     api) SELECTED_APPS=(api) ;;
+    home) SELECTED_APPS=(home) ;;
     quiz) SELECTED_APPS=(quiz) ;;
-    *) echo "Expected APP_LIST to be all, api, or quiz." >&2; return 1 ;;
+    *) echo "Expected APP_LIST to be all, api, home, or quiz." >&2; return 1 ;;
   esac
 }
 
