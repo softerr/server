@@ -9,6 +9,7 @@ fi
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/lib/apt_locks.sh"
 INIT_SQL_FILE="${REPO_ROOT}/configs/postgresql/init.sql"
 PRUNE_SQL_FILE="${REPO_ROOT}/configs/postgresql/prune_user_tokens.sql"
 PRUNE_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.service"
@@ -35,38 +36,6 @@ for config_file in "${PRUNE_SQL_FILE}" "${PRUNE_SERVICE_FILE}" "${PRUNE_TIMER_FI
     exit 1
   fi
 done
-
-wait_for_apt_locks() {
-  local timeout="${APT_LOCK_TIMEOUT_SECONDS:-300}"
-  local waited=0
-  local step=3
-
-  apt_is_busy() {
-    if pgrep -x apt >/dev/null 2>&1 || pgrep -x apt-get >/dev/null 2>&1 || pgrep -x dpkg >/dev/null 2>&1 || pgrep -x unattended-upgrade >/dev/null 2>&1; then
-      return 0
-    fi
-
-    local lock_file
-    for lock_file in /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock; do
-      if [[ -e "${lock_file}" ]] && command -v fuser >/dev/null 2>&1 && fuser "${lock_file}" >/dev/null 2>&1; then
-        return 0
-      fi
-    done
-    return 1
-  }
-
-  while apt_is_busy; do
-    if (( waited == 0 )); then
-      echo "Waiting for apt/dpkg locks to be released..."
-    fi
-    sleep "${step}"
-    waited=$((waited + step))
-    if (( waited >= timeout )); then
-      echo "Timed out waiting for apt/dpkg locks after ${timeout}s."
-      exit 1
-    fi
-  done
-}
 
 if [[ -z "${API_DB_PASSWORD:-}" ]]; then
   echo "API_DB_PASSWORD is required."
