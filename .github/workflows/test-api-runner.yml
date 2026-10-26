@@ -159,13 +159,17 @@ jobs:
           sudo journalctl -u postgresql --no-pager -n 150 || true
           exit 1
 
-      - name: Check OpenAPI against live API
-        run: bash scripts/test_openapi.sh
-
       - name: Run API tests
         run: |
           set -euo pipefail
           bash scripts/test_api.sh
+
+      - name: Check OpenAPI against live API
+        run: |
+          set -euo pipefail
+          # Give contract requests a fresh per-IP Nginx rate-limit window.
+          sudo systemctl restart nginx
+          bash scripts/test_openapi.sh
 
       - name: Check expired-token pruning
         run: bash tests/db/prune_user_tokens.sh
