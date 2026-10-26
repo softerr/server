@@ -255,6 +255,7 @@ nginx_was_active=false
 nginx_preserve_stage=false
 routes_next=""
 site_next=""
+nginx_test_config=""
 nginx_paths=(
   /etc/nginx/snippets/softerr-routes.conf
   /etc/nginx/sites-available/softerr
@@ -292,6 +293,7 @@ cleanup_nginx_stage() {
   fi
   [[ -z "${routes_next}" ]] || rm -f -- "${routes_next}" || result=1
   [[ -z "${site_next}" ]] || rm -f -- "${site_next}" || result=1
+  [[ -z "${nginx_test_config}" ]] || rm -f -- "${nginx_test_config}" || result=1
   if [[ "${nginx_preserve_stage}" == true ]]; then
     echo "Nginx config backups remain at ${nginx_stage}/backup for manual recovery." >&2
   else
@@ -315,15 +317,18 @@ if ! grep -Fq 'include /etc/nginx/snippets/softerr-routes.conf;' "${nginx_stage}
 fi
 sed "s|include /etc/nginx/snippets/softerr-routes.conf;|include ${nginx_stage}/routes.conf;|g" \
   "${nginx_stage}/site.conf" > "${nginx_stage}/test-site.conf"
+# Nginx resolves relative includes from the main config's directory. Keep the
+# validation entry file in /etc/nginx so snippets/fastcgi-php.conf resolves.
+nginx_test_config="$(mktemp /etc/nginx/.softerr-validate.XXXXXXXX.conf)"
 {
   echo 'events {}'
   echo 'http {'
   cat "${nginx_stage}/test-site.conf"
   echo '}'
-} > "${nginx_stage}/nginx.conf"
+} > "${nginx_test_config}"
 
 echo "Validating staged nginx configuration..."
-nginx -t -c "${nginx_stage}/nginx.conf"
+nginx -t -c "${nginx_test_config}"
 
 mkdir -p -- "${nginx_stage}/backup"
 for index in "${!nginx_paths[@]}"; do

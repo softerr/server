@@ -97,7 +97,7 @@ jobs:
           set -euo pipefail
           TLS_TEST_DIR="$(mktemp -d)"
           export TLS_TEST_DIR
-          trap 'sudo rm -f /etc/nginx/softerr-http-ci.conf /etc/nginx/softerr-tls-ci.conf /etc/nginx/snippets/softerr-routes.conf; rm -rf -- "${TLS_TEST_DIR}"' EXIT
+          trap 'sudo rm -f /etc/nginx/softerr-http-ci.conf /etc/nginx/softerr-tls-ci.conf /etc/nginx/softerr-http-staged-ci.conf /etc/nginx/softerr-tls-staged-ci.conf /etc/nginx/snippets/softerr-routes.conf; rm -rf -- "${TLS_TEST_DIR}"' EXIT
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
             -subj '/CN=example.test' \
             -keyout "${TLS_TEST_DIR}/key.pem" -out "${TLS_TEST_DIR}/cert.pem" >/dev/null 2>&1
@@ -133,6 +133,11 @@ jobs:
                   assert 'return 308 https://example.test$request_uri;' in site
                   assert 'Strict-Transport-Security' in site
               (tls_dir / f'{mode}.conf').write_text('events {}\nhttp {\n' + site + '\n}\n')
+              staged_site = site.replace(
+                  'include /etc/nginx/snippets/softerr-routes.conf;',
+                  f'include {tls_dir}/routes.conf;')
+              assert staged_site != site
+              (tls_dir / f'{mode}-staged.conf').write_text('events {}\nhttp {\n' + staged_site + '\n}\n')
           bootstrap = Path('configs/nginx/softerr-bootstrap.conf').read_text()
           assert 'location ^~ /.well-known/acme-challenge/' in bootstrap
           (tls_dir / 'bootstrap.conf').write_text('events {}\nhttp {\n' + bootstrap + '\n}\n')
@@ -141,4 +146,8 @@ jobs:
           for mode in http tls bootstrap; do
             sudo install -m 644 "${TLS_TEST_DIR}/${mode}.conf" "/etc/nginx/softerr-${mode}-ci.conf"
             sudo nginx -t -c "/etc/nginx/softerr-${mode}-ci.conf"
+          done
+          for mode in http tls; do
+            sudo install -m 644 "${TLS_TEST_DIR}/${mode}-staged.conf" "/etc/nginx/softerr-${mode}-staged-ci.conf"
+            sudo nginx -t -c "/etc/nginx/softerr-${mode}-staged-ci.conf"
           done
