@@ -6,7 +6,7 @@ function quotePgConnectionValue(string $value): string
     return "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], $value) . "'";
 }
 
-function openDb(): array
+function openDb(int $connectTimeoutSeconds = 3): array
 {
     if (!function_exists('pg_connect')) {
         return [false, 'PostgreSQL PHP extension is not installed'];
@@ -23,12 +23,13 @@ function openDb(): array
     }
 
     $connectionString = sprintf(
-        'host=%s port=%s dbname=%s user=%s password=%s connect_timeout=3',
+        'host=%s port=%s dbname=%s user=%s password=%s connect_timeout=%d',
         quotePgConnectionValue((string)$host),
         quotePgConnectionValue((string)$port),
         quotePgConnectionValue((string)$dbname),
         quotePgConnectionValue((string)$user),
-        quotePgConnectionValue((string)$password)
+        quotePgConnectionValue((string)$password),
+        $connectTimeoutSeconds
     );
     $conn = @pg_connect($connectionString);
 

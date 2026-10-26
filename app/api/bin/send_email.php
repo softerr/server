@@ -14,15 +14,7 @@ if ($password === '' || !function_exists('pg_connect')) {
     exit(1);
 }
 
-$connection = sprintf(
-    'host=%s port=%s dbname=%s user=%s password=%s connect_timeout=5',
-    quotePgConnectionValue((string)(getenv('DB_HOST') ?: '127.0.0.1')),
-    quotePgConnectionValue((string)(getenv('DB_PORT') ?: '5432')),
-    quotePgConnectionValue((string)(getenv('DB_NAME') ?: 'auth')),
-    quotePgConnectionValue((string)(getenv('DB_USER') ?: 'auth_api')),
-    quotePgConnectionValue($password)
-);
-$db = @pg_connect($connection);
+[$db] = openDb(5);
 if ($db === false) {
     fwrite(STDERR, "Email worker could not connect to PostgreSQL.\n");
     exit(1);
