@@ -143,7 +143,7 @@ PostgreSQL setup installs `softerr-prune-user-tokens.timer` to remove expired ve
 
 The backup timer is installed by the same setup workflow and performs a restore check after each dump. Investigate failures with `sudo journalctl -u softerr-backup-postgresql.service -n 100 --no-pager`.
 
-Nginx setup installs `softerr-send-email.timer` to deliver queued verification emails every minute. Check it with `systemctl list-timers softerr-send-email.timer` and inspect delivery failures with `sudo journalctl -u softerr-send-email.service -n 100 --no-pager`.
+API runtime setup installs `softerr-send-email.timer` to deliver queued verification emails every minute. Check it with `systemctl list-timers softerr-send-email.timer` and inspect delivery failures with `sudo journalctl -u softerr-send-email.service -n 100 --no-pager`.
 
 API and quiz deployments prepare a complete directory beside the live app, then atomically exchange the two directories. The API deployment restarts PHP-FPM to load the new code. Before removing the old release, the deployment checks the API readiness response or compares the served quiz page with the new build. A failed check swaps the previous app directory back and makes the workflow fail. The apps are checked and rolled back independently. Production setup and deployment workflows run one at a time. The server needs Python 3 and a Linux filesystem that supports `renameat2` directory exchange; deployment fails without changing the live app if the exchange is unsupported.
 

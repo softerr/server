@@ -43,6 +43,10 @@ run_nginx() {
   run_root_script "${SCRIPT_DIR}/setup_nginx.sh"
 }
 
+run_api_runtime() {
+  run_root_script "${SCRIPT_DIR}/setup_api_runtime.sh"
+}
+
 run_api_deploy() {
   run_root_script "${SCRIPT_DIR}/deploy_api.sh"
 }
@@ -75,6 +79,9 @@ run_component() {
     nginx)
       run_nginx
       ;;
+    api-runtime)
+      run_api_runtime
+      ;;
     api)
       run_api_deploy
       ;;
@@ -86,13 +93,14 @@ run_component() {
       ;;
     all)
       run_postgresql
+      run_api_runtime
       run_nginx
       run_api_deploy
       run_quiz_deploy
       ;;
     *)
       echo "Unknown provisioning component: ${component}"
-      echo "Expected one of: all, postgresql, nginx, api, quiz, apps"
+      echo "Expected one of: all, postgresql, api-runtime, nginx, api, quiz, apps"
       exit 1
       ;;
   esac

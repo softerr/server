@@ -385,7 +385,7 @@ case "${SCRIPT_REL}" in
     export API_DB_PASSWORD
     sudo --preserve-env=API_DB_PASSWORD bash "${SCRIPT_REL}"
     ;;
-  scripts/setup_nginx.sh)
+  scripts/setup_api_runtime.sh)
     if [[ -z "${API_DB_PASSWORD}" ]]; then
       echo "API_DB_PASSWORD is required to run ${SCRIPT_REL}"
       exit 1
@@ -393,6 +393,10 @@ case "${SCRIPT_REL}" in
     export API_DB_PASSWORD API_MAIL_FROM API_APP_BASE_URL API_SMTP_HOST API_SMTP_PORT API_SMTP_ENCRYPTION API_SMTP_USERNAME API_SMTP_PASSWORD
     sudo --preserve-env=API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD \
       bash "${SCRIPT_REL}"
+    ;;
+  scripts/setup_nginx.sh)
+    export API_APP_BASE_URL
+    sudo --preserve-env=API_APP_BASE_URL bash "${SCRIPT_REL}"
     ;;
   scripts/deploy_quiz.sh)
     export API_APP_BASE_URL
