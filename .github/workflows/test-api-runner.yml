@@ -113,6 +113,9 @@ jobs:
           command -v jq
           command -v psql
 
+      - name: Check timezone precedence
+        run: php tests/api/timezone.php
+
       - name: Wait for local mail catcher
         run: |
           set -euo pipefail

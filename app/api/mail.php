@@ -44,10 +44,10 @@ function normalizeTimezoneName(?string $candidate): ?string
 function detectUserTimezone(array $payload): ?string
 {
     $candidates = [
-        $payload['timezone'] ?? null,
         $_SERVER['HTTP_X_TIMEZONE'] ?? null,
         $_SERVER['HTTP_TIMEZONE'] ?? null,
         $_COOKIE['timezone'] ?? null,
+        $payload['timezone'] ?? null,
     ];
 
     foreach ($candidates as $candidate) {
