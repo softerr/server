@@ -10,6 +10,17 @@ function respond(int $statusCode, array $payload): never
     exit;
 }
 
+function readJsonBody(): ?array
+{
+    $rawBody = file_get_contents('php://input', false, null, 0, 4097);
+    if ($rawBody === false || strlen($rawBody) > 4096) {
+        respond(413, ['error' => 'Request body is too large']);
+    }
+
+    $payload = json_decode($rawBody ?: '', true);
+    return is_array($payload) ? $payload : null;
+}
+
 function connectDb()
 {
     [$conn, $error] = openDb();

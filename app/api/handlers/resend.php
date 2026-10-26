@@ -3,12 +3,8 @@ declare(strict_types=1);
 
 function handleResendVerification(): never
 {
-    $rawBody = file_get_contents('php://input', false, null, 0, 4097);
-    if ($rawBody === false || strlen($rawBody) > 4096) {
-        respond(413, ['error' => 'Request body is too large']);
-    }
-    $payload = json_decode($rawBody ?: '', true);
-    if (!is_array($payload) || !is_string($payload['email'] ?? null)) {
+    $payload = readJsonBody();
+    if ($payload === null || !is_string($payload['email'] ?? null)) {
         respond(400, ['error' => 'A valid email is required']);
     }
 
