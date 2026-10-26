@@ -75,6 +75,9 @@ jobs:
       - name: Check TLS certificate validation
         run: bash tests/deploy/tls_certificate.sh
 
+      - name: Check running VM disk recreation guard
+        run: bash tests/deploy/qemu_recreation.sh
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

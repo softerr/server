@@ -13,7 +13,7 @@ Create a local env file once:
 cp .qemu.env.example .qemu.env
 ```
 
-Then edit `.qemu.env` with your values (passwords, local Mailpit, ports, test flags).
+Then edit `.qemu.env` with your local Mailpit, port, and test settings.
 
 `scripts/qemu.sh` auto-loads this file on each run.
 The VM sync excludes this file (including a custom `QEMU_ENV_FILE` inside the repository) and removes copies left by earlier syncs.
@@ -24,13 +24,9 @@ Optional override:
 QEMU_ENV_FILE=/path/to/my-qemu.env bash scripts/qemu.sh start
 ```
 
-## 2. Required environment variables
+## 2. Environment variables
 
-Before first provisioning (`start`), set:
-
-```bash
-export API_DB_PASSWORD='change-me'
-```
+`start` runs `bootstrap_server.sh` in the VM. It generates the database password and passes it to provisioning; no local database password is needed. QEMU captures the printed GitHub secrets without displaying them.
 
 Optional URL override and local email settings:
 
@@ -58,36 +54,30 @@ Default access:
 
 `start` does:
 - boots VM
+- runs `bootstrap_server.sh` and checks the workflow user's SSH key, pinned host key, and deployment sudo access
 - rebuilds the quiz from current source when provisioning includes `quiz`, `apps`, or `all`
-- syncs repo into VM (`/home/ubuntu/server`)
+- syncs repo into VM (`/home/<VM_USER>/server`; default `/home/ubuntu/server`)
 - runs `scripts/provision.sh` with default `PROVISION_COMPONENTS=all`
 - checks that `/quiz` and `/quiz/` both return HTTP 200 after quiz deployment
 
-## 4. Apply changed script quickly (no full rebuild)
+## 4. Apply a component to the running VM
 
-After editing a script, run:
+After editing a component, run:
 
 ```bash
-bash scripts/qemu.sh apply scripts/setup_nginx.sh
+bash scripts/qemu.sh apply nginx
 ```
 
-Applying `scripts/deploy_quiz.sh` or provisioning `quiz`, `apps`, or `all` rebuilds the quiz before syncing. Quiz and Nginx applies also check both quiz URLs afterward.
+`apply` reruns the idempotent bootstrap check, syncs the repository, and runs the selected component through `scripts/provision.sh`. Applying `quiz`, `all`, or `apps` when it includes quiz rebuilds the quiz first. Quiz and Nginx applies also check both quiz URLs afterward.
 
 Other examples:
 
 ```bash
-bash scripts/qemu.sh apply scripts/setup_postgresql.sh
-bash scripts/qemu.sh apply scripts/setup_php_fpm.sh
-bash scripts/qemu.sh apply scripts/setup_email_worker.sh
-bash scripts/qemu.sh apply scripts/deploy_api.sh
-bash scripts/qemu.sh apply scripts/provision.sh
-```
-
-When applying `scripts/provision.sh`, you can limit scope:
-
-```bash
-export PROVISION_COMPONENTS='nginx'
-bash scripts/qemu.sh apply scripts/provision.sh
+bash scripts/qemu.sh apply postgresql
+bash scripts/qemu.sh apply php-fpm
+bash scripts/qemu.sh apply email-worker
+bash scripts/qemu.sh apply api
+bash scripts/qemu.sh apply all
 ```
 
 Supported components:
@@ -130,8 +120,11 @@ bash scripts/qemu.sh stop
 ## 7. Recreate VM from clean disk
 
 ```bash
+bash scripts/qemu.sh stop
 RECREATE_VM_DISK=1 bash scripts/qemu.sh start
 ```
+
+`start` refuses disk recreation while the VM is running.
 
 Useful optional overrides:
 - `SSH_PORT` (default `2222`)
@@ -146,9 +139,8 @@ Useful optional overrides:
 SKIP_PROVISION=1 bash scripts/qemu.sh start
 ```
 
-Then run provisioning manually:
+This skips bootstrap and provisioning. Run both later with:
 
 ```bash
-export PROVISION_COMPONENTS='all'
-bash scripts/qemu.sh apply scripts/provision.sh
+bash scripts/qemu.sh apply all
 ```

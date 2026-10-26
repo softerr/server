@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+source "${REPO_ROOT}/scripts/lib/app_selection.sh"
 
 QEMU_ENV_FILE="${QEMU_ENV_FILE:-${REPO_ROOT}/.qemu.env}"
 if [[ -f "${QEMU_ENV_FILE}" ]]; then
@@ -37,14 +38,8 @@ SSH_KEY="${VM_DIR}/id_ed25519"
 USER_DATA="${VM_DIR}/user-data"
 META_DATA="${VM_DIR}/meta-data"
 REMOTE_APP_DIR="/home/${VM_USER}/server"
-
-require_cmd() {
-  local cmd="$1"
-  if ! command -v "${cmd}" >/dev/null 2>&1; then
-    echo "${cmd}"
-    exit 1
-  fi
-}
+SSH_TARGET="${VM_USER}@127.0.0.1"
+SSH_OPTIONS=(-i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "${SSH_PORT}")
 
 qemu_running() {
   if [[ -f "${PID_FILE}" ]]; then
@@ -58,18 +53,32 @@ qemu_running() {
 }
 
 ensure_required_commands() {
+  local requirements=(
+    'curl curl'
+    'qemu-img qemu-system-x86'
+    'qemu-system-x86_64 qemu-system-x86'
+    'cloud-localds cloud-image-utils'
+    'ssh-keygen openssh-client'
+    'ssh openssh-client'
+    'rsync rsync'
+  )
   local missing=()
   local package_list=()
   local sudo_cmd=()
+  local requirement command_name package_name
+  local -A seen_packages=()
 
-  if ! command -v curl >/dev/null 2>&1; then missing+=("curl"); fi
-  if ! command -v qemu-img >/dev/null 2>&1; then missing+=("qemu-img"); fi
-  if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then missing+=("qemu-system-x86_64"); fi
-  if ! command -v cloud-localds >/dev/null 2>&1; then missing+=("cloud-localds"); fi
-  if ! command -v ssh-keygen >/dev/null 2>&1; then missing+=("ssh-keygen"); fi
-  if ! command -v ssh >/dev/null 2>&1; then missing+=("ssh"); fi
-  if ! command -v scp >/dev/null 2>&1; then missing+=("scp"); fi
-  if ! command -v rsync >/dev/null 2>&1; then missing+=("rsync"); fi
+  for requirement in "${requirements[@]}"; do
+    command_name="${requirement%% *}"
+    package_name="${requirement#* }"
+    if ! command -v "${command_name}" >/dev/null 2>&1; then
+      missing+=("${command_name}")
+      if [[ -z "${seen_packages[$package_name]:-}" ]]; then
+        package_list+=("${package_name}")
+        seen_packages[$package_name]=1
+      fi
+    fi
+  done
 
   if [[ "${#missing[@]}" -eq 0 ]]; then
     return
@@ -86,26 +95,10 @@ ensure_required_commands() {
       fi
     fi
 
-    if [[ " ${missing[*]} " == *" curl "* ]]; then package_list+=("curl"); fi
-    if [[ " ${missing[*]} " == *" qemu-img "* || " ${missing[*]} " == *" qemu-system-x86_64 "* ]]; then package_list+=("qemu-system-x86"); fi
-    if [[ " ${missing[*]} " == *" cloud-localds "* ]]; then package_list+=("cloud-image-utils"); fi
-    if [[ " ${missing[*]} " == *" ssh-keygen "* || " ${missing[*]} " == *" ssh "* || " ${missing[*]} " == *" scp "* ]]; then package_list+=("openssh-client"); fi
-    if [[ " ${missing[*]} " == *" rsync "* ]]; then package_list+=("rsync"); fi
-
-    if [[ "${#package_list[@]}" -gt 0 ]]; then
-      local unique_packages=()
-      local pkg
-      for pkg in "${package_list[@]}"; do
-        if [[ " ${unique_packages[*]} " != *" ${pkg} "* ]]; then
-          unique_packages+=("${pkg}")
-        fi
-      done
-
-      echo "Installing missing dependencies: ${unique_packages[*]}"
-      export DEBIAN_FRONTEND=noninteractive
-      "${sudo_cmd[@]}" apt-get update
-      "${sudo_cmd[@]}" apt-get install -y "${unique_packages[@]}"
-    fi
+    echo "Installing missing dependencies: ${package_list[*]}"
+    export DEBIAN_FRONTEND=noninteractive
+    "${sudo_cmd[@]}" apt-get update
+    "${sudo_cmd[@]}" apt-get install -y "${package_list[@]}"
   else
     echo "Missing dependencies: ${missing[*]}"
     echo "Automatic install is supported on apt-get systems only."
@@ -113,14 +106,11 @@ ensure_required_commands() {
   fi
 
   local still_missing=()
-  if ! command -v curl >/dev/null 2>&1; then still_missing+=("curl"); fi
-  if ! command -v qemu-img >/dev/null 2>&1; then still_missing+=("qemu-img"); fi
-  if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then still_missing+=("qemu-system-x86_64"); fi
-  if ! command -v cloud-localds >/dev/null 2>&1; then still_missing+=("cloud-localds"); fi
-  if ! command -v ssh-keygen >/dev/null 2>&1; then still_missing+=("ssh-keygen"); fi
-  if ! command -v ssh >/dev/null 2>&1; then still_missing+=("ssh"); fi
-  if ! command -v scp >/dev/null 2>&1; then still_missing+=("scp"); fi
-  if ! command -v rsync >/dev/null 2>&1; then still_missing+=("rsync"); fi
+  for command_name in "${missing[@]}"; do
+    if ! command -v "${command_name}" >/dev/null 2>&1; then
+      still_missing+=("${command_name}")
+    fi
+  done
 
   if [[ "${#still_missing[@]}" -gt 0 ]]; then
     echo "Dependencies still missing after install: ${still_missing[*]}"
@@ -212,7 +202,7 @@ start_vm() {
 wait_for_ssh() {
   echo "Waiting for SSH on localhost:${SSH_PORT}..."
   local waited=0
-  until ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -p "${SSH_PORT}" "${VM_USER}@127.0.0.1" "echo ssh-ready" >/dev/null 2>&1; do
+  until ssh "${SSH_OPTIONS[@]}" -o ConnectTimeout=5 "${SSH_TARGET}" "echo ssh-ready" >/dev/null 2>&1; do
     sleep 3
     waited=$((waited + 3))
     if (( waited >= WAIT_SSH_SECONDS )); then
@@ -225,17 +215,84 @@ wait_for_ssh() {
 }
 
 wait_for_cloud_init() {
-  local ssh_cmd
-  ssh_cmd=(ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "${SSH_PORT}" "${VM_USER}@127.0.0.1")
-
   echo "Waiting for cloud-init to finish in VM..."
-  "${ssh_cmd[@]}" "bash -s" <<'EOF'
+  ssh "${SSH_OPTIONS[@]}" "${SSH_TARGET}" "bash -s" <<'EOF'
 set -euo pipefail
 if command -v cloud-init >/dev/null 2>&1; then
   sudo cloud-init status --wait
 fi
 EOF
   echo "cloud-init completed."
+}
+
+bootstrap_vm() {
+  local bootstrap_output line workflow_key_b64="" known_hosts="" db_password=""
+  local workflow_user="" workflow_port="" workflow_host=""
+  echo "Running server bootstrap in VM..."
+  if ! bootstrap_output="$(ssh "${SSH_OPTIONS[@]}" "${SSH_TARGET}" \
+    "sudo bash -s -- 127.0.0.1 qemu@example.test ${SSH_PORT}" \
+    < "${REPO_ROOT}/scripts/bootstrap_server.sh")"; then
+    echo "Server bootstrap failed in VM." >&2
+    return 1
+  fi
+
+  while IFS= read -r line; do
+    case "${line}" in
+      SERVER_HOST=*) workflow_host="${line#*=}" ;;
+      SERVER_USER=*) workflow_user="${line#*=}" ;;
+      SERVER_PORT=*) workflow_port="${line#*=}" ;;
+      SERVER_SSH_KEY_B64=*) workflow_key_b64="${line#*=}" ;;
+      SERVER_SSH_KNOWN_HOSTS=*) known_hosts="${line#*=}" ;;
+      API_DB_PASSWORD=*) db_password="${line#*=}" ;;
+    esac
+  done <<< "${bootstrap_output}"
+
+  if [[ "${workflow_host}" != 127.0.0.1 || "${workflow_user}" != github-workflow \
+    || "${workflow_port}" != "${SSH_PORT}" || ! "${db_password}" =~ ^[a-f0-9]{64}$ \
+    || -z "${workflow_key_b64}" || -z "${known_hosts}" ]]; then
+    echo "Server bootstrap did not return the expected QEMU connection values." >&2
+    return 1
+  fi
+
+  local expected_host=127.0.0.1
+  if [[ "${SSH_PORT}" != 22 ]]; then
+    expected_host="[127.0.0.1]:${SSH_PORT}"
+  fi
+  if [[ "${known_hosts}" != "${expected_host} ssh-ed25519 "* ]]; then
+    echo "Server bootstrap returned an unexpected SSH host key entry." >&2
+    return 1
+  fi
+
+  local workflow_key="${VM_DIR}/github-workflow_ed25519"
+  local workflow_known_hosts="${VM_DIR}/github-workflow_known_hosts"
+  install -m 600 /dev/null "${workflow_key}"
+  if ! printf '%s' "${workflow_key_b64}" | base64 -d > "${workflow_key}"; then
+    echo "Server bootstrap returned an invalid workflow SSH key." >&2
+    return 1
+  fi
+  printf '%s\n' "${known_hosts}" > "${workflow_known_hosts}"
+  chmod 600 "${workflow_known_hosts}"
+
+  local workflow_ssh=(ssh -i "${workflow_key}" -o IdentitiesOnly=yes \
+    -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${workflow_known_hosts}" \
+    -p "${SSH_PORT}" "${workflow_user}@127.0.0.1")
+  if ! "${workflow_ssh[@]}" 'test "$(id -un)" = github-workflow'; then
+    echo "Server bootstrap workflow user cannot sign in with its generated SSH key." >&2
+    return 1
+  fi
+  if ! "${workflow_ssh[@]}" 'set -eu
+    check_dir=/tmp/workflow-artifacts/runs/qemu-bootstrap-1/scripts
+    mkdir -p "$check_dir"
+    printf "#!/usr/bin/env bash\nexit 0\n" > "$check_dir/check.sh"
+    sudo -n /bin/bash "$check_dir/check.sh"
+    rm -f "$check_dir/check.sh"
+    rmdir "$check_dir"'; then
+    echo "Server bootstrap workflow user cannot run uploaded scripts through sudo." >&2
+    return 1
+  fi
+
+  API_DB_PASSWORD="${db_password}"
+  echo "Server bootstrap checks passed: workflow SSH, pinned host key, and deployment sudo access."
 }
 
 provision_includes_quiz() {
@@ -246,7 +303,6 @@ provision_includes_quiz() {
     case "${component}" in
       all|quiz) return 0 ;;
       apps)
-        source "${REPO_ROOT}/scripts/lib/app_selection.sh"
         select_apps "${APP_LIST:-all}"
         app_selected quiz && return 0
         ;;
@@ -289,6 +345,8 @@ check_quiz_routes() {
 
 sync_repo_to_vm() {
   echo "Syncing project into VM..."
+  # rsync accepts its remote shell as one command string rather than an argv array.
+  local rsync_ssh="ssh ${SSH_OPTIONS[*]}"
   # Hide local env files and delete copies left by earlier syncs.
   local -a secret_filters=(--filter='H /.qemu.env' --filter='R /.qemu.env')
   if [[ -f "${QEMU_ENV_FILE}" ]]; then
@@ -306,17 +364,16 @@ sync_repo_to_vm() {
     --exclude=".git" \
     --exclude=".qemu" \
     --exclude="app/quiz/node_modules" \
-    -e "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${SSH_PORT}" \
-    "${REPO_ROOT}/" "${VM_USER}@127.0.0.1:${REMOTE_APP_DIR}/"
+    -e "${rsync_ssh}" \
+    "${REPO_ROOT}/" "${SSH_TARGET}:${REMOTE_APP_DIR}/"
 }
 
 run_remote_script() {
   local script_rel="$1"
-  local ssh_cmd
-  ssh_cmd=(ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "${SSH_PORT}" "${VM_USER}@127.0.0.1")
 
   local env_names=(
     SCRIPT_REL
+    REMOTE_APP_DIR
     PROVISION_COMPONENTS
     APP_LIST
     API_DB_PASSWORD
@@ -349,15 +406,16 @@ run_remote_script() {
   local all_vars_csv
   all_vars_csv="$(IFS=,; printf '%s' "${env_names[*]}")"
 
-  "${ssh_cmd[@]}" "${assignments[*]} ALL_VARS_CSV='${all_vars_csv}' bash -s" <<'EOF'
+  ssh "${SSH_OPTIONS[@]}" "${SSH_TARGET}" "${assignments[*]} ALL_VARS_CSV='${all_vars_csv}' bash -s" <<'EOF'
 set -euo pipefail
-cd /home/ubuntu/server
 
 for var_name in ${ALL_VARS_CSV//,/ }; do
   b64_var="${var_name}_B64"
   decoded_value="$(printf '%s' "${!b64_var}" | base64 -d)"
   printf -v "${var_name}" '%s' "${decoded_value}"
 done
+
+cd -- "${REMOTE_APP_DIR}"
 
 if [[ ! -f "${SCRIPT_REL}" ]]; then
   echo "Script not found in VM repo: ${SCRIPT_REL}"
@@ -377,37 +435,9 @@ case "${SCRIPT_REL}" in
     sudo --preserve-env=API_TEST_BASE_URL,API_TEST_DB_NAME,API_TEST_DB_SUPERUSER,API_TEST_REQUIRE_DB,API_TEST_REQUIRE_EMAIL,API_TEST_MAILPIT_URL \
       bash "${SCRIPT_REL}"
     ;;
-  scripts/setup_postgresql.sh)
-    if [[ -z "${API_DB_PASSWORD}" ]]; then
-      echo "API_DB_PASSWORD is required to run ${SCRIPT_REL}"
-      exit 1
-    fi
-    export API_DB_PASSWORD
-    sudo --preserve-env=API_DB_PASSWORD bash "${SCRIPT_REL}"
-    ;;
-  scripts/setup_php_fpm.sh|scripts/setup_email_worker.sh)
-    if [[ -z "${API_DB_PASSWORD}" ]]; then
-      echo "API_DB_PASSWORD is required to run ${SCRIPT_REL}"
-      exit 1
-    fi
-    export API_DB_PASSWORD API_MAIL_FROM API_APP_BASE_URL API_SMTP_HOST API_SMTP_PORT API_SMTP_ENCRYPTION API_SMTP_USERNAME API_SMTP_PASSWORD
-    sudo --preserve-env=API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD \
-      bash "${SCRIPT_REL}"
-    ;;
-  scripts/setup_nginx.sh)
-    export API_APP_BASE_URL
-    sudo --preserve-env=API_APP_BASE_URL bash "${SCRIPT_REL}"
-    ;;
-  scripts/deploy_quiz.sh)
-    export API_APP_BASE_URL
-    sudo --preserve-env=API_APP_BASE_URL QUIZ_DIST_DIR="${PWD}/app/quiz/dist" bash "${SCRIPT_REL}"
-    ;;
-  scripts/deploy_api.sh)
-    export API_APP_BASE_URL
-    sudo --preserve-env=API_APP_BASE_URL bash "${SCRIPT_REL}"
-    ;;
   *)
-    sudo bash "${SCRIPT_REL}"
+    echo "Unsupported VM script: ${SCRIPT_REL}" >&2
+    exit 1
     ;;
 esac
 EOF
@@ -419,16 +449,13 @@ provision_vm() {
     return
   fi
 
-  if [[ -z "${API_DB_PASSWORD:-}" ]]; then
-    echo "API_DB_PASSWORD is required for provisioning."
-    exit 1
-  fi
+  wait_for_cloud_init
+  bootstrap_vm
   if [[ -z "${API_SMTP_HOST:-}" ]]; then
     echo "Warning: API_SMTP_HOST is not set."
     echo "Signup verification email in VM will fail unless VM has a working local MTA for PHP mail()."
   fi
 
-  wait_for_cloud_init
   if provision_includes_quiz; then
     build_quiz_dist
   fi
@@ -441,34 +468,41 @@ provision_vm() {
   fi
 }
 
-apply_script_vm() {
-  local script_rel="${1:-scripts/setup_nginx.sh}"
-  local quiz_deploy=0
+apply_component_vm() {
+  local component="$1"
+  case "${component}" in
+    all|postgresql|php-fpm|email-worker|nginx|api|quiz|apps) ;;
+    *)
+      echo "Unknown provisioning component: ${component}" >&2
+      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, quiz, apps" >&2
+      return 1
+      ;;
+  esac
+  if [[ "${component}" == apps ]]; then
+    select_apps "${APP_LIST:-all}"
+  fi
+
+  local PROVISION_COMPONENTS="${component}"
 
   if ! qemu_running; then
     echo "VM is not running. Start it first: bash scripts/qemu.sh start"
     exit 1
   fi
 
-  if [[ ! -f "${REPO_ROOT}/${script_rel}" ]]; then
-    echo "Local script not found: ${script_rel}"
-    exit 1
-  fi
-
   wait_for_ssh
   wait_for_cloud_init
+  bootstrap_vm
 
-  if [[ "${script_rel}" == "scripts/deploy_quiz.sh" ]] || { [[ "${script_rel}" == "scripts/provision.sh" ]] && provision_includes_quiz; }; then
-    quiz_deploy=1
+  if provision_includes_quiz; then
     build_quiz_dist
   fi
 
   sync_repo_to_vm
-  run_remote_script "${script_rel}"
-  if (( quiz_deploy )) || [[ "${script_rel}" == "scripts/setup_nginx.sh" ]]; then
+  run_remote_script "scripts/provision.sh"
+  if provision_includes_quiz || [[ "${component}" == nginx ]]; then
     check_quiz_routes
   fi
-  echo "Applied ${script_rel} in VM."
+  echo "Applied ${component} in VM."
 }
 
 test_api_vm() {
@@ -494,18 +528,19 @@ test_api_vm() {
 print_usage() {
   cat <<'EOF'
 Usage:
-  bash scripts/qemu.sh [start|stop|status|ssh|apply|test-api]
+  bash scripts/qemu.sh [start|stop|status|ssh|test-api]
+  bash scripts/qemu.sh apply <component>
 
 Commands:
   start   Create/launch VM and provision it with server scripts (default)
   stop    Stop running VM
   status  Show VM status
   ssh     SSH into VM
-  apply   Sync repo and run one script in VM (default: scripts/setup_nginx.sh)
+  apply <component> Sync repo and provision one component in VM
   test-api Sync repo and run scripts/test_api.sh in VM
 
 Environment variables:
-  API_DB_PASSWORD              Required for provisioning
+  API_DB_PASSWORD              Generated by bootstrap for start and apply
   API_MAIL_FROM                Optional sender address
   API_APP_BASE_URL             Verification-link origin (default: http://127.0.0.1:<HTTP_PORT>)
   API_SMTP_HOST                Optional SMTP host (recommended for verification emails)
@@ -519,7 +554,10 @@ Environment variables:
   API_TEST_REQUIRE_DB          Default: 1
   API_TEST_REQUIRE_EMAIL       Default: 1 (require signup email delivery checks)
   API_TEST_MAILPIT_URL         Optional Mailpit API URL for resend delivery test
+  PROVISION_COMPONENTS         Components to run during start (default: all)
+  APP_LIST                     all|api|quiz when applying apps (default: all)
   VM_NAME                      Default: server-clone
+  VM_USER                      Default: ubuntu (repo syncs to /home/<VM_USER>/server)
   VM_DIR                       Default: ./.qemu/<VM_NAME>
   SSH_PORT                     Default: 2222
   HTTP_PORT                    Default: 8080
@@ -530,8 +568,8 @@ Environment variables:
   SKIP_PROVISION               1 to only boot VM
 
 Examples:
-  bash scripts/qemu.sh apply scripts/setup_postgresql.sh
-  bash scripts/qemu.sh apply scripts/setup_nginx.sh
+  bash scripts/qemu.sh apply postgresql
+  bash scripts/qemu.sh apply nginx
   bash scripts/qemu.sh test-api
 EOF
 }
@@ -551,29 +589,40 @@ stop_vm() {
 status_vm() {
   if qemu_running; then
     echo "VM running (pid $(cat "${PID_FILE}"))."
-    echo "SSH: ssh -i ${SSH_KEY} -p ${SSH_PORT} ${VM_USER}@127.0.0.1"
-    echo "HTTP: http://127.0.0.1:${HTTP_PORT}"
+    print_vm_access
   else
     echo "VM stopped."
   fi
 }
 
+print_vm_access() {
+  echo "SSH: ssh -i ${SSH_KEY} -p ${SSH_PORT} ${SSH_TARGET}"
+  echo "HTTP: http://127.0.0.1:${HTTP_PORT}"
+}
+
 ssh_vm() {
-  ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "${SSH_PORT}" "${VM_USER}@127.0.0.1"
+  ssh "${SSH_OPTIONS[@]}" "${SSH_TARGET}"
 }
 
 main() {
   local command="${1:-start}"
   case "${command}" in
     start)
+      if qemu_running && [[ "${RECREATE_VM_DISK}" == "1" ]]; then
+        echo "Cannot recreate the VM disk while the VM is running. Stop it first: bash scripts/qemu.sh stop" >&2
+        exit 1
+      fi
       ensure_required_commands
-      prepare_vm_files
-      start_vm
+      if qemu_running; then
+        echo "VM is already running (pid $(cat "${PID_FILE}"))."
+      else
+        prepare_vm_files
+        start_vm
+      fi
       wait_for_ssh
       provision_vm
       echo "VM is ready."
-      echo "SSH: ssh -i ${SSH_KEY} -p ${SSH_PORT} ${VM_USER}@127.0.0.1"
-      echo "HTTP: http://127.0.0.1:${HTTP_PORT}"
+      print_vm_access
       ;;
     stop)
       stop_vm
@@ -585,7 +634,11 @@ main() {
       ssh_vm
       ;;
     apply)
-      apply_script_vm "${2:-scripts/setup_nginx.sh}"
+      if [[ $# -ne 2 ]]; then
+        echo "Usage: bash scripts/qemu.sh apply <component>" >&2
+        exit 1
+      fi
+      apply_component_vm "$2"
       ;;
     test-api)
       test_api_vm
