@@ -91,7 +91,7 @@ fi
 echo "Discovering php-fpm socket..."
 PHP_SOCK="$(find /run/php -maxdepth 1 -type s -name 'php*-fpm.sock' -print -quit || true)"
 if [[ -z "${PHP_SOCK}" ]]; then
-  echo "Could not find php-fpm socket in /run/php. Run setup_api_runtime.sh first." >&2
+  echo "Could not find php-fpm socket in /run/php. Run setup_php_fpm.sh first." >&2
   exit 1
 fi
 

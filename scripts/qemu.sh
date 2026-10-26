@@ -385,7 +385,7 @@ case "${SCRIPT_REL}" in
     export API_DB_PASSWORD
     sudo --preserve-env=API_DB_PASSWORD bash "${SCRIPT_REL}"
     ;;
-  scripts/setup_api_runtime.sh)
+  scripts/setup_php_fpm.sh|scripts/setup_email_worker.sh)
     if [[ -z "${API_DB_PASSWORD}" ]]; then
       echo "API_DB_PASSWORD is required to run ${SCRIPT_REL}"
       exit 1

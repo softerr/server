@@ -31,7 +31,8 @@ on:
       - "scripts/setup_postgresql.sh"
       - "scripts/backup_postgresql.sh"
       - "scripts/setup_nginx.sh"
-      - "scripts/setup_api_runtime.sh"
+      - "scripts/setup_php_fpm.sh"
+      - "scripts/setup_email_worker.sh"
       - "scripts/deploy_api.sh"
       - "scripts/lib/**"
       - "scripts/provision.sh"
@@ -51,7 +52,8 @@ on:
       - "scripts/setup_postgresql.sh"
       - "scripts/backup_postgresql.sh"
       - "scripts/setup_nginx.sh"
-      - "scripts/setup_api_runtime.sh"
+      - "scripts/setup_php_fpm.sh"
+      - "scripts/setup_email_worker.sh"
       - "scripts/deploy_api.sh"
       - "scripts/lib/**"
       - "scripts/provision.sh"
@@ -100,7 +102,7 @@ jobs:
           sudo --preserve-env=PROVISION_COMPONENTS,API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION \
             bash scripts/provision.sh
         env:
-          PROVISION_COMPONENTS: postgresql,api-runtime,nginx,api
+          PROVISION_COMPONENTS: postgresql,php-fpm,email-worker,nginx,api
           API_DB_PASSWORD: ${{ env.API_DB_PASSWORD }}
           API_MAIL_FROM: ${{ env.API_MAIL_FROM }}
           API_APP_BASE_URL: ${{ env.API_APP_BASE_URL }}

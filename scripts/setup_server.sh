@@ -68,7 +68,7 @@ if ! PGPASSWORD="${API_DB_PASSWORD}" PGCONNECT_TIMEOUT=5 psql -X -v ON_ERROR_STO
   echo "PostgreSQL is not reachable with the API credentials." >&2
   exit 1
 fi
-PROVISION_COMPONENTS=api-runtime,nginx,api,quiz bash "${SCRIPT_DIR}/provision.sh"
+PROVISION_COMPONENTS=php-fpm,email-worker,nginx,api,quiz bash "${SCRIPT_DIR}/provision.sh"
 
 systemctl is-active --quiet nginx
 systemctl is-active --quiet postgresql

@@ -35,7 +35,7 @@ For verification email delivery, also add your mail provider settings as product
 In GitHub, run **Actions → Set Up Server → Run workflow**. It builds the quiz, uploads the API and configuration, and runs `scripts/setup_server.sh` remotely. The remote script:
 
 1. Serves HTTP temporarily for the certificate challenge and obtains a certificate for the host in `SERVER_HOST`.
-2. Sets up PostgreSQL and the API runtime, runs an initial verified backup, and configures the final HTTPS Nginx site.
+2. Sets up PostgreSQL, PHP-FPM, and the email worker, runs an initial verified backup, and configures the final HTTPS Nginx site.
 3. Deploys the API and quiz.
 4. Checks the database backup, token cleanup, and mail timers, HTTPS quiz page, and API readiness endpoint.
 
@@ -43,6 +43,6 @@ The workflow fails at the step that needs attention. Rerunning it reapplies the 
 
 ## Later updates
 
-Use **Deploy Apps On Server** to deploy `api`, `quiz`, or `all` without repeating server setup. The quiz builds on the GitHub runner; only its built files are uploaded. Each app is checked through Nginx after publication and restored to its previous release if the check fails. Use **Setup PostgreSQL On Server** after database schema changes and **Setup Nginx On Server** after web server configuration or runtime settings change. The latter workflow runs API runtime setup before Nginx setup. Those workflows use the same pinned SSH host key and production secrets.
+Use **Deploy Apps On Server** to deploy `api`, `quiz`, or `all` without repeating server setup. The quiz builds on the GitHub runner; only its built files are uploaded. Each app is checked through Nginx after publication and restored to its previous release if the check fails. Use **Setup PostgreSQL On Server** after database schema changes and **Setup Nginx On Server** after web server configuration or runtime settings change. The latter workflow runs PHP-FPM and email worker setup before Nginx setup. Those workflows use the same pinned SSH host key and production secrets.
 
 The **Test Deployment** workflow checks shell syntax, atomic app replacement, the quiz build, and Nginx configuration. The **Test API On Runner** and **Test API In QEMU** workflows exercise the API with local Mailpit, including email rejection and resend behavior. Require their jobs in branch protection if they should block merges.

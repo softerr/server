@@ -39,7 +39,7 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          PROVISION_COMPONENTS: api-runtime,nginx
+          PROVISION_COMPONENTS: php-fpm,email-worker,nginx
           API_DB_PASSWORD: ${{ secrets.API_DB_PASSWORD }}
           API_MAIL_FROM: ${{ secrets.API_MAIL_FROM }}
           API_APP_BASE_URL: https://${{ secrets.SERVER_HOST }}

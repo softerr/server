@@ -43,8 +43,12 @@ run_nginx() {
   run_root_script "${SCRIPT_DIR}/setup_nginx.sh"
 }
 
-run_api_runtime() {
-  run_root_script "${SCRIPT_DIR}/setup_api_runtime.sh"
+run_php_fpm() {
+  run_root_script "${SCRIPT_DIR}/setup_php_fpm.sh"
+}
+
+run_email_worker() {
+  run_root_script "${SCRIPT_DIR}/setup_email_worker.sh"
 }
 
 run_api_deploy() {
@@ -79,8 +83,11 @@ run_component() {
     nginx)
       run_nginx
       ;;
-    api-runtime)
-      run_api_runtime
+    php-fpm)
+      run_php_fpm
+      ;;
+    email-worker)
+      run_email_worker
       ;;
     api)
       run_api_deploy
@@ -93,14 +100,15 @@ run_component() {
       ;;
     all)
       run_postgresql
-      run_api_runtime
+      run_php_fpm
+      run_email_worker
       run_nginx
       run_api_deploy
       run_quiz_deploy
       ;;
     *)
       echo "Unknown provisioning component: ${component}"
-      echo "Expected one of: all, postgresql, api-runtime, nginx, api, quiz, apps"
+      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, quiz, apps"
       exit 1
       ;;
   esac

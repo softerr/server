@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/../../app/api/mail.php';
+require __DIR__ . '/../../app/api/lib/timezone.php';
 
 function expectTimezone(?string $expected, array $payload, string $case): void
 {

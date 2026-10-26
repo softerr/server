@@ -151,14 +151,18 @@ The `verification_email_queued` response field confirms that the job was committ
 
 The worker uses SMTP when `SMTP_HOST` is configured and PHP `mail()` otherwise. An SMTP failure does not fall back to `mail()`. Verification or token expiry removes obsolete queued jobs. The client can request another attempt with `POST /api/auth/resend-verification` after the one-minute cooldown.
 
-Relevant runtime env vars (from php-fpm and the systemd email worker):
+Both PHP-FPM and the systemd email worker receive these runtime env vars:
+
 - `DB_HOST` (default `127.0.0.1`)
 - `DB_PORT` (default `5432`)
 - `DB_NAME` (default `auth`)
 - `DB_USER` (default `auth_api`)
 - `DB_PASSWORD` (required)
-- `MAIL_FROM` (default `no-reply@localhost`)
 - `APP_BASE_URL` (required HTTPS origin for verification links; loopback HTTP is allowed for local tests)
+
+Only the email worker receives the mail transport settings:
+
+- `MAIL_FROM` (default `no-reply@localhost`)
 - `SMTP_HOST` (optional, enables SMTP path)
 - `SMTP_PORT` (optional, default `587`)
 - `SMTP_ENCRYPTION` (optional: `tls`, `ssl`, `none`; default `tls`)

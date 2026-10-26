@@ -77,7 +77,8 @@ Other examples:
 
 ```bash
 bash scripts/qemu.sh apply scripts/setup_postgresql.sh
-bash scripts/qemu.sh apply scripts/setup_api_runtime.sh
+bash scripts/qemu.sh apply scripts/setup_php_fpm.sh
+bash scripts/qemu.sh apply scripts/setup_email_worker.sh
 bash scripts/qemu.sh apply scripts/deploy_api.sh
 bash scripts/qemu.sh apply scripts/provision.sh
 ```
@@ -92,7 +93,8 @@ bash scripts/qemu.sh apply scripts/provision.sh
 Supported components:
 - `all`
 - `postgresql`
-- `api-runtime` (PHP-FPM configuration and the email worker)
+- `php-fpm` (PHP runtime and API request environment)
+- `email-worker` (verification email timer and worker environment)
 - `nginx`
 - `api`
 - `quiz`
