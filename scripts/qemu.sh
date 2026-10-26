@@ -244,7 +244,12 @@ provision_includes_quiz() {
   local component
   for component in ${components}; do
     case "${component}" in
-      all|apps|quiz) return 0 ;;
+      all|quiz) return 0 ;;
+      apps)
+        source "${REPO_ROOT}/scripts/lib/app_selection.sh"
+        select_apps "${APP_LIST:-all}"
+        app_selected quiz && return 0
+        ;;
     esac
   done
   return 1
@@ -313,6 +318,7 @@ run_remote_script() {
   local env_names=(
     SCRIPT_REL
     PROVISION_COMPONENTS
+    APP_LIST
     API_DB_PASSWORD
     API_MAIL_FROM
     API_APP_BASE_URL
@@ -362,8 +368,8 @@ chmod +x "${SCRIPT_REL}"
 
 case "${SCRIPT_REL}" in
   scripts/provision.sh)
-    export PROVISION_COMPONENTS API_DB_PASSWORD API_MAIL_FROM API_APP_BASE_URL API_SMTP_HOST API_SMTP_PORT API_SMTP_ENCRYPTION API_SMTP_USERNAME API_SMTP_PASSWORD
-    sudo --preserve-env=PROVISION_COMPONENTS,API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD \
+    export PROVISION_COMPONENTS APP_LIST API_DB_PASSWORD API_MAIL_FROM API_APP_BASE_URL API_SMTP_HOST API_SMTP_PORT API_SMTP_ENCRYPTION API_SMTP_USERNAME API_SMTP_PASSWORD
+    sudo --preserve-env=PROVISION_COMPONENTS,APP_LIST,API_DB_PASSWORD,API_MAIL_FROM,API_APP_BASE_URL,API_SMTP_HOST,API_SMTP_PORT,API_SMTP_ENCRYPTION,API_SMTP_USERNAME,API_SMTP_PASSWORD \
       bash "${SCRIPT_REL}"
     ;;
   scripts/test_api.sh)

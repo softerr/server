@@ -21,6 +21,8 @@ jobs:
   deploy-apps:
     runs-on: ubuntu-latest
     environment: production
+    env:
+      APP_LIST: ${{ inputs.apps }}
 
     steps:
       - name: Checkout repository
@@ -58,7 +60,6 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          APP_LIST: ${{ inputs.apps }}
         run: |
           bash scripts/ci/upload_artifacts.sh apps
 
@@ -67,22 +68,11 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          APP_LIST: ${{ github.event.inputs.apps }}
           API_APP_BASE_URL: https://${{ secrets.SERVER_HOST }}
         run: |
           set -euo pipefail
-          case "${APP_LIST:-all}" in
-            all)
-              PROVISION_COMPONENTS="apps"
-              ;;
-            quiz|api)
-              PROVISION_COMPONENTS="${APP_LIST}"
-              ;;
-            *)
-              echo "Invalid apps input: ${APP_LIST}"
-              exit 1
-              ;;
-          esac
-          export PROVISION_COMPONENTS
-          REQUIRED_ENV_VARS="PROVISION_COMPONENTS,API_APP_BASE_URL" \
+          APP_LIST="${APP_LIST:-all}"
+          PROVISION_COMPONENTS=apps
+          export APP_LIST PROVISION_COMPONENTS
+          REQUIRED_ENV_VARS="PROVISION_COMPONENTS,APP_LIST,API_APP_BASE_URL" \
             bash scripts/ci/run_remote_setup.sh provision.sh

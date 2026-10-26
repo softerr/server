@@ -94,7 +94,7 @@ Supported components:
 - `nginx`
 - `api`
 - `quiz`
-- `apps` (runs all `deploy_*.sh`)
+- `apps` (deploys `api` then `quiz`; set `APP_LIST=api` or `APP_LIST=quiz` to select one)
 
 ## 5. Run API tests in QEMU (one command)
 

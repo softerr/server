@@ -54,21 +54,14 @@ run_quiz_deploy() {
   run_root_script "${SCRIPT_DIR}/deploy_quiz.sh"
 }
 
-run_all_deploy_scripts() {
-  mapfile -t deploy_scripts < <(find "${SCRIPT_DIR}" -maxdepth 1 -type f -name 'deploy_*.sh' -printf '%f\n' | sort)
-  if [[ "${#deploy_scripts[@]}" -eq 0 ]]; then
-    echo "No deploy scripts found in ${SCRIPT_DIR}."
-    exit 1
-  fi
-  local deploy_file
-  for deploy_file in "${deploy_scripts[@]}"; do
-    case "${deploy_file}" in
-      deploy_quiz.sh)
-        run_quiz_deploy
-        ;;
-      *)
-        run_root_script "${SCRIPT_DIR}/${deploy_file}"
-        ;;
+run_app_deploys() {
+  source "${SCRIPT_DIR}/lib/app_selection.sh"
+  select_apps "${APP_LIST:-all}"
+  local app
+  for app in "${SELECTED_APPS[@]}"; do
+    case "${app}" in
+      api) run_api_deploy ;;
+      quiz) run_quiz_deploy ;;
     esac
   done
 }
@@ -89,7 +82,7 @@ run_component() {
       run_quiz_deploy
       ;;
     apps)
-      run_all_deploy_scripts
+      run_app_deploys
       ;;
     all)
       run_postgresql

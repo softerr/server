@@ -16,6 +16,7 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 : "${SERVER_USER:?SERVER_USER is required}"
 
 source "${SCRIPT_DIR}/load_ssh_env.sh"
+source "${REPO_ROOT}/scripts/lib/app_selection.sh"
 
 case "${MODE}" in
   server)
@@ -30,6 +31,7 @@ case "${MODE}" in
       "${REPO_ROOT}/scripts/setup_nginx.sh" "${REPO_ROOT}/scripts/deploy_api.sh" \
       "${REPO_ROOT}/scripts/deploy_quiz.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
+      "${REPO_ROOT}/scripts/lib/app_selection.sh" \
       "${REPO_ROOT}/scripts/lib/deploy_checks.sh" \
       "${REPO_ROOT}/scripts/lib/tls_certificate.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
@@ -51,17 +53,13 @@ case "${MODE}" in
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
     ;;
   apps)
-    app_list="${APP_LIST:-all}"
-    case "${app_list}" in
-      all|api|quiz) ;;
-      *) echo "Invalid APP_LIST: ${app_list}"; exit 1 ;;
-    esac
+    select_apps "${APP_LIST:-all}"
 
-    if [[ "${app_list}" == "all" || "${app_list}" == "api" ]] && [[ ! -f "${REPO_ROOT}/app/api/index.php" ]]; then
+    if app_selected api && [[ ! -f "${REPO_ROOT}/app/api/index.php" ]]; then
       echo "Missing app/api/index.php in repository."
       exit 1
     fi
-    if [[ "${app_list}" == "all" || "${app_list}" == "quiz" ]] && [[ ! -f "${REPO_ROOT}/app/quiz/dist/index.html" ]]; then
+    if app_selected quiz && [[ ! -f "${REPO_ROOT}/app/quiz/dist/index.html" ]]; then
       echo "Missing built app/quiz/dist/index.html in repository."
       exit 1
     fi
@@ -69,12 +67,13 @@ case "${MODE}" in
     ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/quiz/dist'"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
+      "${REPO_ROOT}/scripts/lib/app_selection.sh" \
       "${REPO_ROOT}/scripts/lib/deploy_checks.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
-    if [[ "${app_list}" == "all" || "${app_list}" == "api" ]]; then
+    if app_selected api; then
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_api.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
       scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/api/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/api/"
     fi
-    if [[ "${app_list}" == "all" || "${app_list}" == "quiz" ]]; then
+    if app_selected quiz; then
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_quiz.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
       scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/quiz/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/quiz/dist/"
     fi
