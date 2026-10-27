@@ -24,6 +24,7 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
       <section id="question-editor-section" class="question-editor-section" aria-label="Questions" hidden></section>
       <div id="quiz-editor-save-all" class="quiz-editor-save-all" hidden>
         <p id="quiz-editor-save-all-status" class="form-status" role="status" aria-live="polite"></p>
+        <button id="export-quiz" class="auth-button auth-button-secondary" type="button" title="Export saved quiz as JSON" disabled>Export JSON</button>
         <button id="save-all" class="auth-button auth-button-primary" type="button" disabled>Saved</button>
       </div>
     </main>
@@ -35,11 +36,13 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
   const nameInput = form.elements.namedItem('name')
   const descriptionInput = form.elements.namedItem('description')
   const saveAll = page.querySelector('#save-all')
+  const exportButton = page.querySelector('#export-quiz')
   const saveAllWrap = page.querySelector('#quiz-editor-save-all')
   const saveAllStatus = page.querySelector('#quiz-editor-save-all-status')
   let savedValues = null
   let saving = false
   let savingAll = false
+  let exporting = false
   let questionEditor = null
 
   function quizIsDirty() {
@@ -49,9 +52,12 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
 
   function updateSaveAllButton() {
     const dirty = quizIsDirty() || Boolean(questionEditor?.hasChanges())
-    saveAll.disabled = savingAll || saving || !questionEditor?.isReady()
-      || questionEditor.isSaving() || !dirty
+    const busy = savingAll || saving || exporting || Boolean(questionEditor?.isSaving())
+    const ready = savedValues !== null && Boolean(questionEditor?.isReady())
+    saveAll.disabled = busy || !ready || !dirty
     saveAll.textContent = savingAll ? 'Saving all…' : dirty ? 'Save all' : 'Saved'
+    exportButton.disabled = busy || !ready
+    exportButton.textContent = exporting ? 'Exporting…' : 'Export JSON'
   }
 
   function updateSaveButton() {
@@ -168,6 +174,59 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
       setStatus(saveAllStatus, 'Could not save all changes. Please try again.', true)
     } finally {
       savingAll = false
+      updateSaveAllButton()
+    }
+  })
+
+  exportButton.addEventListener('click', async () => {
+    if (exportButton.disabled) return
+    if (quizIsDirty() || questionEditor.hasChanges()) {
+      setStatus(saveAllStatus, 'Save all changes before exporting.', true)
+      return
+    }
+    exporting = true
+    updateSaveAllButton()
+    setStatus(saveAllStatus, '')
+    try {
+      const [quizResult, questionsResult] = await Promise.all([
+        requestJson('GET', `/api/quiz/quizzes/${quizId}`),
+        requestJson('GET', `/api/quiz/quizzes/${quizId}/questions`),
+      ])
+      if (!app.contains(form)) return
+      const [quizResponse, quiz] = quizResult
+      const [questionsResponse, questionsPayload] = questionsResult
+      if (!quizResponse.ok || !questionsResponse.ok || !Array.isArray(questionsPayload?.questions)) {
+        setStatus(saveAllStatus, 'Could not export this quiz. Please try again.', true)
+        return
+      }
+      const data = {
+        format: 'softerr-quiz',
+        version: 1,
+        name: quiz.name,
+        description: quiz.description,
+        questions: questionsPayload.questions.map(({ template, prompt, config }) => ({
+          template, prompt, config,
+        })),
+      }
+      const filename = quiz.name.toLowerCase().normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '').slice(0, 64) || 'quiz'
+      const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], { type: 'application/json;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${filename}.json`
+      document.body.append(link)
+      try {
+        link.click()
+      } finally {
+        link.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      }
+    } catch {
+      if (app.contains(form)) setStatus(saveAllStatus, 'Could not export this quiz. Please try again.', true)
+    } finally {
+      exporting = false
       updateSaveAllButton()
     }
   })

@@ -30,6 +30,11 @@ key to its local user. The API creates the local user on the first quiz create.
   the quiz with HTTP `201`. The name is trimmed and must be 1–100 bytes. Optional
   `description` is trimmed and limited to 1000 bytes. The request body must be
   at most 4096 bytes. An account may have 100 quizzes; further creation returns `409`.
+- `POST /api/quiz/quizzes/import` accepts a `softerr-quiz` version 1 export and
+  creates a new quiz with its questions in order. The request is limited to
+  512 KiB and 100 questions. The import is atomic: an invalid question or a
+  database failure leaves no partial quiz. It returns the new quiz with HTTP
+  `201`; a full library returns `409`.
 - `PATCH /api/quiz/quizzes/{quizId}` updates an owned quiz and returns it. `name`
   is required; an omitted `description` retains its value. A
   missing or other account's quiz returns `404`.
@@ -46,6 +51,13 @@ key to its local user. The API creates the local user on the first quiz create.
   question ID exactly once. Unknown, missing, or stale IDs return `409`.
 - `DELETE /api/quiz/quizzes/{quizId}/questions/{questionId}` returns `204` with no body.
   Question endpoints return `404` for quizzes or questions owned by another account.
+
+The quiz editor's **Export JSON** button downloads the saved quiz as a portable
+document with `format: "softerr-quiz"`, `version: 1`, `name`, `description`, and
+an ordered `questions` array. Each question contains `template`, `prompt`, and
+`config`. Account IDs, database IDs, and timestamps are excluded. Save pending
+edits before exporting. The library's **Import JSON** button creates a new quiz
+from this file; it does not replace an existing quiz.
 
 Question create and update bodies require `template`, `prompt`, and `config`.
 The prompt is trimmed and limited to 500 bytes. Text inside `config` is trimmed.
@@ -76,7 +88,7 @@ order in `config`. The answer configs are stored with the question; the current
 editor creates and edits questions, while quiz-taking behavior is not yet available.
 
 Run **Setup PostgreSQL On Server** before deploying this API version so the
-quiz description column, question table, and grants exist. Then run **Deploy Apps On Server**
+quiz schema and grants exist. Then run **Deploy Apps On Server**
 with `all` to publish the API and quiz app.
 
 ## 1. Health check

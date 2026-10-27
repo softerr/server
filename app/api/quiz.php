@@ -22,6 +22,13 @@ if ($path === '/quizzes') {
     respond(405, ['error' => 'Method not allowed']);
 }
 
+if ($path === '/quizzes/import') {
+    if ($method === 'POST') {
+        handleImportQuiz();
+    }
+    respond(405, ['error' => 'Method not allowed']);
+}
+
 if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)$#', $path, $quizMatch)) {
     $quizId = filter_var($quizMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($quizId === false) {

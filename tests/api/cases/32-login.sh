@@ -38,6 +38,8 @@ test_quiz_library_requires_login() {
   assert_status 401 || return 1
   api_request POST /api/quiz/quizzes '{"name":"Geography"}'
   assert_status 401 || return 1
+  api_request POST /api/quiz/quizzes/import '{"format":"softerr-quiz","version":1,"name":"Geography","description":"","questions":[]}'
+  assert_status 401 || return 1
   api_request PATCH /api/quiz/quizzes/1 '{"name":"Updated"}'
   assert_status 401 || return 1
   api_request DELETE /api/quiz/quizzes/1
@@ -486,6 +488,84 @@ test_auth_login_session_lifecycle() {
       return 1
     fi
   done
+
+  local import_path import_id import_body
+  import_path="${API_TEST_BASE_URL%/}/api/quiz/quizzes/import"
+  import_body='{"format":"softerr-quiz","version":1,"name":"Imported quiz","description":"From JSON","questions":[{"template":"no_answer","prompt":"First","config":{}},{"template":"ordering","prompt":"Second","config":{"items":["A","B"]}}]}'
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+    --data "${import_body}" -w $'\n%{http_code}' "${import_path}")"
+  import_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  if [[ "${response##*$'\n'}" != 201 || -z "${import_id}" ]] || ! jq -e \
+    '.name == "Imported quiz" and .description == "From JSON"' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "quiz import failed: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${import_id}/questions")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
+    '.questions | length == 2 and .[0].prompt == "First" and .[1].config.items == ["A", "B"]' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "imported questions were not saved in order: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+    --data '{"format":"softerr-quiz","version":1,"name":"Invalid import","description":"","questions":[{"template":"no_answer","prompt":"First","config":{}},{"template":"ordering","prompt":"Bad","config":{"items":["Same","Same"]}}]}' \
+    -w $'\n%{http_code}' "${import_path}")"
+  if [[ "${response##*$'\n'}" != 400 ]]; then
+    rm -f "${cookie_file}"
+    fail_test "invalid quiz import was accepted: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
+    '.quizzes | all(.name != "Invalid import")' <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "invalid import left a partial quiz: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${import_id}")"
+  if [[ "${response##*$'\n'}" != 204 ]]; then
+    rm -f "${cookie_file}"
+    fail_test "imported quiz deletion failed: ${response}"
+    return 1
+  fi
+
+  import_body="$(jq -nc '{format:"softerr-quiz",version:1,name:"Large import",description:"",questions:[range(0;30) as $i | {template:"open",prompt:("Question \($i)"),config:{sample_answer:("x"*180)}}]}')"
+  if (( ${#import_body} <= 4096 )); then
+    rm -f "${cookie_file}"
+    fail_test 'large import test body did not exceed the regular 4096-byte limit'
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+    --data "${import_body}" -w $'\n%{http_code}' "${import_path}")"
+  import_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  if [[ "${response##*$'\n'}" != 201 || -z "${import_id}" ]]; then
+    rm -f "${cookie_file}"
+    fail_test "large quiz import failed: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${import_id}/questions")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
+    '.questions | length == 30 and .[0].prompt == "Question 0" and .[29].prompt == "Question 29"' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "large quiz import lost questions: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${import_id}")"
+  if [[ "${response##*$'\n'}" != 204 ]]; then
+    rm -f "${cookie_file}"
+    fail_test "large imported quiz deletion failed: ${response}"
+    return 1
+  fi
+
   response="$(curl -sS -b "${cookie_file}" -X DELETE -w $'\n%{http_code}' \
     "${question_path}/${question_id}")"
   if [[ "${response##*$'\n'}" != 204 ]]; then

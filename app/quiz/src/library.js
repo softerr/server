@@ -40,8 +40,13 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
     <main class="library-page">
       <div class="library-heading">
         <h1 class="section-title">Library</h1>
-        <button id="create-quiz-button" class="auth-button auth-button-primary" type="button">Create quiz</button>
+        <div class="library-heading-actions">
+          <button id="import-quiz-button" class="auth-button auth-button-secondary" type="button">Import JSON</button>
+          <button id="create-quiz-button" class="auth-button auth-button-primary" type="button">Create quiz</button>
+        </div>
       </div>
+      <input id="import-quiz-file" type="file" accept=".json,application/json" hidden />
+      <p id="import-quiz-status" class="form-status" role="status" aria-live="polite"></p>
       <p id="library-status" class="form-status" role="status" aria-live="polite">Loading quizzes…</p>
       <ul id="quiz-list" class="quiz-list" hidden></ul>
       <dialog id="quiz-name-dialog" class="quiz-dialog" aria-labelledby="quiz-name-title">
@@ -77,6 +82,9 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
   const deleteDialog = page.querySelector('#delete-quiz-dialog')
   const deleteStatus = page.querySelector('#delete-quiz-status')
   const deleteButton = page.querySelector('#confirm-delete-quiz')
+  const importButton = page.querySelector('#import-quiz-button')
+  const importFile = page.querySelector('#import-quiz-file')
+  const importStatus = page.querySelector('#import-quiz-status')
   const deletedQuizIds = new Set()
   let deletingQuizId = null
 
@@ -101,6 +109,52 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
     setStatus(nameStatus, '')
     dialog.showModal()
     nameInput.focus()
+  })
+  importButton.addEventListener('click', () => importFile.click())
+  importFile.addEventListener('change', async () => {
+    const file = importFile.files?.[0]
+    importFile.value = ''
+    if (!file || importButton.disabled) return
+    if (file.size > 1048576) {
+      setStatus(importStatus, 'The JSON file is too large (maximum 1 MB).', true)
+      return
+    }
+    importButton.disabled = true
+    setStatus(importStatus, 'Reading quiz…')
+    try {
+      let document
+      try {
+        document = JSON.parse(await file.text())
+      } catch {
+        setStatus(importStatus, 'This file does not contain valid JSON.', true)
+        return
+      }
+      if (!document || typeof document !== 'object' || Array.isArray(document)
+          || document.format !== 'softerr-quiz' || document.version !== 1
+          || !Array.isArray(document.questions)) {
+        setStatus(importStatus, 'Choose a quiz JSON file exported from this app.', true)
+        return
+      }
+      if (new TextEncoder().encode(JSON.stringify(document)).length > 524288) {
+        setStatus(importStatus, 'This quiz is too large to import (maximum 512 KB).', true)
+        return
+      }
+      setStatus(importStatus, 'Importing quiz…')
+      const [response, quiz] = await requestJson('POST', '/api/quiz/quizzes/import', document)
+      if (!app.contains(list)) return
+      if (!response.ok) {
+        setStatus(importStatus, responseError(response, quiz), true)
+        return
+      }
+      addQuizToLibrary(list, quiz)
+      list.hidden = false
+      setStatus(libraryStatus, '')
+      setStatus(importStatus, `Imported “${quiz.name}”.`)
+    } catch {
+      if (app.contains(list)) setStatus(importStatus, 'Could not import this quiz. Please try again.', true)
+    } finally {
+      importButton.disabled = false
+    }
   })
   dialog.addEventListener('cancel', (event) => {
     if (saveButton.disabled) event.preventDefault()

@@ -653,6 +653,52 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /quiz/quizzes/import:
+    post:
+      tags: [Quizzes]
+      operationId: importQuiz
+      summary: Import a portable quiz JSON document into the current account
+      description: |
+        Creates a new quiz and all of its questions atomically. The body is
+        limited to 512 KiB and 100 questions. Existing quizzes are unchanged.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuizExport'
+      responses:
+        '201':
+          description: Imported quiz created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quiz'
+        '400':
+          description: Invalid export format, quiz fields, or question.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The account already has 100 quizzes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request body is too large; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /quiz/quizzes/{quizId}:
     parameters:
       - name: quizId
@@ -1077,6 +1123,28 @@ components:
         created:
           type: string
           description: PostgreSQL timestamp without timezone, formatted as YYYY-MM-DD HH:MM:SS.
+    QuizExport:
+      type: object
+      required: [format, version, name, description, questions]
+      properties:
+        format:
+          type: string
+          const: softerr-quiz
+        version:
+          type: integer
+          const: 1
+        name:
+          type: string
+          minLength: 1
+          description: Trimmed before validation; at most 100 bytes.
+        description:
+          type: string
+          description: Trimmed before validation; at most 1000 bytes.
+        questions:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/QuestionInput'
     QuestionInput:
       type: object
       required: [template, prompt, config]

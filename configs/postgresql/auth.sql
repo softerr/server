@@ -11,13 +11,6 @@ CREATE TABLE IF NOT EXISTS public."user" (
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-ALTER TABLE public."user"
-    ADD COLUMN IF NOT EXISTS role VARCHAR(16) NOT NULL DEFAULT 'user'
-    CHECK (role IN ('admin', 'mod', 'user'));
-
-ALTER TABLE public."user"
-    ADD COLUMN IF NOT EXISTS deleting BOOLEAN NOT NULL DEFAULT FALSE;
-
 CREATE TABLE IF NOT EXISTS public.user_token (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES public."user"(id) ON DELETE CASCADE,

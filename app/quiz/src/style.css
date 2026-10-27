@@ -16,6 +16,12 @@
   gap: 20px;
 }
 
+.library-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .quiz-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));

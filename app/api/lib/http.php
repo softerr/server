@@ -10,10 +10,10 @@ function respond(int $statusCode, array $payload): never
     exit;
 }
 
-function readJsonBody(): ?array
+function readJsonBody(int $maxBytes = 4096): ?array
 {
-    $rawBody = file_get_contents('php://input', false, null, 0, 4097);
-    if ($rawBody === false || strlen($rawBody) > 4096) {
+    $rawBody = file_get_contents('php://input', false, null, 0, $maxBytes + 1);
+    if ($rawBody === false || strlen($rawBody) > $maxBytes) {
         respond(413, ['error' => 'Request body is too large']);
     }
 
