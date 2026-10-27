@@ -30,6 +30,7 @@ for ($processed = 0; $processed < 20; $processed++) {
             JOIN public.user_token t ON t.id = o.token_id
             JOIN public."user" u ON u.id = t.user_id
             WHERE o.available_at <= CURRENT_TIMESTAMP
+              AND u.deleting = FALSE
               AND (o.claimed_until IS NULL OR o.claimed_until <= CURRENT_TIMESTAMP)
               AND t.expires > CURRENT_TIMESTAMP
               AND ((t.type = \'verify\' AND u.verified = FALSE)

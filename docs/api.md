@@ -99,12 +99,15 @@ Example response:
   "id": 1,
   "username": "john",
   "email": "john@example.com",
+  "role": "user",
   "verified": false,
   "created": "2026-05-17 14:30:00",
   "verification_email_queued": true
 }
 ```
 
+`role` is assigned by the server. Signup always creates a `user`; the other
+available roles are `mod` and `admin`. Clients cannot choose a role at signup.
 `created` is a database timestamp without timezone information; clients should not treat it as UTC without an agreed timezone.
 
 Side effects:
@@ -168,6 +171,7 @@ Example response:
   "id": 1,
   "username": "john",
   "email": "john@example.com",
+  "role": "user",
   "verified": true,
   "created": "2026-05-17 14:30:00"
 }
@@ -201,10 +205,35 @@ minute plus a burst of 10 is exceeded.
 The session cookie is `HttpOnly`, `SameSite=Strict`, scoped to `/api/`, and
 `Secure` on HTTPS. It is a browser-session cookie; the server expires the
 session after two hours of inactivity. Web clients on the same origin send
-it automatically. `GET /api/auth/me` returns the verified account for the
+it automatically. `GET /api/auth/me` returns the verified account and its current role for the
 current session or `401` if unauthenticated. `POST /api/auth/logout` ends the
 session and returns `200` even when no session exists. Native clients must
-store and resend the cookie. No other API route currently requires login.
+store and resend the cookie. Quiz endpoints require the same session cookie.
+
+### List users (admin)
+
+`GET /api/auth/users` requires a verified session with the current `admin`
+role. It returns `{ "users": [...] }`, ordered by ID. Each entry has the same
+public fields as `/api/auth/me`: `id`, `username`, `email`, `role`, `verified`,
+and `created`, plus `deleting` to identify a blocked account awaiting cleanup.
+Unverified accounts are included; passwords and tokens are not.
+The response uses `Cache-Control: no-store`. A missing session returns `401`,
+and a `user` or `mod` session returns `403`. Other methods return `405`.
+
+`PATCH /api/auth/users/{userId}/role` accepts `{ "role": "mod" }` and returns
+the updated user. The role must be `admin`, `mod`, or `user`. It requires an
+admin session, and admins cannot change their own role (`409`). Invalid input
+returns `400`, a missing target returns `404`, and a missing or non-admin
+session returns `401` or `403`. Role changes take effect on the target user's
+next authenticated request. The home Users table provides this control.
+
+`DELETE /api/auth/users/{userId}` permanently removes another account, its
+verification and reset tokens, and its quiz library. It requires an admin
+session; admins cannot delete themselves (`409`). A missing target returns
+`404`, and a missing or non-admin session returns `401` or `403`. Success
+returns `204` with no body. The Users table asks for confirmation before
+deleting. If quiz cleanup fails, the account remains blocked and visible to
+admins; retry the same deletion to finish cleanup.
 
 ## 6. Password reset
 
@@ -302,6 +331,8 @@ Optional test env vars:
 - `API_TEST_REQUIRE_DB` (`1` or `0`, default `1`)
 - `API_TEST_REQUIRE_EMAIL` (`1` or `0`, default `1` in both `qemu.sh test-api` and `scripts/test_api.sh`)
 - `API_TEST_MAILPIT_URL` (Mailpit origin; required for the full password reset email and session test)
+
+The test runner needs database access to both `auth` and `quiz`. It removes the accounts and quiz data created by each run when the tests finish, including after a test failure.
 
 GitHub workflow:
 - `.github/workflows/test-api-runner.yml` (`Test API On Runner`) runs the OpenAPI contract check and endpoint tests for API, spec, and test-script changes.

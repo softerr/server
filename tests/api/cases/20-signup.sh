@@ -4,13 +4,14 @@ test_auth_signup_success() {
   create_test_identity
 
   local request_body
-  request_body="$(jq -nc --arg username "${TEST_USERNAME}" --arg password "test_password_123" --arg email "${TEST_EMAIL}" '{username:$username,password:$password,email:$email}')"
+  request_body="$(jq -nc --arg username "${TEST_USERNAME}" --arg password "test_password_123" --arg email "${TEST_EMAIL}" '{username:$username,password:$password,email:$email,role:"admin"}')"
 
   api_request "POST" "/api/auth/signup" "${request_body}"
 
   assert_status "201" || return 1
   assert_json_value '.username' "${TEST_USERNAME}" || return 1
   assert_json_value '.email' "${TEST_EMAIL}" || return 1
+  assert_json_value '.role' 'user' || return 1
   assert_json_value '.verified' "false" || return 1
   assert_json_expression '.id | type == "number"' || return 1
   assert_json_expression '.created != null and .created != ""' || return 1

@@ -3,7 +3,7 @@ info:
   title: Softerr API
   version: 1.0.0
   description: |
-    Account signup, email verification, login, password reset, and quiz library API. PHP responses are JSON. Nginx may return
+    Account signup, email verification, login, admin user listing, password reset, and quiz library API. PHP responses are JSON. Nginx may return
     redirects or HTML error pages before a request reaches PHP, notably for
     oversized or rate-limited requests. Clients should use HTTP status codes
     and should not assume every error response has a JSON body.
@@ -14,6 +14,7 @@ tags:
   - name: Health
   - name: Verification
   - name: Authentication
+  - name: Administration
   - name: Quizzes
 paths:
   /:
@@ -84,6 +85,7 @@ paths:
                 id: 1
                 username: john
                 email: john@example.com
+                role: user
                 verified: false
                 created: '2026-10-26 14:30:00'
                 verification_email_queued: true
@@ -185,6 +187,163 @@ paths:
                 $ref: '#/components/schemas/User'
         '401':
           description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/users:
+    get:
+      tags: [Administration]
+      operationId: listUsers
+      summary: List all auth users
+      description: Requires a verified session whose current account role is admin. Results are ordered by ID and include unverified accounts. Password hashes and tokens are never returned. The response is not cached.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: All auth users.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsersResponse'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Current account is not an admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '405':
+          description: Method not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/users/{userId}/role:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    patch:
+      tags: [Administration]
+      operationId: updateUserRole
+      summary: Change an auth user's role
+      description: Requires a verified admin session. Admins cannot change their own role. A role change takes effect on the target user's next authenticated request.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRoleRequest'
+      responses:
+        '200':
+          description: Updated user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Missing or invalid role.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Current account is not an admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Target user does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Admin tried to change their own role.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request body is too large; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    delete:
+      tags: [Administration]
+      operationId: deleteUser
+      summary: Delete an auth user and their quiz data
+      description: |
+        Requires a verified admin session. Admins cannot delete themselves.
+        Deletion blocks the target account, removes its quiz database user and
+        quizzes, then removes the auth database user and its tokens. If cleanup
+        fails, the blocked account remains in the admin list so DELETE can be
+        retried. Successful deletion cannot be undone.
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: User and app data deleted.
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Current account is not an admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Target user does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '405':
+          description: Method not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Admin tried to delete their own account.
           content:
             application/json:
               schema:
@@ -376,6 +535,7 @@ paths:
                 id: 1
                 username: john
                 email: john@example.com
+                role: user
                 verified: true
                 created: '2026-10-26 14:30:00'
             text/html:
@@ -750,7 +910,7 @@ components:
           description: Fallback IANA timezone if no valid header or cookie is supplied.
     User:
       type: object
-      required: [id, username, email, verified, created]
+      required: [id, username, email, role, verified, created]
       properties:
         id:
           type: integer
@@ -760,6 +920,10 @@ components:
         email:
           type: string
           format: email
+        role:
+          type: string
+          enum: [admin, mod, user]
+          description: Server-assigned account role. Signup always assigns user.
         verified:
           type: boolean
         created:
@@ -769,6 +933,30 @@ components:
             `YYYY-MM-DD HH:MM:SS`. No timezone or UTC guarantee is encoded;
             clients should not parse it as an instant without an agreed timezone.
           example: '2026-10-26 14:30:00'
+    UsersResponse:
+      type: object
+      required: [users]
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUser'
+    AdminUser:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [deleting]
+          properties:
+            deleting:
+              type: boolean
+              description: Account is blocked while quiz data cleanup is pending; retry DELETE to finish.
+    UpdateUserRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [admin, mod, user]
     SignupResponse:
       allOf:
         - $ref: '#/components/schemas/User'

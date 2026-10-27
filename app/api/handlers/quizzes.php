@@ -49,7 +49,27 @@ function handleCreateQuiz(): never
         respond(500, ['error' => 'Failed to create quiz']);
     }
     $lock = @pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]);
-    $owner = $lock === false ? false : @pg_query_params(
+    if ($lock === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(500, ['error' => 'Failed to create quiz']);
+    }
+    // Deletion may start after the first session check but before this lock.
+    // The deletion handler takes the same quiz lock before removing local data.
+    $authDb = connectDb();
+    $active = @pg_query_params(
+        $authDb,
+        'SELECT 1 FROM public."user" WHERE id = $1 AND verified = TRUE AND deleting = FALSE',
+        [$user['id']]
+    );
+    if ($active === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(500, ['error' => 'Failed to create quiz']);
+    }
+    if (pg_num_rows($active) === 0) {
+        @pg_query($db, 'ROLLBACK');
+        respond(401, ['error' => 'Not authenticated']);
+    }
+    $owner = @pg_query_params(
         $db,
         'INSERT INTO public."user" (auth_user_id) VALUES ($1)
          ON CONFLICT (auth_user_id) DO NOTHING',

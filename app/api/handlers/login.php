@@ -7,6 +7,7 @@ function publicUser(array $user): array
         'id' => (int) $user['id'],
         'username' => $user['username'],
         'email' => $user['email'],
+        'role' => $user['role'],
         'verified' => $user['verified'] === 't',
         'created' => $user['created'],
     ];
@@ -30,7 +31,7 @@ function handleLogin(): never
     $db = connectDb();
     $result = @pg_query_params(
         $db,
-        'SELECT id, username, email, password, verified, created
+        'SELECT id, username, email, role, password, verified, deleting, created
          FROM public."user" WHERE email = $1 LIMIT 1',
         [$email]
     );
@@ -44,6 +45,9 @@ function handleLogin(): never
         ? '$2y$10$uAGgdiL4W0DQXR9FcetBoeBgsivB9wz7PKyZGg0bS54SNG7ft9LFy'
         : $user['password'];
     if (!password_verify($password, $hash) || $user === false) {
+        respond(401, ['error' => 'Invalid email or password']);
+    }
+    if ($user['deleting'] === 't') {
         respond(401, ['error' => 'Invalid email or password']);
     }
     if ($user['verified'] !== 't') {

@@ -28,7 +28,7 @@ function handleResendVerification(): never
 
     $userResult = @pg_query_params(
         $db,
-        'SELECT id, username, email, verified FROM public."user" WHERE email = $1 FOR UPDATE',
+        'SELECT id, username, email, verified FROM public."user" WHERE email = $1 AND deleting = FALSE FOR UPDATE',
         [$email]
     );
     if ($userResult === false) {

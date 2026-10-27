@@ -79,6 +79,27 @@ sudo -u postgres psql -d auth -c "SELECT COUNT(*) FROM public.\"user\";"
 sudo -u postgres psql -d auth -c "UPDATE public.\"user\" SET verified = TRUE WHERE id = 1;"
 ```
 
+Accounts start with the `user` role. To grant an existing account the `admin`
+or `mod` role, connect as the PostgreSQL administrator and update that account:
+
+```bash
+sudo -u postgres psql -d auth
+```
+
+```sql
+UPDATE public."user" SET role = 'admin' WHERE email = 'admin@example.com'
+RETURNING id, email, role;
+```
+
+The available roles are `admin`, `mod`, and `user`. Refresh the home app after
+changing a role; it reads the current role from `/api/auth/me` on page load.
+The Users navbar item is visible to admins. Once the first admin is assigned
+through PostgreSQL, that admin can change other accounts' roles in the Users
+table. An admin cannot change their own role there.
+Admins can also delete other accounts from that table. Deletion removes the
+auth account and its quiz data. If cleanup fails, the account remains blocked
+and visible in the Users table so deletion can be retried.
+
 ## 4. Dump one table
 
 Dump `public."user"` table (SQL format):

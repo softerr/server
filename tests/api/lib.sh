@@ -91,8 +91,8 @@ json_field_or_empty() {
 create_test_identity() {
   local suffix
   suffix="$(date +%s)-${RANDOM}"
-  TEST_USERNAME="api_test_${suffix}"
-  TEST_EMAIL="api_test_${suffix}@example.test"
+  TEST_USERNAME="api_test_${API_TEST_RUN_ID}_${suffix}"
+  TEST_EMAIL="${TEST_USERNAME}@example.test"
 }
 
 sql_escape_literal() {

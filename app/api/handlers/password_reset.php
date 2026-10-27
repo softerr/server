@@ -22,7 +22,7 @@ function handlePasswordResetRequest(): never
     }
     $result = @pg_query_params(
         $db,
-        'SELECT id, verified FROM public."user" WHERE email = $1 FOR UPDATE',
+        'SELECT id, verified FROM public."user" WHERE email = $1 AND deleting = FALSE FOR UPDATE',
         [$email]
     );
     if ($result === false) {
@@ -123,7 +123,7 @@ function handlePasswordResetConfirm(): never
     }
     $account = @pg_query_params(
         $db,
-        'SELECT id FROM public."user" WHERE id = $1 FOR UPDATE',
+        'SELECT id FROM public."user" WHERE id = $1 AND deleting = FALSE FOR UPDATE',
         [$candidate['user_id']]
     );
     if ($account === false) {

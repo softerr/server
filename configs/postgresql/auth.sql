@@ -5,9 +5,18 @@ CREATE TABLE IF NOT EXISTS public."user" (
     username VARCHAR(100) NOT NULL UNIQUE,
     password TEXT NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
+    role VARCHAR(16) NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'mod', 'user')),
+    deleting BOOLEAN NOT NULL DEFAULT FALSE,
     verified BOOLEAN NOT NULL DEFAULT FALSE,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE public."user"
+    ADD COLUMN IF NOT EXISTS role VARCHAR(16) NOT NULL DEFAULT 'user'
+    CHECK (role IN ('admin', 'mod', 'user'));
+
+ALTER TABLE public."user"
+    ADD COLUMN IF NOT EXISTS deleting BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS public.user_token (
     id BIGSERIAL PRIMARY KEY,
@@ -41,7 +50,11 @@ CREATE INDEX IF NOT EXISTS user_token_verify_expiry_idx
 
 GRANT CONNECT ON DATABASE auth TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
-GRANT SELECT, INSERT, UPDATE ON TABLE public."user" TO auth_api;
+REVOKE INSERT, UPDATE ON TABLE public."user" FROM auth_api;
+GRANT SELECT ON TABLE public."user" TO auth_api;
+GRANT INSERT (username, password, email) ON TABLE public."user" TO auth_api;
+GRANT UPDATE (password, verified, role, deleting) ON TABLE public."user" TO auth_api;
+GRANT DELETE ON TABLE public."user" TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_token TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.verification_email_outbox TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.user_id_seq TO auth_api;

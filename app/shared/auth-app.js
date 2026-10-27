@@ -4,11 +4,17 @@ export function startAuthApp(config) {
   let currentUser = null
   let authReady = false
 
+  function canOpenPrivateView(view) {
+    if (!currentUser || !config.views.includes(view)) return false
+    const link = config.links.find((item) => item.view === view)
+    return !link?.roles || link.roles.includes(currentUser.role)
+  }
+
   function currentView() {
     const view = window.location.hash.slice(1).split('?')[0]
     if (['signup', 'login', 'forgot-password', 'reset'].includes(view)) return view
     if (config.publicViews?.includes(view)) return view
-    if (currentUser && config.views.includes(view)) return view
+    if (canOpenPrivateView(view)) return view
     return config.defaultView ?? (currentUser ? 'home' : 'login')
   }
 
@@ -95,7 +101,7 @@ export function startAuthApp(config) {
         }
         currentUser = payload
         const destination = window.location.hash.slice(1).split('?')[0]
-        navigate([...config.views, ...(config.publicViews ?? [])].includes(destination) ? destination : 'home')
+        navigate(canOpenPrivateView(destination) || config.publicViews?.includes(destination) ? destination : 'home')
       } catch {
         if (app.contains(form)) setStatus(status, 'Could not connect to the service. Please try again.', true)
       } finally {
@@ -286,8 +292,9 @@ export function startAuthApp(config) {
 
   function render() {
     const view = currentView()
-    const links = (currentUser || config.showLinksWhenLoggedOut) && config.links.length
-      ? `<div class="site-links">${config.links.map(({ view: linkView, label }) =>
+    const visibleLinks = config.links.filter(({ roles }) => !roles || roles.includes(currentUser?.role))
+    const links = (currentUser || config.showLinksWhenLoggedOut) && visibleLinks.length
+      ? `<div class="site-links">${visibleLinks.map(({ view: linkView, label }) =>
           `<a class="site-link${view === linkView ? ' is-active' : ''}" href="#${linkView}"${view === linkView ? ' aria-current="page"' : ''}>${label}</a>`
         ).join('')}</div>`
       : ''
@@ -311,7 +318,7 @@ export function startAuthApp(config) {
     else if (view === 'login') renderLogin()
     else if (view === 'forgot-password') renderForgotPassword()
     else if (view === 'reset') renderResetPassword()
-    else if (!config.renderView?.(view, app, { renderSection, requestJson, postJson, responseError, setStatus })) renderHome()
+    else if (!config.renderView?.(view, app, { currentUser, renderSection, requestJson, postJson, responseError, setStatus })) renderHome()
   }
 
   app.addEventListener('click', (event) => {

@@ -90,7 +90,7 @@ function handleVerify(): never
 
     $accountLock = @pg_query_params(
         $db,
-        'SELECT id FROM public."user" WHERE id = $1 FOR UPDATE',
+        'SELECT id FROM public."user" WHERE id = $1 AND deleting = FALSE FOR UPDATE',
         [$candidate['user_id']]
     );
     if ($accountLock === false) {
@@ -126,7 +126,7 @@ function handleVerify(): never
         'UPDATE public."user"
          SET verified = TRUE
          WHERE id = $1
-         RETURNING id, username, email, verified, created',
+         RETURNING id, username, email, role, verified, created',
         [$candidate['user_id']]
     );
     if ($verifyResult === false) {
@@ -159,6 +159,7 @@ function handleVerify(): never
         'id' => (int)$user['id'],
         'username' => $user['username'],
         'email' => $user['email'],
+        'role' => $user['role'],
         'verified' => $user['verified'] === 't',
         'created' => $user['created'],
     ]);

@@ -36,6 +36,73 @@ if ! curl -fsS --connect-timeout 5 --max-time 10 "${API_TEST_BASE_URL%/}/api" >/
   exit 1
 fi
 
+test_psql() {
+  local db_name="$1"
+  local query="$2"
+  if [[ -n "${API_TEST_DB_HOST:-}" ]]; then
+    PGPASSWORD="${API_TEST_DB_PASSWORD:-}" psql -X -v ON_ERROR_STOP=1 -Atq \
+      -h "${API_TEST_DB_HOST}" -p "${API_TEST_DB_PORT:-5432}" \
+      -U "${API_TEST_DB_USER:-${API_TEST_DB_SUPERUSER}}" -d "${db_name}" -c "${query}"
+  else
+    sudo -n -u "${API_TEST_DB_SUPERUSER}" psql -X -v ON_ERROR_STOP=1 -Atq \
+      -d "${db_name}" -c "${query}"
+  fi
+}
+
+# The tests create real accounts. Require cleanup access before creating any.
+require_command psql
+auth_cleanup_access="$(test_psql "${API_TEST_DB_NAME}" \
+  "SELECT has_table_privilege(current_user, 'public.\"user\"', 'SELECT')
+    AND has_table_privilege(current_user, 'public.\"user\"', 'DELETE');")" || auth_cleanup_access=''
+quiz_cleanup_access="$(test_psql quiz \
+  "SELECT has_table_privilege(current_user, 'public.\"user\"', 'DELETE');")" || quiz_cleanup_access=''
+if [[ "${auth_cleanup_access}" != t || "${quiz_cleanup_access}" != t ]]; then
+  echo 'API tests need read/delete access to auth users and delete access to quiz users for cleanup.' >&2
+  exit 1
+fi
+
+API_TEST_RUN_ID="$(date +%s%N)_${RANDOM}_$$"
+
+cleanup_test_users() {
+  local auth_prefix="api_test_${API_TEST_RUN_ID}_"
+  local role_prefix="api_role_target_${API_TEST_RUN_ID}_"
+  local ids
+  ids="$(test_psql "${API_TEST_DB_NAME}" "SELECT COALESCE(string_agg(id::text, ','), '')
+    FROM public.\"user\"
+    WHERE (left(username, length('${auth_prefix}')) = '${auth_prefix}'
+      OR left(username, length('${role_prefix}')) = '${role_prefix}')
+      AND email = username || '@example.test';")" || return 1
+  if [[ -z "${ids}" ]]; then
+    echo 'Cleaned up 0 API test users.'
+    return 0
+  fi
+  if [[ ! "${ids}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
+    echo 'Unexpected API test user IDs; cleanup stopped.' >&2
+    return 1
+  fi
+  test_psql quiz "DELETE FROM public.\"user\" WHERE auth_user_id IN (${ids});" >/dev/null || return 1
+  test_psql "${API_TEST_DB_NAME}" "DELETE FROM public.\"user\"
+    WHERE id IN (${ids})
+      AND (left(username, length('${auth_prefix}')) = '${auth_prefix}'
+        OR left(username, length('${role_prefix}')) = '${role_prefix}')
+      AND email = username || '@example.test';" >/dev/null || return 1
+  echo "Cleaned up API test users from run ${API_TEST_RUN_ID}."
+}
+
+finish_test_run() {
+  local result=$?
+  trap - EXIT
+  if ! cleanup_test_users; then
+    echo "Failed to clean up API test users from run ${API_TEST_RUN_ID}." >&2
+    result=1
+  fi
+  exit "${result}"
+}
+
+trap finish_test_run EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 mapfile -t case_files < <(find "${CASES_DIR}" -maxdepth 1 -type f -name '*.sh' -printf '%f\n' | sort)
 if [[ "${#case_files[@]}" -eq 0 ]]; then
   echo "No API test case files found in ${CASES_DIR}"

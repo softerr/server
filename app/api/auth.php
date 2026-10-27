@@ -11,6 +11,7 @@ require_once __DIR__ . '/handlers/signup.php';
 require_once __DIR__ . '/handlers/resend.php';
 require_once __DIR__ . '/handlers/verify.php';
 require_once __DIR__ . '/handlers/login.php';
+require_once __DIR__ . '/handlers/users.php';
 require_once __DIR__ . '/handlers/password_reset.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -49,6 +50,35 @@ if ($path === '/me') {
         respond(405, ['error' => 'Method not allowed']);
     }
     handleCurrentUser();
+}
+
+if ($path === '/users') {
+    if ($method !== 'GET') {
+        respond(405, ['error' => 'Method not allowed']);
+    }
+    handleListUsers();
+}
+
+if (is_string($path) && preg_match('#^/users/([1-9][0-9]*)/role$#', $path, $userMatch)) {
+    $userId = filter_var($userMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($userId === false) {
+        respond(404, ['error' => 'Not found']);
+    }
+    if ($method !== 'PATCH') {
+        respond(405, ['error' => 'Method not allowed']);
+    }
+    handleUpdateUserRole($userId);
+}
+
+if (is_string($path) && preg_match('#^/users/([1-9][0-9]*)$#', $path, $userMatch)) {
+    $userId = filter_var($userMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($userId === false) {
+        respond(404, ['error' => 'Not found']);
+    }
+    if ($method !== 'DELETE') {
+        respond(405, ['error' => 'Method not allowed']);
+    }
+    handleDeleteUser($userId);
 }
 
 if ($path === '/logout') {

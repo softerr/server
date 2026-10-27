@@ -60,7 +60,7 @@ test_auth_verify_token_removed_while_waiting_impl() (
   for attempt in {1..100}; do
     waiting="$(verify_race_psql -c "SELECT count(*) FROM pg_stat_activity
       WHERE pid <> pg_backend_pid() AND wait_event_type = 'Lock'
-        AND query LIKE '%SELECT id FROM public.\"user\" WHERE id = \$1 FOR UPDATE%';")"
+        AND query LIKE '%SELECT id FROM public.\"user\" WHERE id = \$1%FOR UPDATE%';")"
     if [[ "${waiting}" -gt 0 ]]; then break; fi
     if ! kill -0 "${request_pid}" 2>/dev/null; then
       fail_test 'verification finished before waiting for the account lock'

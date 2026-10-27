@@ -68,7 +68,7 @@ function handleSignup(): never
         $db,
         'INSERT INTO public."user" (username, password, email)
          VALUES ($1, $2, $3)
-         RETURNING id, username, email, verified, created',
+         RETURNING id, username, email, role, verified, created',
         [$username, $passwordHash, $email]
     );
 
@@ -129,6 +129,7 @@ function handleSignup(): never
         'id' => (int)$user['id'],
         'username' => $user['username'],
         'email' => $user['email'],
+        'role' => $user['role'],
         'verified' => $user['verified'] === 't',
         'created' => $user['created'],
         'verification_email_queued' => true,
