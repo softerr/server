@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 
-const QUESTION_ITEM_MAX = 32;
 const QUESTION_BODY_MAX_BYTES = 32768;
 
 function publicQuestion(array $row): array
@@ -28,10 +27,9 @@ function questionText(mixed $value, int $maxBytes, string $field, bool $required
     return $text;
 }
 
-function questionTextList(mixed $value, int $min, int $max, int $maxBytes, string $field): array
+function questionTextList(mixed $value, int $min, int $maxBytes, string $field): array
 {
-    if (!is_array($value) || !array_is_list($value)
-        || count($value) < $min || count($value) > $max) {
+    if (!is_array($value) || !array_is_list($value) || count($value) < $min) {
         respond(400, ['error' => "Invalid {$field} list"]);
     }
     return array_map(
@@ -84,9 +82,8 @@ function readQuestionFields(?array $payload): array
     $normalized = [];
     if ($template === 'multiple_choice' || $template === 'one_choice') {
         $options = $config['options'] ?? null;
-        if (!is_array($options) || !array_is_list($options)
-            || count($options) < 2 || count($options) > QUESTION_ITEM_MAX) {
-            respond(400, ['error' => 'A choice question needs 2 to 32 options']);
+        if (!is_array($options) || !array_is_list($options) || count($options) < 2) {
+            respond(400, ['error' => 'A choice question needs at least 2 options']);
         }
         $correctCount = 0;
         $normalized['options'] = [];
@@ -132,9 +129,8 @@ function readQuestionFields(?array $payload): array
         $normalized['answer'] = questionText($config['answer'] ?? null, 1000, 'revealed answer');
     } elseif ($template === 'match') {
         $pairs = $config['pairs'] ?? null;
-        if (!is_array($pairs) || !array_is_list($pairs)
-            || count($pairs) < 2 || count($pairs) > QUESTION_ITEM_MAX) {
-            respond(400, ['error' => 'A match question needs 2 to 32 pairs']);
+        if (!is_array($pairs) || !array_is_list($pairs) || count($pairs) < 2) {
+            respond(400, ['error' => 'A match question needs at least 2 pairs']);
         }
         $normalized['pairs'] = [];
         foreach ($pairs as $pair) {
@@ -155,14 +151,14 @@ function readQuestionFields(?array $payload): array
             $normalized['pairs'][] = $entry;
         }
     } elseif ($template === 'ordering') {
-        $items = questionTextList($config['items'] ?? null, 2, QUESTION_ITEM_MAX, 150, 'ordering item');
+        $items = questionTextList($config['items'] ?? null, 2, 150, 'ordering item');
         if (!distinctQuestionItems($items)) {
             respond(400, ['error' => 'Ordering items must be distinct']);
         }
         $normalized['items'] = $items;
     } elseif ($template === 'fill_blanks') {
-        $answers = questionTextList($config['answers'] ?? null, 1, QUESTION_ITEM_MAX, 150, 'blank answer');
-        $marker = '/\{\{(?:[1-9]|[12][0-9]|3[0-2])\}\}/';
+        $answers = questionTextList($config['answers'] ?? null, 1, 150, 'blank answer');
+        $marker = '/\{\{[1-9][0-9]*\}\}/';
         $withoutMarkers = preg_replace($marker, '', $prompt);
         if ($withoutMarkers === null || str_contains($withoutMarkers, '{{')
             || str_contains($withoutMarkers, '}}')
@@ -177,9 +173,8 @@ function readQuestionFields(?array $payload): array
         $normalized['answers'] = $answers;
     } elseif ($template === 'categorize') {
         $categories = $config['categories'] ?? null;
-        if (!is_array($categories) || !array_is_list($categories)
-            || count($categories) < 2 || count($categories) > QUESTION_ITEM_MAX) {
-            respond(400, ['error' => 'A categorization needs 2 to 32 categories']);
+        if (!is_array($categories) || !array_is_list($categories) || count($categories) < 2) {
+            respond(400, ['error' => 'A categorization needs at least 2 categories']);
         }
         $normalized['categories'] = [];
         $names = [];
@@ -193,7 +188,7 @@ function readQuestionFields(?array $payload): array
             if ($name === '' && $nameImageId === null) {
                 respond(400, ['error' => 'Each category needs a name or an image']);
             }
-            $items = questionTextList($category['items'] ?? null, 1, QUESTION_ITEM_MAX, 150, 'category item');
+            $items = questionTextList($category['items'] ?? null, 1, 150, 'category item');
             $nameEntry = ['text' => $name];
             if ($nameImageId !== null) $nameEntry['image_id'] = $nameImageId;
             $names[] = $nameEntry;
@@ -202,9 +197,8 @@ function readQuestionFields(?array $payload): array
             if ($nameImageId !== null) $entry['name_image_id'] = $nameImageId;
             $normalized['categories'][] = $entry;
         }
-        if (count($allItems) > QUESTION_ITEM_MAX || !distinctQuestionItems($names)
-            || !distinctQuestionItems($allItems)) {
-            respond(400, ['error' => 'Categories and items must be distinct; use at most 32 items']);
+        if (!distinctQuestionItems($names) || !distinctQuestionItems($allItems)) {
+            respond(400, ['error' => 'Categories and items must be distinct']);
         }
     }
     $imageId = optionalQuestionImageId($config['image_id'] ?? null);

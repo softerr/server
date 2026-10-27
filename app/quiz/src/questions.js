@@ -17,8 +17,6 @@ const questionTypes = {
   categorize: 'Categorize',
 }
 
-const QUESTION_ITEM_MAX = 32
-
 const templateHints = {
   multiple_choice: 'Select several answers',
   one_choice: 'Select one answer',
@@ -186,8 +184,6 @@ function renderConfig(form, template, config = {}, imageLibrary) {
       actions.append(swap)
     }
     function updateButtons() {
-      const count = rows.children.length
-      add.disabled = count >= QUESTION_ITEM_MAX
       updateRowActions(rows, template === 'match' ? 'pair' : 'option', 2)
       ;[...rows.children].forEach((row, index) => {
         const option = row.querySelector('[data-option-text]')
@@ -271,7 +267,6 @@ function renderConfig(form, template, config = {}, imageLibrary) {
     add.className = 'text-button'
     add.textContent = 'Add item'
     function update() {
-      add.disabled = rows.children.length >= QUESTION_ITEM_MAX
       updateRowActions(rows, 'item', 2)
       ;[...rows.children].forEach((row, index) => {
         row.querySelector('[data-order-item]').setAttribute('aria-label', `Item ${index + 1} in correct order`)
@@ -325,7 +320,6 @@ function renderConfig(form, template, config = {}, imageLibrary) {
     actions.append(add, remove)
     function update() {
       const count = rows.children.length
-      add.disabled = count >= QUESTION_ITEM_MAX
       remove.disabled = count <= 1
     }
     function addBlank(value = {}) {
@@ -376,16 +370,11 @@ function renderConfig(form, template, config = {}, imageLibrary) {
     add.className = 'text-button'
     add.textContent = 'Add category'
     function update() {
-      const totalItems = [...categories.children].reduce((total, category) =>
-        total + category.querySelector('[data-category-items]').children.length, 0)
-      add.disabled = categories.children.length >= QUESTION_ITEM_MAX || totalItems >= QUESTION_ITEM_MAX
       updateRowActions(categories, 'category', 2)
       ;[...categories.children].forEach((category, categoryIndex) => {
         const items = category.querySelector('[data-category-items]')
         category.querySelector('[data-category-title]').textContent = `Category ${categoryIndex + 1}`
         category.querySelector('[data-category-name]').setAttribute('aria-label', `Category ${categoryIndex + 1} name`)
-        category.querySelector('[data-add-category-item]').disabled = items.children.length >= QUESTION_ITEM_MAX
-          || totalItems >= QUESTION_ITEM_MAX
         updateRowActions(items, `category ${categoryIndex + 1} item`, 1)
         ;[...items.children].forEach((row, itemIndex) => {
           row.querySelector('[data-category-item]').setAttribute('aria-label',

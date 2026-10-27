@@ -480,42 +480,34 @@ test_auth_login_session_lifecycle() {
     case "${boundary_template}" in
       multiple_choice)
         boundary_key=options
-        boundary_payload="$(jq -nc '{template:"multiple_choice",prompt:"Pick one",config:{options:[range(1;33) as $i | {text:("Option \($i)"),correct:($i==1)}]}}')"
+        boundary_payload="$(jq -nc '{template:"multiple_choice",prompt:"Pick one",config:{options:[range(1;41) as $i | {text:("Option \($i)"),correct:($i==1)}]}}')"
         ;;
       match)
         boundary_key=pairs
-        boundary_payload="$(jq -nc '{template:"match",prompt:"Match all",config:{pairs:[range(1;33) as $i | {keyword:("K"*120+"\($i)"),definition:("D"*120+"\($i)")}]}}')"
+        boundary_payload="$(jq -nc '{template:"match",prompt:"Match all",config:{pairs:[range(1;41) as $i | {keyword:("K"*120+"\($i)"),definition:("D"*120+"\($i)")}]}}')"
         ;;
       ordering)
         boundary_key=items
-        boundary_payload="$(jq -nc '{template:"ordering",prompt:"Order all",config:{items:[range(1;33) | {text:("Item \(.)")}]}}')"
+        boundary_payload="$(jq -nc '{template:"ordering",prompt:"Order all",config:{items:[range(1;41) | {text:("Item \(.)")}]}}')"
         ;;
       fill_blanks)
         boundary_key=answers
-        boundary_payload="$(jq -nc '{template:"fill_blanks",prompt:([range(1;33) | "{{\(.)}}"] | join(" ")),config:{answers:[range(1;33) | {text:("Answer \(.)")}]}}')"
+        boundary_payload="$(jq -nc '{template:"fill_blanks",prompt:([range(1;41) | "{{\(.)}}"] | join(" ")),config:{answers:[range(1;41) | {text:("Answer \(.)")}]}}')"
         ;;
       categorize)
         boundary_key=categories
-        boundary_payload="$(jq -nc '{template:"categorize",prompt:"Sort all",config:{categories:[range(1;33) as $i | {name:("Category \($i)"),items:[{text:("Item \($i)") }]}]}}')"
+        boundary_payload="$(jq -nc '{template:"categorize",prompt:"Sort all",config:{categories:[range(1;41) as $i | {name:("Category \($i)"),items:[{text:("Item \($i)") }]}]}}')"
         ;;
     esac
     response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
       --data "${boundary_payload}" -w $'\n%{http_code}' "${question_path}")"
     if [[ "${response##*$'\n'}" != 201 ]] || ! jq -e --arg key "${boundary_key}" \
-      '.config[$key] | length == 32' <<<"${response%$'\n'*}" >/dev/null; then
+      '.config[$key] | length == 40' <<<"${response%$'\n'*}" >/dev/null; then
       rm -f "${cookie_file}"
-      fail_test "${boundary_template} did not accept 32 entries: ${response}"
+      fail_test "${boundary_template} did not accept 40 entries: ${response}"
       return 1
     fi
   done
-  boundary_payload="$(jq -nc '{template:"multiple_choice",prompt:"Too many",config:{options:[range(1;34) as $i | {text:("Option \($i)"),correct:($i==1)}]}}')"
-  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
-    --data "${boundary_payload}" -w $'\n%{http_code}' "${question_path}")"
-  if [[ "${response##*$'\n'}" != 400 ]]; then
-    rm -f "${cookie_file}"
-    fail_test "choice question accepted 33 options: ${response}"
-    return 1
-  fi
   response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
     --data '{"template":"one_choice","prompt":"Invalid","config":{"options":[{"text":"A","correct":true},{"text":"B","correct":true}]}}' \
     -w $'\n%{http_code}' "${question_path}")"

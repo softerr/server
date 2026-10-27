@@ -1337,8 +1337,9 @@ components:
       description: |
         `prompt` is trimmed and limited to 500 bytes. `config` depends on the
         template; see the question template table in docs/api.md. Choice, match,
-        ordering, fill-in-the-blanks, and categorization templates have the row
-        limits described there. Answers and sample answers have the limits there.
+        ordering, fill-in-the-blanks, and categorization templates have minimum
+        row counts but no fixed maximum. Request size and prompt length still
+        bound them. Answers and sample answers have the limits described there.
         Optional `config.image_id` and `config.answer_image_id` refer to reusable
         images owned by the account. Choice options may also have `image_id`.
         Match pairs may use `keyword_image_id` and `definition_image_id`;

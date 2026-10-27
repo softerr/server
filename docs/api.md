@@ -84,13 +84,15 @@ quiz. Only version 1 exports are accepted.
 
 Question create and update bodies require `template`, `prompt`, and `config`.
 The prompt is trimmed and limited to 500 bytes. Text inside `config` is trimmed.
-Question create and update JSON requests are limited to 32768 bytes. Each returned question has
+Question create and update JSON requests are limited to 32768 bytes. Lists have
+no fixed maximum row count; the request size and the 500-byte prompt bound them.
+Each returned question has
 `id`, `quiz_id`, `template`, `prompt`, `config`, and `created`.
 
 | Template | `config` | Rule |
 | --- | --- | --- |
-| `multiple_choice` | `{"options":[{"text":"A","correct":true},{"text":"B","correct":false}]}` | 2–32 options; at least one correct. Users may select multiple answers. |
-| `one_choice` | Same shape as `multiple_choice` | 2–32 options; exactly one correct. |
+| `multiple_choice` | `{"options":[{"text":"A","correct":true},{"text":"B","correct":false}]}` | At least 2 options; at least one correct. Users may select multiple answers. |
+| `one_choice` | Same shape as `multiple_choice` | At least 2 options; exactly one correct. |
 | `number` | `{"answer":"42.5"}` | Decimal number as a string, up to 64 bytes. |
 | `short_answer` | `{"answer":"Paris"}` | Nonempty answer, up to 500 bytes. |
 | `open` | `{"sample_answer":"Explain..."}` | Optional sample answer, up to 1000 bytes; free-form response. |
@@ -98,10 +100,10 @@ Question create and update JSON requests are limited to 32768 bytes. Each return
 | `yes_no` | `{"answer":false}` | Boolean answer. |
 | `show_answer` | `{"answer":"The answer"}` | Nonempty answer to reveal, up to 1000 bytes. |
 | `no_answer` | `{}` | Question only. |
-| `match` | `{"pairs":[{"keyword":"France","definition":"Paris"},{"keyword":"Italy","definition":"Rome"}]}` | 2–32 pairs. |
-| `ordering` | `{"items":[{"text":"Wash"},{"text":"Cut"},{"text":"Cook"}]}` | 2–32 distinct items, listed in the correct order. |
-| `fill_blanks` | `{"answers":[{"text":"Paris"},{"text":"Rome"}]}` | Put `{{1}}`, `{{2}}`, etc. in `prompt`, each exactly once. The answer array follows marker order; 1–32 blanks. |
-| `categorize` | `{"categories":[{"name":"Mammals","items":[{"text":"Dog"}]},{"name":"Birds","items":[{"text":"Eagle"}]}]}` | 2–32 distinct categories, each with 1–32 items; at most 32 distinct items total. |
+| `match` | `{"pairs":[{"keyword":"France","definition":"Paris"},{"keyword":"Italy","definition":"Rome"}]}` | At least 2 pairs. |
+| `ordering` | `{"items":[{"text":"Wash"},{"text":"Cut"},{"text":"Cook"}]}` | At least 2 distinct items, listed in the correct order. |
+| `fill_blanks` | `{"answers":[{"text":"Paris"},{"text":"Rome"}]}` | Put `{{1}}`, `{{2}}`, etc. in `prompt`, each exactly once. The answer array follows marker order; at least 1 blank. |
+| `categorize` | `{"categories":[{"name":"Mammals","items":[{"text":"Dog"}]},{"name":"Birds","items":[{"text":"Eagle"}]}]}` | At least 2 distinct categories, each with at least 1 item; all items must be distinct. |
 
 Any question may include `image_id` for the prompt and `answer_image_id` for
 the answer in `config`. Choice options may include their own `image_id`.
