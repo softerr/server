@@ -1,4 +1,5 @@
 import { deleteIcon, moveDownIcon, moveUpIcon, removeIcon } from './icons.js'
+import { mountImageLibrary } from './images.js'
 
 const questionTypes = {
   multiple_choice: 'Multiple choice',
@@ -15,6 +16,8 @@ const questionTypes = {
   fill_blanks: 'Fill in the blanks',
   categorize: 'Categorize',
 }
+
+const QUESTION_ITEM_MAX = 32
 
 const templateHints = {
   multiple_choice: 'Select several answers',
@@ -131,9 +134,19 @@ function updateRowActions(rows, itemName, minimum) {
   })
 }
 
-function renderConfig(form, template, config = {}) {
+function renderConfig(form, template, config = {}, imageLibrary) {
   const fields = form.querySelector('[data-config-fields]')
+  const answerImage = form.querySelector('[data-answer-image]')
+  form.querySelector('[data-card-status]').before(answerImage)
   fields.replaceChildren()
+  answerImage.hidden = true
+  function addAnswerField(control) {
+    const row = document.createElement('div')
+    row.className = 'question-image-field'
+    answerImage.hidden = false
+    row.append(control, answerImage)
+    fields.append(row)
+  }
   if (template === 'multiple_choice' || template === 'one_choice' || template === 'match') {
     const heading = document.createElement('div')
     heading.className = `question-config-heading ${template === 'match' ? 'is-match' : 'is-choice'}`
@@ -161,6 +174,12 @@ function renderConfig(form, template, config = {}) {
           const keyword = row.querySelector('[data-keyword]')
           const definition = row.querySelector('[data-definition]')
           ;[keyword.value, definition.value] = [definition.value, keyword.value]
+          const keywordPicker = row.querySelector('[data-keyword-image]')
+          const definitionPicker = row.querySelector('[data-definition-image]')
+          const keywordId = Number(keywordPicker.querySelector('[data-image-id]').value)
+          const definitionId = Number(definitionPicker.querySelector('[data-image-id]').value)
+          imageLibrary.setImage(keywordPicker, definitionId)
+          imageLibrary.setImage(definitionPicker, keywordId)
         }
         form.dispatchEvent(new Event('input'))
       })
@@ -168,7 +187,7 @@ function renderConfig(form, template, config = {}) {
     }
     function updateButtons() {
       const count = rows.children.length
-      add.disabled = count >= 8
+      add.disabled = count >= QUESTION_ITEM_MAX
       updateRowActions(rows, template === 'match' ? 'pair' : 'option', 2)
       ;[...rows.children].forEach((row, index) => {
         const option = row.querySelector('[data-option-text]')
@@ -187,13 +206,28 @@ function renderConfig(form, template, config = {}) {
       if (template === 'match') {
         const keyword = textField('Keyword', value.keyword)
         const definition = textField('Definition', value.definition)
+        keyword.input.required = false
+        definition.input.required = false
         keyword.label.classList.add('compact-field')
         definition.label.classList.add('compact-field')
         keyword.input.dataset.keyword = ''
         definition.input.dataset.definition = ''
-        row.append(keyword.label, definition.label)
+        const keywordSide = document.createElement('div')
+        keywordSide.className = 'question-match-side'
+        const keywordImage = imageLibrary.createPicker('Keyword image', value.keyword_image_id)
+        keywordImage.dataset.keywordImage = ''
+        keywordImage.classList.add('inline-image-picker')
+        keywordSide.append(keyword.label, keywordImage)
+        const definitionSide = document.createElement('div')
+        definitionSide.className = 'question-match-side'
+        const definitionImage = imageLibrary.createPicker('Definition image', value.definition_image_id)
+        definitionImage.dataset.definitionImage = ''
+        definitionImage.classList.add('inline-image-picker')
+        definitionSide.append(definition.label, definitionImage)
+        row.append(keywordSide, definitionSide)
       } else {
         const text = textField('Answer option', value.text)
+        text.input.required = false
         text.label.classList.add('compact-field')
         text.input.dataset.optionText = ''
         const correct = document.createElement('label')
@@ -204,7 +238,9 @@ function renderConfig(form, template, config = {}) {
         input.checked = Boolean(value.correct)
         input.dataset.correct = ''
         correct.append(input)
-        row.append(text.label, correct)
+        const image = imageLibrary.createPicker('Option image', value.image_id)
+        image.classList.add('option-image-picker')
+        row.append(text.label, image, correct)
       }
       row.append(rowActions(row, rows, () => {
         updateButtons()
@@ -235,26 +271,32 @@ function renderConfig(form, template, config = {}) {
     add.className = 'text-button'
     add.textContent = 'Add item'
     function update() {
-      add.disabled = rows.children.length >= 8
+      add.disabled = rows.children.length >= QUESTION_ITEM_MAX
       updateRowActions(rows, 'item', 2)
       ;[...rows.children].forEach((row, index) => {
         row.querySelector('[data-order-item]').setAttribute('aria-label', `Item ${index + 1} in correct order`)
       })
     }
-    function addItem(value = '') {
+    function addItem(value = {}) {
       const row = document.createElement('div')
       row.className = 'question-config-row is-text-list'
-      const field = textField('Item', value)
+      const field = textField('Item', value.text ?? '')
+      field.input.required = false
       field.label.classList.add('compact-field')
       field.input.dataset.orderItem = ''
-      row.append(field.label, rowActions(row, rows, () => {
+      const body = document.createElement('div')
+      body.className = 'question-image-field'
+      const image = imageLibrary.createPicker('Item image', value.image_id)
+      image.classList.add('inline-image-picker')
+      body.append(field.label, image)
+      row.append(body, rowActions(row, rows, () => {
         update()
         form.dispatchEvent(new Event('input'))
       }))
       rows.append(row)
       update()
     }
-    const initial = Array.isArray(config.items) && config.items.length ? config.items : ['', '']
+    const initial = Array.isArray(config.items) && config.items.length ? config.items : [{}, {}]
     initial.forEach(addItem)
     add.addEventListener('click', () => {
       addItem()
@@ -283,16 +325,22 @@ function renderConfig(form, template, config = {}) {
     actions.append(add, remove)
     function update() {
       const count = rows.children.length
-      add.disabled = count >= 8
+      add.disabled = count >= QUESTION_ITEM_MAX
       remove.disabled = count <= 1
     }
-    function addBlank(value = '') {
-      const field = textField(`Answer for {{${rows.children.length + 1}}}`, value)
+    function addBlank(value = {}) {
+      const field = textField(`Answer for {{${rows.children.length + 1}}}`, value.text ?? '')
+      field.input.required = false
       field.input.dataset.blankAnswer = ''
-      rows.append(field.label)
+      const body = document.createElement('div')
+      body.className = 'question-image-field'
+      const image = imageLibrary.createPicker('Blank answer image', value.image_id)
+      image.classList.add('inline-image-picker')
+      body.append(field.label, image)
+      rows.append(body)
       update()
     }
-    const initial = Array.isArray(config.answers) && config.answers.length ? config.answers : ['']
+    const initial = Array.isArray(config.answers) && config.answers.length ? config.answers : [{}]
     initial.forEach(addBlank)
     const prompt = form.querySelector('[data-prompt]')
     if (!Array.isArray(config.answers) && !prompt.value.includes('{{1}}')) {
@@ -330,13 +378,14 @@ function renderConfig(form, template, config = {}) {
     function update() {
       const totalItems = [...categories.children].reduce((total, category) =>
         total + category.querySelector('[data-category-items]').children.length, 0)
-      add.disabled = categories.children.length >= 8 || totalItems >= 16
+      add.disabled = categories.children.length >= QUESTION_ITEM_MAX || totalItems >= QUESTION_ITEM_MAX
       updateRowActions(categories, 'category', 2)
       ;[...categories.children].forEach((category, categoryIndex) => {
         const items = category.querySelector('[data-category-items]')
         category.querySelector('[data-category-title]').textContent = `Category ${categoryIndex + 1}`
         category.querySelector('[data-category-name]').setAttribute('aria-label', `Category ${categoryIndex + 1} name`)
-        category.querySelector('[data-add-category-item]').disabled = items.children.length >= 8 || totalItems >= 16
+        category.querySelector('[data-add-category-item]').disabled = items.children.length >= QUESTION_ITEM_MAX
+          || totalItems >= QUESTION_ITEM_MAX
         updateRowActions(items, `category ${categoryIndex + 1} item`, 1)
         ;[...items.children].forEach((row, itemIndex) => {
           row.querySelector('[data-category-item]').setAttribute('aria-label',
@@ -357,20 +406,33 @@ function renderConfig(form, template, config = {}) {
       title.dataset.categoryTitle = ''
       heading.append(title, rowActions(category, categories, changed))
       const name = textField('Category name', value.name, 100)
+      name.input.required = false
       name.input.dataset.categoryName = ''
+      const nameBody = document.createElement('div')
+      nameBody.className = 'question-image-field'
+      const nameImage = imageLibrary.createPicker('Category image', value.name_image_id)
+      nameImage.dataset.categoryNameImage = ''
+      nameImage.classList.add('inline-image-picker')
+      nameBody.append(name.label, nameImage)
       const items = document.createElement('div')
       items.className = 'question-config-rows'
       items.dataset.categoryItems = ''
       const itemsLabel = document.createElement('span')
       itemsLabel.className = 'question-category-items-label'
       itemsLabel.textContent = 'Items'
-      function addItem(text = '') {
+      function addItem(value = {}) {
         const row = document.createElement('div')
         row.className = 'question-config-row is-text-list'
-        const field = textField('Item', text)
+        const field = textField('Item', value.text ?? '')
+        field.input.required = false
         field.label.classList.add('compact-field')
         field.input.dataset.categoryItem = ''
-        row.append(field.label, rowActions(row, items, changed))
+        const body = document.createElement('div')
+        body.className = 'question-image-field'
+        const image = imageLibrary.createPicker('Category item image', value.image_id)
+        image.classList.add('inline-image-picker')
+        body.append(field.label, image)
+        row.append(body, rowActions(row, items, changed))
         items.append(row)
         update()
       }
@@ -383,14 +445,14 @@ function renderConfig(form, template, config = {}) {
         addItem()
         changed()
       })
-      category.append(heading, name.label, itemsLabel, items, addItemButton)
+      category.append(heading, nameBody, itemsLabel, items, addItemButton)
       categories.append(category)
-      const initialItems = Array.isArray(value.items) && value.items.length ? value.items : ['']
+      const initialItems = Array.isArray(value.items) && value.items.length ? value.items : [{}]
       initialItems.forEach(addItem)
       update()
     }
     const initial = Array.isArray(config.categories) && config.categories.length
-      ? config.categories : [{ items: [''] }, { items: [''] }]
+      ? config.categories : [{ items: [{}] }, { items: [{}] }]
     initial.forEach(addCategory)
     add.addEventListener('click', () => {
       addCategory()
@@ -417,18 +479,18 @@ function renderConfig(form, template, config = {}) {
     }
     select.value = typeof config.answer === 'boolean' ? String(config.answer) : ''
     field.append(title, select)
-    fields.append(field)
+    addAnswerField(field)
     return
   }
   if (template === 'number') {
     const field = textField('Correct number', config.answer ?? '', 64)
     field.input.inputMode = 'decimal'
     field.input.dataset.answer = ''
-    fields.append(field.label)
+    addAnswerField(field.label)
   } else if (template === 'short_answer') {
     const field = textField('Correct answer', config.answer ?? '', 500)
     field.input.dataset.answer = ''
-    fields.append(field.label)
+    addAnswerField(field.label)
   } else if (template === 'open' || template === 'show_answer') {
     const field = longField(
       template === 'open' ? 'Sample answer (optional)' : 'Answer to reveal',
@@ -436,7 +498,7 @@ function renderConfig(form, template, config = {}) {
       template !== 'open',
     )
     field.input.dataset.answer = ''
-    fields.append(field.label)
+    addAnswerField(field.label)
   } else if (template === 'no_answer') {
     const help = document.createElement('p')
     help.className = 'question-template-help'
@@ -447,37 +509,59 @@ function renderConfig(form, template, config = {}) {
 
 function collectConfig(form, template) {
   const fields = form.querySelector('[data-config-fields]')
+  const imageText = (container, selector) => {
+    const text = container.querySelector(selector).value.trim()
+    const id = container.querySelector('[data-image-id]').value
+    return id ? { text, image_id: Number(id) } : { text }
+  }
+  let config
   if (template === 'multiple_choice' || template === 'one_choice') {
-    return { options: [...fields.querySelectorAll('.question-config-row')].map((row) => ({
+    config = { options: [...fields.querySelectorAll('.question-config-row')].map((row) => ({
       text: row.querySelector('[data-option-text]').value.trim(),
       correct: row.querySelector('[data-correct]').checked,
+      ...(row.querySelector('.option-image-picker [data-image-id]').value
+        ? { image_id: Number(row.querySelector('.option-image-picker [data-image-id]').value) } : {}),
     })) }
-  }
-  if (template === 'match') {
-    return { pairs: [...fields.querySelectorAll('.question-config-row')].map((row) => ({
+  } else if (template === 'match') {
+    config = { pairs: [...fields.querySelectorAll('.question-config-row')].map((row) => ({
       keyword: row.querySelector('[data-keyword]').value.trim(),
       definition: row.querySelector('[data-definition]').value.trim(),
+      ...(row.querySelector('[data-keyword-image] [data-image-id]').value
+        ? { keyword_image_id: Number(row.querySelector('[data-keyword-image] [data-image-id]').value) } : {}),
+      ...(row.querySelector('[data-definition-image] [data-image-id]').value
+        ? { definition_image_id: Number(row.querySelector('[data-definition-image] [data-image-id]').value) } : {}),
     })) }
-  }
-  if (template === 'ordering') {
-    return { items: [...fields.querySelectorAll('[data-order-item]')].map((input) => input.value.trim()) }
-  }
-  if (template === 'fill_blanks') {
-    return { answers: [...fields.querySelectorAll('[data-blank-answer]')].map((input) => input.value.trim()) }
-  }
-  if (template === 'categorize') {
-    return { categories: [...fields.querySelectorAll('.question-category')].map((category) => ({
+  } else if (template === 'ordering') {
+    config = { items: [...fields.querySelectorAll('.question-config-row')].map((row) =>
+      imageText(row, '[data-order-item]')) }
+  } else if (template === 'fill_blanks') {
+    config = { answers: [...fields.querySelectorAll('.question-blank-rows > *')].map((row) =>
+      imageText(row, '[data-blank-answer]')) }
+  } else if (template === 'categorize') {
+    config = { categories: [...fields.querySelectorAll('.question-category')].map((category) => ({
       name: category.querySelector('[data-category-name]').value.trim(),
-      items: [...category.querySelectorAll('[data-category-item]')].map((input) => input.value.trim()),
+      ...(category.querySelector('[data-category-name-image] [data-image-id]').value
+        ? { name_image_id: Number(category.querySelector('[data-category-name-image] [data-image-id]').value) } : {}),
+      items: [...category.querySelectorAll('[data-category-items] > *')].map((row) =>
+        imageText(row, '[data-category-item]')),
     })) }
-  }
-  if (template === 'true_false' || template === 'yes_no') {
+  } else if (template === 'true_false' || template === 'yes_no') {
     const value = fields.querySelector('[data-boolean-answer]').value
-    return { answer: value === '' ? null : value === 'true' }
+    config = { answer: value === '' ? null : value === 'true' }
+  } else if (template === 'open') {
+    config = { sample_answer: fields.querySelector('[data-answer]').value.trim() }
+  } else if (template === 'no_answer') {
+    config = {}
+  } else {
+    config = { answer: fields.querySelector('[data-answer]').value.trim() }
   }
-  if (template === 'open') return { sample_answer: fields.querySelector('[data-answer]').value.trim() }
-  if (template === 'no_answer') return {}
-  return { answer: fields.querySelector('[data-answer]').value.trim() }
+  const questionImage = form.querySelector('[data-question-image] [data-image-id]').value
+  const answerImage = form.querySelector('[data-answer-image] [data-image-id]').value
+  if (questionImage) config.image_id = Number(questionImage)
+  if (answerImage && !form.querySelector('[data-answer-image]').hidden) {
+    config.answer_image_id = Number(answerImage)
+  }
+  return config
 }
 
 export function mountQuestionEditor(app, section, quizId, { requestJson, responseError, setStatus, onChange = () => {} }) {
@@ -516,6 +600,7 @@ export function mountQuestionEditor(app, section, quizId, { requestJson, respons
   const deleteDialog = section.querySelector('#delete-question-dialog')
   const deleteStatus = section.querySelector('#delete-question-status')
   const confirmDelete = section.querySelector('#confirm-delete-question')
+  const imageLibrary = mountImageLibrary(section, { requestJson, responseError, setStatus })
   const encoder = new TextEncoder()
   let questions = []
   let draftCard = null
@@ -569,11 +654,15 @@ export function mountQuestionEditor(app, section, quizId, { requestJson, respons
           ${Object.entries(questionTypes).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}
         </select>
       </label>
-      <label class="field">
-        <span>Question</span>
-        <textarea data-prompt rows="3" maxlength="500" required></textarea>
-      </label>
+      <div class="question-image-field">
+        <label class="field">
+          <span>Question</span>
+          <textarea data-prompt rows="3" maxlength="500" required></textarea>
+        </label>
+        <div data-question-image></div>
+      </div>
       <div class="question-config-fields" data-config-fields></div>
+      <div data-answer-image></div>
       <p class="form-status" data-card-status role="status" aria-live="polite"></p>
       <div class="question-card-actions">
         <button class="auth-button auth-button-secondary" data-reset type="button">Reset</button>
@@ -614,7 +703,11 @@ export function mountQuestionEditor(app, section, quizId, { requestJson, respons
       card.dataset.questionId = question ? String(question.id) : ''
       templateSelect.value = question?.template ?? initialTemplate
       promptInput.value = question?.prompt ?? ''
-      renderConfig(form, templateSelect.value, question?.config)
+      form.querySelector('[data-question-image]').replaceChildren(
+        imageLibrary.createPicker('Question image', question?.config?.image_id))
+      form.querySelector('[data-answer-image]').replaceChildren(
+        imageLibrary.createPicker('Answer image', question?.config?.answer_image_id))
+      renderConfig(form, templateSelect.value, question?.config, imageLibrary)
       resetButton.hidden = !question
       cancelButton.hidden = Boolean(question)
       deleteButton.hidden = !question
@@ -623,7 +716,9 @@ export function mountQuestionEditor(app, section, quizId, { requestJson, respons
     }
     populate(savedQuestion)
 
-    templateSelect.addEventListener('change', () => renderConfig(form, templateSelect.value))
+    templateSelect.addEventListener('change', () => {
+      renderConfig(form, templateSelect.value, {}, imageLibrary)
+    })
     function onEdit() {
       setStatus(status, '')
       updateSaveButton()
@@ -655,6 +750,11 @@ export function mountQuestionEditor(app, section, quizId, { requestJson, respons
       const template = templateSelect.value
       const prompt = promptInput.value.trim()
       const config = collectConfig(form, template)
+      if ((template === 'multiple_choice' || template === 'one_choice')
+          && config.options.some((option) => !option.text && !option.image_id)) {
+        setStatus(status, 'Each option needs text or an image.', true)
+        return false
+      }
       if (!prompt || encoder.encode(prompt).length > 500) {
         setStatus(status, 'Question must be 1 to 500 bytes.', true)
         return false

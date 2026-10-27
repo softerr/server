@@ -41,11 +41,11 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
       <div class="library-heading">
         <h1 class="section-title">Library</h1>
         <div class="library-heading-actions">
-          <button id="import-quiz-button" class="auth-button auth-button-secondary" type="button">Import JSON</button>
+          <button id="import-quiz-button" class="auth-button auth-button-secondary" type="button">Import JSON/ZIP</button>
           <button id="create-quiz-button" class="auth-button auth-button-primary" type="button">Create quiz</button>
         </div>
       </div>
-      <input id="import-quiz-file" type="file" accept=".json,application/json" hidden />
+      <input id="import-quiz-file" type="file" accept=".json,.zip,application/json,application/zip" hidden />
       <p id="import-quiz-status" class="form-status" role="status" aria-live="polite"></p>
       <p id="library-status" class="form-status" role="status" aria-live="polite">Loading quizzes…</p>
       <ul id="quiz-list" class="quiz-list" hidden></ul>
@@ -115,32 +115,42 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
     const file = importFile.files?.[0]
     importFile.value = ''
     if (!file || importButton.disabled) return
-    if (file.size > 1048576) {
-      setStatus(importStatus, 'The JSON file is too large (maximum 1 MB).', true)
+    if (file.size > 50331648) {
+      setStatus(importStatus, 'The file is too large (maximum 48 MiB).', true)
       return
     }
     importButton.disabled = true
     setStatus(importStatus, 'Reading quiz…')
     try {
-      let document
-      try {
-        document = JSON.parse(await file.text())
-      } catch {
-        setStatus(importStatus, 'This file does not contain valid JSON.', true)
-        return
-      }
-      if (!document || typeof document !== 'object' || Array.isArray(document)
-          || document.format !== 'softerr-quiz' || document.version !== 1
-          || !Array.isArray(document.questions)) {
-        setStatus(importStatus, 'Choose a quiz JSON file exported from this app.', true)
-        return
-      }
-      if (new TextEncoder().encode(JSON.stringify(document)).length > 524288) {
-        setStatus(importStatus, 'This quiz is too large to import (maximum 512 KB).', true)
-        return
+      const zip = file.name.toLowerCase().endsWith('.zip') ||
+        ['application/zip', 'application/x-zip-compressed'].includes(file.type)
+      let document = null
+      if (!zip) {
+        try {
+          document = JSON.parse(await file.text())
+        } catch {
+          setStatus(importStatus, 'This file does not contain valid JSON.', true)
+          return
+        }
+        if (!document || typeof document !== 'object' || Array.isArray(document)
+            || document.format !== 'softerr-quiz' || document.version !== 1
+            || !Array.isArray(document.questions) || !Array.isArray(document.images)) {
+          setStatus(importStatus, 'Choose a current quiz JSON or ZIP export.', true)
+          return
+        }
       }
       setStatus(importStatus, 'Importing quiz…')
-      const [response, quiz] = await requestJson('POST', '/api/quiz/quizzes/import', document)
+      let response, quiz
+      if (zip) {
+        response = await fetch('/api/quiz/quizzes/import', {
+          method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file,
+        })
+        quiz = await response.json().catch(() => null)
+      } else {
+        const result = await requestJson('POST', '/api/quiz/quizzes/import', document)
+        response = result[0]
+        quiz = result[1]
+      }
       if (!app.contains(list)) return
       if (!response.ok) {
         setStatus(importStatus, responseError(response, quiz), true)

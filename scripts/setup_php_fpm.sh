@@ -21,7 +21,7 @@ wait_for_apt_locks
 echo "Installing PHP runtime..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y php-fpm php-cli php-pgsql curl
+apt-get install -y php-fpm php-cli php-pgsql php-zip curl
 
 echo "Discovering php-fpm service..."
 PHP_FPM_SERVICE=""
@@ -57,6 +57,8 @@ if [[ -n "${PHP_VERSION}" ]]; then
   API_ENV_FILE="${FPM_POOL_DIR}/zz-softerr-api-env.conf"
   cat > "${API_ENV_FILE}" <<EOF
 [www]
+php_admin_value[memory_limit] = 256M
+php_admin_value[post_max_size] = 48M
 env[DB_HOST] = "$(escape_api_env_value "${API_DB_HOST}")"
 env[DB_PORT] = "$(escape_api_env_value "${API_DB_PORT}")"
 env[DB_NAME] = "$(escape_api_env_value "${API_DB_NAME}")"

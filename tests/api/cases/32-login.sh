@@ -38,7 +38,15 @@ test_quiz_library_requires_login() {
   assert_status 401 || return 1
   api_request POST /api/quiz/quizzes '{"name":"Geography"}'
   assert_status 401 || return 1
-  api_request POST /api/quiz/quizzes/import '{"format":"softerr-quiz","version":1,"name":"Geography","description":"","questions":[]}'
+  api_request POST /api/quiz/quizzes/import '{"format":"softerr-quiz","version":1,"name":"Geography","description":"","questions":[],"images":[]}'
+  assert_status 401 || return 1
+  api_request GET /api/quiz/images
+  assert_status 401 || return 1
+  api_request GET /api/quiz/images/1
+  assert_status 401 || return 1
+  api_request DELETE /api/quiz/images/1
+  assert_status 401 || return 1
+  api_request GET /api/quiz/quizzes/1/export.zip
   assert_status 401 || return 1
   api_request PATCH /api/quiz/quizzes/1 '{"name":"Updated"}'
   assert_status 401 || return 1
@@ -403,9 +411,9 @@ test_auth_login_session_lifecycle() {
     '{"template":"show_answer","prompt":"What is the secret?","config":{"answer":"42"}}'
     '{"template":"no_answer","prompt":"Read this fact","config":{}}'
     '{"template":"match","prompt":"Match capitals","config":{"pairs":[{"keyword":"France","definition":"Paris"},{"keyword":"Italy","definition":"Rome"}]}}'
-    '{"template":"ordering","prompt":"Put the steps in order","config":{"items":["Wash","Cut","Cook"]}}'
-    '{"template":"fill_blanks","prompt":"France: {{1}}; Italy: {{2}}","config":{"answers":["Paris","Rome"]}}'
-    '{"template":"categorize","prompt":"Sort the animals","config":{"categories":[{"name":"Mammals","items":["Dog","Cat"]},{"name":"Birds","items":["Eagle"]}]}}'
+    '{"template":"ordering","prompt":"Put the steps in order","config":{"items":[{"text":"Wash"},{"text":"Cut"},{"text":"Cook"}]}}'
+    '{"template":"fill_blanks","prompt":"France: {{1}}; Italy: {{2}}","config":{"answers":[{"text":"Paris"},{"text":"Rome"}]}}'
+    '{"template":"categorize","prompt":"Sort the animals","config":{"categories":[{"name":"Mammals","items":[{"text":"Dog"},{"text":"Cat"}]},{"name":"Birds","items":[{"text":"Eagle"}]}]}}'
   )
   question_path="${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}/questions"
   for question_payload in "${question_payloads[@]}"; do
@@ -425,7 +433,7 @@ test_auth_login_session_lifecycle() {
   done
   response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' "${question_path}")"
   if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
-    '.questions | length == 13 and .[0].template == "multiple_choice" and .[10].config.items == ["Wash", "Cut", "Cook"] and .[11].config.answers == ["Paris", "Rome"] and .[12].config.categories[0].items == ["Dog", "Cat"]' \
+    '.questions | length == 13 and .[0].template == "multiple_choice" and .[10].config.items == [{"text":"Wash"}, {"text":"Cut"}, {"text":"Cook"}] and .[11].config.answers == [{"text":"Paris"}, {"text":"Rome"}] and .[12].config.categories[0].items == [{"text":"Dog"}, {"text":"Cat"}]' \
     <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}"
     fail_test "quiz questions were not listed in order: ${response}"
@@ -467,6 +475,47 @@ test_auth_login_session_lifecycle() {
     fail_test "quiz question update failed: ${response}"
     return 1
   fi
+  local boundary_template boundary_key boundary_payload
+  for boundary_template in multiple_choice match ordering fill_blanks categorize; do
+    case "${boundary_template}" in
+      multiple_choice)
+        boundary_key=options
+        boundary_payload="$(jq -nc '{template:"multiple_choice",prompt:"Pick one",config:{options:[range(1;33) as $i | {text:("Option \($i)"),correct:($i==1)}]}}')"
+        ;;
+      match)
+        boundary_key=pairs
+        boundary_payload="$(jq -nc '{template:"match",prompt:"Match all",config:{pairs:[range(1;33) as $i | {keyword:("K"*120+"\($i)"),definition:("D"*120+"\($i)")}]}}')"
+        ;;
+      ordering)
+        boundary_key=items
+        boundary_payload="$(jq -nc '{template:"ordering",prompt:"Order all",config:{items:[range(1;33) | {text:("Item \(.)")}]}}')"
+        ;;
+      fill_blanks)
+        boundary_key=answers
+        boundary_payload="$(jq -nc '{template:"fill_blanks",prompt:([range(1;33) | "{{\(.)}}"] | join(" ")),config:{answers:[range(1;33) | {text:("Answer \(.)")}]}}')"
+        ;;
+      categorize)
+        boundary_key=categories
+        boundary_payload="$(jq -nc '{template:"categorize",prompt:"Sort all",config:{categories:[range(1;33) as $i | {name:("Category \($i)"),items:[{text:("Item \($i)") }]}]}}')"
+        ;;
+    esac
+    response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+      --data "${boundary_payload}" -w $'\n%{http_code}' "${question_path}")"
+    if [[ "${response##*$'\n'}" != 201 ]] || ! jq -e --arg key "${boundary_key}" \
+      '.config[$key] | length == 32' <<<"${response%$'\n'*}" >/dev/null; then
+      rm -f "${cookie_file}"
+      fail_test "${boundary_template} did not accept 32 entries: ${response}"
+      return 1
+    fi
+  done
+  boundary_payload="$(jq -nc '{template:"multiple_choice",prompt:"Too many",config:{options:[range(1;34) as $i | {text:("Option \($i)"),correct:($i==1)}]}}')"
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+    --data "${boundary_payload}" -w $'\n%{http_code}' "${question_path}")"
+  if [[ "${response##*$'\n'}" != 400 ]]; then
+    rm -f "${cookie_file}"
+    fail_test "choice question accepted 33 options: ${response}"
+    return 1
+  fi
   response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
     --data '{"template":"one_choice","prompt":"Invalid","config":{"options":[{"text":"A","correct":true},{"text":"B","correct":true}]}}' \
     -w $'\n%{http_code}' "${question_path}")"
@@ -477,9 +526,9 @@ test_auth_login_session_lifecycle() {
   fi
   local invalid_question
   for invalid_question in \
-    '{"template":"ordering","prompt":"Order","config":{"items":["Same","Same"]}}' \
-    '{"template":"fill_blanks","prompt":"Missing marker","config":{"answers":["Answer"]}}' \
-    '{"template":"categorize","prompt":"Sort","config":{"categories":[{"name":"A","items":["Same"]},{"name":"B","items":["Same"]}]}}'; do
+    '{"template":"ordering","prompt":"Order","config":{"items":[{"text":"Same"},{"text":"Same"}]}}' \
+    '{"template":"fill_blanks","prompt":"Missing marker","config":{"answers":[{"text":"Answer"}]}}' \
+    '{"template":"categorize","prompt":"Sort","config":{"categories":[{"name":"A","items":[{"text":"Same"}]},{"name":"B","items":[{"text":"Same"}]}]}}'; do
     response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
       --data "${invalid_question}" -w $'\n%{http_code}' "${question_path}")"
     if [[ "${response##*$'\n'}" != 400 ]]; then
@@ -491,7 +540,7 @@ test_auth_login_session_lifecycle() {
 
   local import_path import_id import_body
   import_path="${API_TEST_BASE_URL%/}/api/quiz/quizzes/import"
-  import_body='{"format":"softerr-quiz","version":1,"name":"Imported quiz","description":"From JSON","questions":[{"template":"no_answer","prompt":"First","config":{}},{"template":"ordering","prompt":"Second","config":{"items":["A","B"]}}]}'
+  import_body='{"format":"softerr-quiz","version":1,"name":"Imported quiz","description":"From JSON","questions":[{"template":"no_answer","prompt":"First","config":{}},{"template":"ordering","prompt":"Second","config":{"items":[{"text":"A"},{"text":"B"}]}}],"images":[]}'
   response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
     --data "${import_body}" -w $'\n%{http_code}' "${import_path}")"
   import_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
@@ -505,14 +554,55 @@ test_auth_login_session_lifecycle() {
   response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${import_id}/questions")"
   if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
-    '.questions | length == 2 and .[0].prompt == "First" and .[1].config.items == ["A", "B"]' \
+    '.questions | length == 2 and .[0].prompt == "First" and .[1].config.items == [{"text":"A"}, {"text":"B"}]' \
     <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}"
     fail_test "imported questions were not saved in order: ${response}"
     return 1
   fi
+  local zip_file zip_import_id
+  zip_file="$(mktemp --suffix=.zip)"
+  response="$(curl -sS -b "${cookie_file}" -o "${zip_file}" -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${import_id}/export.zip")"
+  if [[ "${response}" != 200 ]] || ! php -r '
+    $zip = new ZipArchive();
+    if ($zip->open($argv[1]) !== true) exit(1);
+    $json = $zip->getFromName("quiz.json");
+    $manifest = json_decode($json, true);
+    exit(($manifest["version"] ?? null) === 1
+      && count($manifest["questions"] ?? []) === 2
+      && str_contains($json, "\n    \"version\": 1,") ? 0 : 1);
+  ' "${zip_file}"; then
+    rm -f "${zip_file}" "${cookie_file}"
+    fail_test "quiz ZIP export failed: HTTP ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/octet-stream' \
+    --data-binary "@${zip_file}" -w $'\n%{http_code}' "${import_path}")"
+  rm -f "${zip_file}"
+  zip_import_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  if [[ "${response##*$'\n'}" != 201 || -z "${zip_import_id}" ]]; then
+    rm -f "${cookie_file}"
+    fail_test "quiz ZIP import failed: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${zip_import_id}")"
+  if [[ "${response##*$'\n'}" != 204 ]]; then
+    rm -f "${cookie_file}"
+    fail_test "ZIP imported quiz deletion failed: ${response}"
+    return 1
+  fi
   response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
-    --data '{"format":"softerr-quiz","version":1,"name":"Invalid import","description":"","questions":[{"template":"no_answer","prompt":"First","config":{}},{"template":"ordering","prompt":"Bad","config":{"items":["Same","Same"]}}]}' \
+    --data '{"format":"softerr-quiz","version":3,"name":"Old format","description":"","questions":[],"images":[]}' \
+    -w $'\n%{http_code}' "${import_path}")"
+  if [[ "${response##*$'\n'}" != 400 ]]; then
+    rm -f "${cookie_file}"
+    fail_test "old quiz format was accepted: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+    --data '{"format":"softerr-quiz","version":1,"name":"Invalid import","description":"","questions":[{"template":"no_answer","prompt":"First","config":{}},{"template":"ordering","prompt":"Bad","config":{"items":[{"text":"Same"},{"text":"Same"}]}}],"images":[]}' \
     -w $'\n%{http_code}' "${import_path}")"
   if [[ "${response##*$'\n'}" != 400 ]]; then
     rm -f "${cookie_file}"
@@ -535,7 +625,7 @@ test_auth_login_session_lifecycle() {
     return 1
   fi
 
-  import_body="$(jq -nc '{format:"softerr-quiz",version:1,name:"Large import",description:"",questions:[range(0;30) as $i | {template:"open",prompt:("Question \($i)"),config:{sample_answer:("x"*180)}}]}')"
+  import_body="$(jq -nc '{format:"softerr-quiz",version:1,name:"Large import",description:"",questions:[range(0;30) as $i | {template:"open",prompt:("Question \($i)"),config:{sample_answer:("x"*180)}}],images:[]}')"
   if (( ${#import_body} <= 4096 )); then
     rm -f "${cookie_file}"
     fail_test 'large import test body did not exceed the regular 4096-byte limit'

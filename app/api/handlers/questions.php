@@ -1,6 +1,9 @@
 <?php
 declare(strict_types=1);
 
+const QUESTION_ITEM_MAX = 32;
+const QUESTION_BODY_MAX_BYTES = 32768;
+
 function publicQuestion(array $row): array
 {
     return [
@@ -32,9 +35,34 @@ function questionTextList(mixed $value, int $min, int $max, int $maxBytes, strin
         respond(400, ['error' => "Invalid {$field} list"]);
     }
     return array_map(
-        fn (mixed $item): string => questionText($item, $maxBytes, $field),
+        fn (mixed $item): array => questionImageTextItem($item, $maxBytes, $field),
         $value
     );
+}
+
+function optionalQuestionImageId(mixed $value): ?int
+{
+    if ($value === null) return null;
+    if (!is_int($value) || $value < 1) respond(400, ['error' => 'Invalid image']);
+    return $value;
+}
+
+function questionImageTextItem(mixed $item, int $maxBytes, string $field): array
+{
+    if (!is_array($item)) respond(400, ['error' => "Invalid {$field}"]);
+    $imageId = optionalQuestionImageId($item['image_id'] ?? null);
+    $text = questionText($item['text'] ?? null, $maxBytes, $field, false);
+    if ($text === '' && $imageId === null) respond(400, ['error' => "Invalid {$field}"]);
+    $normalized = ['text' => $text];
+    if ($imageId !== null) $normalized['image_id'] = $imageId;
+    return $normalized;
+}
+
+function distinctQuestionItems(array $items): bool
+{
+    $keys = array_map(fn (array $item): string =>
+        json_encode($item, JSON_THROW_ON_ERROR), $items);
+    return count(array_unique($keys)) === count($keys);
 }
 
 function readQuestionFields(?array $payload): array
@@ -57,8 +85,8 @@ function readQuestionFields(?array $payload): array
     if ($template === 'multiple_choice' || $template === 'one_choice') {
         $options = $config['options'] ?? null;
         if (!is_array($options) || !array_is_list($options)
-            || count($options) < 2 || count($options) > 8) {
-            respond(400, ['error' => 'A choice question needs 2 to 8 options']);
+            || count($options) < 2 || count($options) > QUESTION_ITEM_MAX) {
+            respond(400, ['error' => 'A choice question needs 2 to 32 options']);
         }
         $correctCount = 0;
         $normalized['options'] = [];
@@ -68,10 +96,15 @@ function readQuestionFields(?array $payload): array
             }
             $correct = $option['correct'];
             if ($correct) $correctCount++;
-            $normalized['options'][] = [
-                'text' => questionText($option['text'] ?? null, 150, 'choice option'),
-                'correct' => $correct,
-            ];
+            $optionImageId = optionalQuestionImageId($option['image_id'] ?? null);
+            $optionText = questionText($option['text'] ?? null, 150, 'choice option', false);
+            if ($optionText === '' && $optionImageId === null) {
+                respond(400, ['error' => 'Each choice needs text or an image']);
+            }
+            $normalized['options'][] = ['text' => $optionText, 'correct' => $correct];
+            if ($optionImageId !== null) {
+                $normalized['options'][array_key_last($normalized['options'])]['image_id'] = $optionImageId;
+            }
         }
         if (($template === 'one_choice' && $correctCount !== 1)
             || ($template === 'multiple_choice' && $correctCount < 1)) {
@@ -100,31 +133,40 @@ function readQuestionFields(?array $payload): array
     } elseif ($template === 'match') {
         $pairs = $config['pairs'] ?? null;
         if (!is_array($pairs) || !array_is_list($pairs)
-            || count($pairs) < 2 || count($pairs) > 8) {
-            respond(400, ['error' => 'A match question needs 2 to 8 pairs']);
+            || count($pairs) < 2 || count($pairs) > QUESTION_ITEM_MAX) {
+            respond(400, ['error' => 'A match question needs 2 to 32 pairs']);
         }
         $normalized['pairs'] = [];
         foreach ($pairs as $pair) {
             if (!is_array($pair)) {
                 respond(400, ['error' => 'Invalid match pair']);
             }
-            $normalized['pairs'][] = [
-                'keyword' => questionText($pair['keyword'] ?? null, 150, 'match keyword'),
-                'definition' => questionText($pair['definition'] ?? null, 150, 'match definition'),
-            ];
+            $keywordImageId = optionalQuestionImageId($pair['keyword_image_id'] ?? null);
+            $definitionImageId = optionalQuestionImageId($pair['definition_image_id'] ?? null);
+            $keyword = questionText($pair['keyword'] ?? null, 150, 'match keyword', false);
+            $definition = questionText($pair['definition'] ?? null, 150, 'match definition', false);
+            if (($keyword === '' && $keywordImageId === null)
+                || ($definition === '' && $definitionImageId === null)) {
+                respond(400, ['error' => 'Each match side needs text or an image']);
+            }
+            $entry = ['keyword' => $keyword, 'definition' => $definition];
+            if ($keywordImageId !== null) $entry['keyword_image_id'] = $keywordImageId;
+            if ($definitionImageId !== null) $entry['definition_image_id'] = $definitionImageId;
+            $normalized['pairs'][] = $entry;
         }
     } elseif ($template === 'ordering') {
-        $items = questionTextList($config['items'] ?? null, 2, 8, 150, 'ordering item');
-        if (count(array_unique($items)) !== count($items)) {
+        $items = questionTextList($config['items'] ?? null, 2, QUESTION_ITEM_MAX, 150, 'ordering item');
+        if (!distinctQuestionItems($items)) {
             respond(400, ['error' => 'Ordering items must be distinct']);
         }
         $normalized['items'] = $items;
     } elseif ($template === 'fill_blanks') {
-        $answers = questionTextList($config['answers'] ?? null, 1, 8, 150, 'blank answer');
-        $withoutMarkers = preg_replace('/\{\{[1-8]\}\}/', '', $prompt);
+        $answers = questionTextList($config['answers'] ?? null, 1, QUESTION_ITEM_MAX, 150, 'blank answer');
+        $marker = '/\{\{(?:[1-9]|[12][0-9]|3[0-2])\}\}/';
+        $withoutMarkers = preg_replace($marker, '', $prompt);
         if ($withoutMarkers === null || str_contains($withoutMarkers, '{{')
             || str_contains($withoutMarkers, '}}')
-            || preg_match_all('/\{\{[1-8]\}\}/', $prompt) !== count($answers)) {
+            || preg_match_all($marker, $prompt) !== count($answers)) {
             respond(400, ['error' => 'Question blanks must match the answers']);
         }
         foreach ($answers as $index => $_) {
@@ -136,8 +178,8 @@ function readQuestionFields(?array $payload): array
     } elseif ($template === 'categorize') {
         $categories = $config['categories'] ?? null;
         if (!is_array($categories) || !array_is_list($categories)
-            || count($categories) < 2 || count($categories) > 8) {
-            respond(400, ['error' => 'A categorization needs 2 to 8 categories']);
+            || count($categories) < 2 || count($categories) > QUESTION_ITEM_MAX) {
+            respond(400, ['error' => 'A categorization needs 2 to 32 categories']);
         }
         $normalized['categories'] = [];
         $names = [];
@@ -146,18 +188,32 @@ function readQuestionFields(?array $payload): array
             if (!is_array($category)) {
                 respond(400, ['error' => 'Invalid category']);
             }
-            $name = questionText($category['name'] ?? null, 100, 'category name');
-            $items = questionTextList($category['items'] ?? null, 1, 8, 150, 'category item');
-            $names[] = $name;
+            $nameImageId = optionalQuestionImageId($category['name_image_id'] ?? null);
+            $name = questionText($category['name'] ?? null, 100, 'category name', false);
+            if ($name === '' && $nameImageId === null) {
+                respond(400, ['error' => 'Each category needs a name or an image']);
+            }
+            $items = questionTextList($category['items'] ?? null, 1, QUESTION_ITEM_MAX, 150, 'category item');
+            $nameEntry = ['text' => $name];
+            if ($nameImageId !== null) $nameEntry['image_id'] = $nameImageId;
+            $names[] = $nameEntry;
             array_push($allItems, ...$items);
-            $normalized['categories'][] = ['name' => $name, 'items' => $items];
+            $entry = ['name' => $name, 'items' => $items];
+            if ($nameImageId !== null) $entry['name_image_id'] = $nameImageId;
+            $normalized['categories'][] = $entry;
         }
-        if (count($allItems) > 16 || count(array_unique($names)) !== count($names)
-            || count(array_unique($allItems)) !== count($allItems)) {
-            respond(400, ['error' => 'Categories and items must be distinct; use at most 16 items']);
+        if (count($allItems) > QUESTION_ITEM_MAX || !distinctQuestionItems($names)
+            || !distinctQuestionItems($allItems)) {
+            respond(400, ['error' => 'Categories and items must be distinct; use at most 32 items']);
         }
     }
-    // No-answer questions intentionally have an empty config object.
+    $imageId = optionalQuestionImageId($config['image_id'] ?? null);
+    if ($imageId !== null) $normalized['image_id'] = $imageId;
+    $answerImageId = optionalQuestionImageId($config['answer_image_id'] ?? null);
+    if ($template === 'no_answer' && $answerImageId !== null) {
+        respond(400, ['error' => 'This question has no answer']);
+    }
+    if ($answerImageId !== null) $normalized['answer_image_id'] = $answerImageId;
     return [$template, $prompt, json_encode((object) $normalized, JSON_THROW_ON_ERROR)];
 }
 
@@ -196,11 +252,15 @@ function handleListQuestions(int $quizId): never
 function handleCreateQuestion(int $quizId): never
 {
     $user = currentSessionUser();
-    [$template, $prompt, $config] = readQuestionFields(readJsonBody());
+    [$template, $prompt, $config] = readQuestionFields(readJsonBody(QUESTION_BODY_MAX_BYTES));
     $db = connectQuizDb();
     if (@pg_query($db, 'BEGIN') === false) {
         respond(500, ['error' => 'Failed to create question']);
     }
+    if (@pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
+        respond(500, ['error' => 'Failed to create question']);
+    }
+    verifyQuestionImages($db, (int) $user['id'], $config);
     $owner = @pg_query_params(
         $db,
         'SELECT q.id FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
@@ -314,8 +374,13 @@ function handleReorderQuestions(int $quizId): never
 function handleUpdateQuestion(int $quizId, int $questionId): never
 {
     $user = currentSessionUser();
-    [$template, $prompt, $config] = readQuestionFields(readJsonBody());
+    [$template, $prompt, $config] = readQuestionFields(readJsonBody(QUESTION_BODY_MAX_BYTES));
     $db = connectQuizDb();
+    if (@pg_query($db, 'BEGIN') === false
+        || @pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
+        respond(500, ['error' => 'Failed to update question']);
+    }
+    verifyQuestionImages($db, (int) $user['id'], $config);
     $result = @pg_query_params(
         $db,
         'UPDATE public.question t SET template = $1, prompt = $2, config = $3::jsonb
@@ -332,6 +397,7 @@ function handleUpdateQuestion(int $quizId, int $questionId): never
     if ($question === false) {
         respond(404, ['error' => 'Question not found']);
     }
+    if (@pg_query($db, 'COMMIT') === false) respond(500, ['error' => 'Failed to update question']);
     respond(200, publicQuestion($question));
 }
 

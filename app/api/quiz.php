@@ -6,11 +6,26 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/lib/http.php';
 require_once __DIR__ . '/lib/url.php';
 require_once __DIR__ . '/lib/session.php';
+require_once __DIR__ . '/handlers/images.php';
 require_once __DIR__ . '/handlers/quizzes.php';
 require_once __DIR__ . '/handlers/questions.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $path = apiRequestPath('/api/quiz');
+
+if ($path === '/images') {
+    if ($method === 'GET') handleListImages();
+    if ($method === 'POST') handleUploadImage();
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/images/([1-9][0-9]*)$#', $path, $imageMatch)) {
+    $imageId = filter_var($imageMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($imageId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'GET') handleGetImage($imageId);
+    if ($method === 'DELETE') handleDeleteImage($imageId);
+    respond(405, ['error' => 'Method not allowed']);
+}
 
 if ($path === '/quizzes') {
     if ($method === 'GET') {
@@ -26,6 +41,13 @@ if ($path === '/quizzes/import') {
     if ($method === 'POST') {
         handleImportQuiz();
     }
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/export\.zip$#', $path, $exportMatch)) {
+    $quizId = filter_var($exportMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($quizId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'GET') handleExportQuizZip($quizId);
     respond(405, ['error' => 'Method not allowed']);
 }
 

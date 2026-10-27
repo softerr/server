@@ -23,8 +23,8 @@ paths:
       operationId: getReadiness
       summary: Check API readiness
       description: |
-        Checks the verification URL configuration, both PostgreSQL databases,
-        and their required schemas. It does not check email delivery.
+        Checks the verification URL configuration, ZIP support, both PostgreSQL
+        databases, and their required schemas. It does not check email delivery.
         Use `/api/`; Nginx redirects `/api` to `/api/`.
       responses:
         '200':
@@ -568,6 +568,125 @@ paths:
                 type: string
               description: Browser page asking the user to try again later.
 
+  /quiz/images:
+    get:
+      tags: [Quizzes]
+      operationId: listQuizImages
+      summary: List reusable images owned by the current account
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Image metadata sorted by filename, case-insensitively, with current usage and limits.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [images, usage, limits]
+                properties:
+                  images:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuizImage'
+                  usage:
+                    type: object
+                    required: [count, bytes]
+                    properties:
+                      count: {type: integer, minimum: 0}
+                      bytes: {type: integer, minimum: 0}
+                  limits:
+                    type: object
+                    required: [count, bytes, per_image_bytes]
+                    properties:
+                      count: {type: integer, minimum: 1}
+                      bytes: {type: integer, minimum: 1}
+                      per_image_bytes: {type: integer, minimum: 1}
+        '401':
+          description: No active session.
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Quizzes]
+      operationId: uploadQuizImage
+      summary: Upload or reuse an image in the account's image library
+      description: PNG, JPEG, or WebP, at most 2 MiB and 4096 pixels per side. A matching upload reuses the existing image and its first uploaded filename. The library is limited to 256 images and 32 MiB.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: X-Image-Name
+          in: header
+          required: true
+          description: Original filename, percent encoded with encodeURIComponent or equivalent. Maximum 255 UTF-8 bytes after decoding; no path separators or control characters.
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '201':
+          description: Image uploaded or reused.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizImage'
+        '400':
+          description: Unsupported or invalid image.
+        '401':
+          description: No active session.
+        '409':
+          description: Create a quiz first, or the image library is full.
+        '413':
+          description: Image is too large.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /quiz/images/{imageId}:
+    parameters:
+      - name: imageId
+        in: path
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      tags: [Quizzes]
+      operationId: getQuizImage
+      summary: Read an image owned by the current account
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Image bytes.
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+        '401':
+          description: No active session.
+        '404':
+          description: Image does not exist or belongs to another account.
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Quizzes]
+      operationId: deleteQuizImage
+      summary: Delete an unused image from the current account's library
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Image deleted.
+        '401':
+          description: No active session.
+        '404':
+          description: Image does not exist or belongs to another account.
+        '409':
+          description: Image is still used by a saved question.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /quiz/quizzes:
     get:
       tags: [Quizzes]
@@ -657,10 +776,12 @@ paths:
     post:
       tags: [Quizzes]
       operationId: importQuiz
-      summary: Import a portable quiz JSON document into the current account
+      summary: Import a quiz JSON document or ZIP archive into the current account
       description: |
         Creates a new quiz and all of its questions atomically. The body is
-        limited to 512 KiB and 100 questions. Existing quizzes are unchanged.
+        limited to 48 MiB and 100 questions. JSON uses version 1 with base64
+        image data. A ZIP contains quiz.json and referenced image files. Send
+        ZIP bytes as application/octet-stream. Existing quizzes are unchanged.
       security:
         - sessionCookie: []
       requestBody:
@@ -669,6 +790,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/QuizExport'
+          application/octet-stream:
+            schema: {type: string, format: binary}
       responses:
         '201':
           description: Imported quiz created.
@@ -696,6 +819,34 @@ paths:
                 $ref: '#/components/schemas/Error'
         '413':
           description: Request body is too large; Nginx may return a non-JSON body.
+        '415':
+          description: Expected JSON or ZIP request body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /quiz/quizzes/{quizId}/export.zip:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      tags: [Quizzes]
+      operationId: exportQuizZip
+      summary: Export an owned quiz as a ZIP archive
+      description: ZIP contains quiz.json and each used image once under images/{imageId}/{originalFilename}. The manifest also preserves each original filename in its name field.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Portable quiz ZIP archive.
+          content:
+            application/zip:
+              schema: {type: string, format: binary}
+        '401':
+          description: No active session.
+        '404':
+          description: Quiz does not exist or belongs to another account.
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -859,7 +1010,7 @@ paths:
       tags: [Quizzes]
       operationId: createQuizQuestion
       summary: Add a question to an owned quiz
-      description: A quiz can have up to 100 questions. Request bodies are limited to 4096 bytes.
+      description: A quiz can have up to 100 questions. Question create bodies are limited to 32768 bytes.
       security:
         - sessionCookie: []
       requestBody:
@@ -998,6 +1149,7 @@ paths:
       tags: [Quizzes]
       operationId: updateQuizQuestion
       summary: Replace an owned question's prompt, template, and config
+      description: Question update bodies are limited to 32768 bytes.
       security:
         - sessionCookie: []
       requestBody:
@@ -1125,7 +1277,7 @@ components:
           description: PostgreSQL timestamp without timezone, formatted as YYYY-MM-DD HH:MM:SS.
     QuizExport:
       type: object
-      required: [format, version, name, description, questions]
+      required: [format, version, name, description, questions, images]
       properties:
         format:
           type: string
@@ -1145,6 +1297,40 @@ components:
           maxItems: 100
           items:
             $ref: '#/components/schemas/QuestionInput'
+        images:
+          type: array
+          description: Each referenced image is included once as base64 data.
+          maxItems: 256
+          items:
+            type: object
+            required: [id, name, data]
+            properties:
+              id:
+                type: integer
+                format: int64
+              name:
+                type: string
+                description: Original filename, at most 255 UTF-8 bytes.
+              data:
+                type: string
+                contentEncoding: base64
+    QuizImage:
+      type: object
+      required: [id, name, mime_type, width, height]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: Original uploaded filename.
+        mime_type:
+          type: string
+          enum: [image/png, image/jpeg, image/webp]
+        width:
+          type: integer
+        height:
+          type: integer
     QuestionInput:
       type: object
       required: [template, prompt, config]
@@ -1153,6 +1339,12 @@ components:
         template; see the question template table in docs/api.md. Choice, match,
         ordering, fill-in-the-blanks, and categorization templates have the row
         limits described there. Answers and sample answers have the limits there.
+        Optional `config.image_id` and `config.answer_image_id` refer to reusable
+        images owned by the account. Choice options may also have `image_id`.
+        Match pairs may use `keyword_image_id` and `definition_image_id`;
+        categories may use `name_image_id`. Ordering items, blank answers, and
+        category items are `{text, image_id?}` objects. The same
+        image ID may be used in multiple fields.
       properties:
         template:
           type: string

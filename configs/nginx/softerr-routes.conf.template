@@ -58,8 +58,15 @@ location /api/auth/ {
     try_files $uri /api/auth.php?$query_string;
 }
 
+location ~ ^/api/quiz/quizzes/import/*$ {
+    root /var/www;
+    client_max_body_size 48m;
+    try_files $uri /api/quiz.php?$query_string;
+}
+
 location /api/quiz/ {
     root /var/www;
+    client_max_body_size 2m;
     try_files $uri /api/quiz.php?$query_string;
 }
 
@@ -69,7 +76,16 @@ location /api/ {
     try_files $uri $uri/ /api/index.php?$query_string;
 }
 
-location ~ ^/api/(index|auth|quiz)\.php$ {
+location = /api/quiz.php {
+    root /var/www;
+    internal;
+    client_max_body_size 48m;
+    include snippets/fastcgi-php.conf;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    fastcgi_pass unix:__PHP_FPM_SOCK__;
+}
+
+location ~ ^/api/(index|auth)\.php$ {
     root /var/www;
     internal;
     include snippets/fastcgi-php.conf;

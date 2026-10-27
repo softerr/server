@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 function handleReadiness(): never
 {
+    if (!class_exists(ZipArchive::class)) {
+        respond(503, ['status' => 'unavailable', 'error' => 'ZIP support is not ready']);
+    }
     if (appBaseUrl() === null) {
         respond(503, ['status' => 'unavailable', 'error' => 'Verification email is not configured']);
     }
@@ -25,8 +28,9 @@ function handleReadiness(): never
         respond(503, ['status' => 'unavailable', 'error' => $quizError]);
     }
     $quizSchema = @pg_query($quizDb, 'SELECT q.id, q.user_id, q.name, q.description,
-            u.auth_user_id, t.id, t.quiz_id, t.template, t.prompt, t.config
-        FROM public.quiz q, public."user" u, public.question t LIMIT 0');
+            u.auth_user_id, t.id, t.quiz_id, t.template, t.prompt, t.config,
+            i.id, i.user_id, i.original_name, i.mime_type, i.content
+        FROM public.quiz q, public."user" u, public.question t, public.image i LIMIT 0');
     if ($quizSchema === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
     }

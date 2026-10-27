@@ -25,6 +25,7 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
       <div id="quiz-editor-save-all" class="quiz-editor-save-all" hidden>
         <p id="quiz-editor-save-all-status" class="form-status" role="status" aria-live="polite"></p>
         <button id="export-quiz" class="auth-button auth-button-secondary" type="button" title="Export saved quiz as JSON" disabled>Export JSON</button>
+        <button id="export-quiz-zip" class="auth-button auth-button-secondary" type="button" title="Export saved quiz with images as ZIP" disabled>Export ZIP</button>
         <button id="save-all" class="auth-button auth-button-primary" type="button" disabled>Saved</button>
       </div>
     </main>
@@ -37,12 +38,14 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
   const descriptionInput = form.elements.namedItem('description')
   const saveAll = page.querySelector('#save-all')
   const exportButton = page.querySelector('#export-quiz')
+  const exportZipButton = page.querySelector('#export-quiz-zip')
   const saveAllWrap = page.querySelector('#quiz-editor-save-all')
   const saveAllStatus = page.querySelector('#quiz-editor-save-all-status')
   let savedValues = null
   let saving = false
   let savingAll = false
   let exporting = false
+  let exportFormat = null
   let questionEditor = null
 
   function quizIsDirty() {
@@ -57,7 +60,9 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
     saveAll.disabled = busy || !ready || !dirty
     saveAll.textContent = savingAll ? 'Saving all…' : dirty ? 'Save all' : 'Saved'
     exportButton.disabled = busy || !ready
-    exportButton.textContent = exporting ? 'Exporting…' : 'Export JSON'
+    exportZipButton.disabled = busy || !ready
+    exportButton.textContent = exporting && exportFormat === 'json' ? 'Exporting…' : 'Export JSON'
+    exportZipButton.textContent = exporting && exportFormat === 'zip' ? 'Exporting…' : 'Export ZIP'
   }
 
   function updateSaveButton() {
@@ -185,19 +190,49 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
       return
     }
     exporting = true
+    exportFormat = 'json'
     updateSaveAllButton()
     setStatus(saveAllStatus, '')
     try {
-      const [quizResult, questionsResult] = await Promise.all([
+      const [quizResult, questionsResult, imagesResult] = await Promise.all([
         requestJson('GET', `/api/quiz/quizzes/${quizId}`),
         requestJson('GET', `/api/quiz/quizzes/${quizId}/questions`),
+        requestJson('GET', '/api/quiz/images'),
       ])
       if (!app.contains(form)) return
       const [quizResponse, quiz] = quizResult
       const [questionsResponse, questionsPayload] = questionsResult
-      if (!quizResponse.ok || !questionsResponse.ok || !Array.isArray(questionsPayload?.questions)) {
+      const [imagesResponse, imagesPayload] = imagesResult
+      if (!quizResponse.ok || !questionsResponse.ok || !imagesResponse.ok
+        || !Array.isArray(questionsPayload?.questions) || !Array.isArray(imagesPayload?.images)) {
         setStatus(saveAllStatus, 'Could not export this quiz. Please try again.', true)
         return
+      }
+      const imageIds = new Set()
+      function collectImageIds(value) {
+        if (!value || typeof value !== 'object') return
+        for (const [key, child] of Object.entries(value)) {
+          if (key === 'image_id' || key.endsWith('_image_id')) {
+            imageIds.add(child)
+          } else {
+            collectImageIds(child)
+          }
+        }
+      }
+      for (const { config } of questionsPayload.questions) collectImageIds(config)
+      const images = []
+      const imageNames = new Map(imagesPayload.images.map((image) => [image.id, image.name]))
+      for (const id of imageIds) {
+        const name = imageNames.get(id)
+        if (typeof name !== 'string') throw new Error('Could not export image name')
+        const response = await fetch(`/api/quiz/images/${id}`)
+        if (!response.ok) throw new Error('Could not export image')
+        const bytes = new Uint8Array(await response.arrayBuffer())
+        let binary = ''
+        for (let offset = 0; offset < bytes.length; offset += 8192) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192))
+        }
+        images.push({ id, name, data: btoa(binary) })
       }
       const data = {
         format: 'softerr-quiz',
@@ -207,6 +242,7 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
         questions: questionsPayload.questions.map(({ template, prompt, config }) => ({
           template, prompt, config,
         })),
+        images,
       }
       const filename = quiz.name.toLowerCase().normalize('NFKD')
         .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')
@@ -227,6 +263,44 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
       if (app.contains(form)) setStatus(saveAllStatus, 'Could not export this quiz. Please try again.', true)
     } finally {
       exporting = false
+      exportFormat = null
+      updateSaveAllButton()
+    }
+  })
+
+  exportZipButton.addEventListener('click', async () => {
+    if (exportZipButton.disabled) return
+    if (quizIsDirty() || questionEditor.hasChanges()) {
+      setStatus(saveAllStatus, 'Save all changes before exporting.', true)
+      return
+    }
+    exporting = true
+    exportFormat = 'zip'
+    updateSaveAllButton()
+    setStatus(saveAllStatus, '')
+    try {
+      const response = await fetch(`/api/quiz/quizzes/${quizId}/export.zip`)
+      if (!app.contains(form)) return
+      if (!response.ok) {
+        setStatus(saveAllStatus, responseError(response, await response.json().catch(() => null)), true)
+        return
+      }
+      const url = URL.createObjectURL(await response.blob())
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `quiz-${quizId}.zip`
+      document.body.append(link)
+      try {
+        link.click()
+      } finally {
+        link.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      }
+    } catch {
+      if (app.contains(form)) setStatus(saveAllStatus, 'Could not export this quiz. Please try again.', true)
+    } finally {
+      exporting = false
+      exportFormat = null
       updateSaveAllButton()
     }
   })

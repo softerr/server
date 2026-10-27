@@ -30,11 +30,15 @@ key to its local user. The API creates the local user on the first quiz create.
   the quiz with HTTP `201`. The name is trimmed and must be 1–100 bytes. Optional
   `description` is trimmed and limited to 1000 bytes. The request body must be
   at most 4096 bytes. An account may have 100 quizzes; further creation returns `409`.
-- `POST /api/quiz/quizzes/import` accepts a `softerr-quiz` version 1 export and
-  creates a new quiz with its questions in order. The request is limited to
-  512 KiB and 100 questions. The import is atomic: an invalid question or a
-  database failure leaves no partial quiz. It returns the new quiz with HTTP
-  `201`; a full library returns `409`.
+- `POST /api/quiz/quizzes/import` accepts version 1 quiz JSON or ZIP and creates
+  a new quiz with its questions in order. The request is limited to 48 MiB and
+  100 questions. Send JSON as `application/json` or ZIP bytes as
+  `application/octet-stream` (also accepts `application/zip`). The import is
+  atomic: an invalid question, image, or archive leaves no partial quiz. It
+  returns the new quiz with HTTP `201`; a full library returns `409`.
+- `GET /api/quiz/quizzes/{quizId}/export.zip` downloads an owned quiz as ZIP.
+  The archive contains `quiz.json` and used images under `images/{imageId}/`
+  with their original filenames.
 - `PATCH /api/quiz/quizzes/{quizId}` updates an owned quiz and returns it. `name`
   is required; an omitted `description` retains its value. A
   missing or other account's quiz returns `404`.
@@ -51,23 +55,42 @@ key to its local user. The API creates the local user on the first quiz create.
   question ID exactly once. Unknown, missing, or stale IDs return `409`.
 - `DELETE /api/quiz/quizzes/{quizId}/questions/{questionId}` returns `204` with no body.
   Question endpoints return `404` for quizzes or questions owned by another account.
+- `GET /api/quiz/images` lists the account's reusable image metadata by filename
+  (case-insensitive), current usage (`count` and `bytes`), and limits (`count`,
+  `bytes`, and `per_image_bytes`).
+- `POST /api/quiz/images` accepts raw PNG, JPEG, or WebP bytes and returns image
+  metadata with HTTP `201`. Each image is limited to 2 MiB and 4096 pixels per
+  side. Send the original filename in the required `X-Image-Name` header, encoded
+  with `encodeURIComponent` or equivalent. Names may be up to 255 UTF-8 bytes and
+  cannot contain path separators or control characters. The library is limited
+  to 256 images and 32 MiB. Uploading identical bytes again returns the existing
+  image ID and its first uploaded name.
+- `GET /api/quiz/images/{imageId}` returns the original bytes to the owner.
+- `DELETE /api/quiz/images/{imageId}` returns `204` if the image is unused, or
+  `409` if a saved question still references it. Removing an image from one
+  question does not remove it from another.
 
 The quiz editor's **Export JSON** button downloads the saved quiz as a portable
 document with `format: "softerr-quiz"`, `version: 1`, `name`, `description`, and
 an ordered `questions` array. Each question contains `template`, `prompt`, and
-`config`. Account IDs, database IDs, and timestamps are excluded. Save pending
-edits before exporting. The library's **Import JSON** button creates a new quiz
-from this file; it does not replace an existing quiz.
+`config`. Used images appear once in the `images` array with their original name
+and base64 data and are
+relinked to the importing account. **Export ZIP** stores the same quiz data in
+`quiz.json`, with each used image in a separate file referenced by the
+manifest's `images` array. Its `name` field preserves the original filename;
+image IDs keep archive paths unique. Save pending edits before exporting. The library's
+**Import JSON/ZIP** button creates a new quiz; it does not replace an existing
+quiz. Only version 1 exports are accepted.
 
 Question create and update bodies require `template`, `prompt`, and `config`.
 The prompt is trimmed and limited to 500 bytes. Text inside `config` is trimmed.
-The complete JSON request is limited to 4096 bytes. Each returned question has
+Question create and update JSON requests are limited to 32768 bytes. Each returned question has
 `id`, `quiz_id`, `template`, `prompt`, `config`, and `created`.
 
 | Template | `config` | Rule |
 | --- | --- | --- |
-| `multiple_choice` | `{"options":[{"text":"A","correct":true},{"text":"B","correct":false}]}` | 2–8 options; at least one correct. Users may select multiple answers. |
-| `one_choice` | Same shape as `multiple_choice` | 2–8 options; exactly one correct. |
+| `multiple_choice` | `{"options":[{"text":"A","correct":true},{"text":"B","correct":false}]}` | 2–32 options; at least one correct. Users may select multiple answers. |
+| `one_choice` | Same shape as `multiple_choice` | 2–32 options; exactly one correct. |
 | `number` | `{"answer":"42.5"}` | Decimal number as a string, up to 64 bytes. |
 | `short_answer` | `{"answer":"Paris"}` | Nonempty answer, up to 500 bytes. |
 | `open` | `{"sample_answer":"Explain..."}` | Optional sample answer, up to 1000 bytes; free-form response. |
@@ -75,21 +98,31 @@ The complete JSON request is limited to 4096 bytes. Each returned question has
 | `yes_no` | `{"answer":false}` | Boolean answer. |
 | `show_answer` | `{"answer":"The answer"}` | Nonempty answer to reveal, up to 1000 bytes. |
 | `no_answer` | `{}` | Question only. |
-| `match` | `{"pairs":[{"keyword":"France","definition":"Paris"},{"keyword":"Italy","definition":"Rome"}]}` | 2–8 pairs. |
-| `ordering` | `{"items":["Wash","Cut","Cook"]}` | 2–8 distinct items, listed in the correct order. |
-| `fill_blanks` | `{"answers":["Paris","Rome"]}` | Put `{{1}}`, `{{2}}`, etc. in `prompt`, each exactly once. The answer array follows marker order; 1–8 blanks. |
-| `categorize` | `{"categories":[{"name":"Mammals","items":["Dog"]},{"name":"Birds","items":["Eagle"]}]}` | 2–8 distinct categories, each with 1–8 items; at most 16 distinct items total. |
+| `match` | `{"pairs":[{"keyword":"France","definition":"Paris"},{"keyword":"Italy","definition":"Rome"}]}` | 2–32 pairs. |
+| `ordering` | `{"items":[{"text":"Wash"},{"text":"Cut"},{"text":"Cook"}]}` | 2–32 distinct items, listed in the correct order. |
+| `fill_blanks` | `{"answers":[{"text":"Paris"},{"text":"Rome"}]}` | Put `{{1}}`, `{{2}}`, etc. in `prompt`, each exactly once. The answer array follows marker order; 1–32 blanks. |
+| `categorize` | `{"categories":[{"name":"Mammals","items":[{"text":"Dog"}]},{"name":"Birds","items":[{"text":"Eagle"}]}]}` | 2–32 distinct categories, each with 1–32 items; at most 32 distinct items total. |
 
-Choice option text and match keywords/definitions are nonempty and limited to
-150 bytes each. Ordering items and blank answers are also limited to 150 bytes;
+Any question may include `image_id` for the prompt and `answer_image_id` for
+the answer in `config`. Choice options may include their own `image_id`.
+Match pairs may include `keyword_image_id` and `definition_image_id`, and
+categories may include `name_image_id`. Ordering items, blank answers, and
+category items are objects such as
+`{"text":"Dog","image_id":12}`. A field with its own image may have empty
+text. Image IDs must belong to the current account; the same ID may be used
+in multiple fields and questions.
+
+Choice option text is limited to 150 bytes; match keywords and definitions
+are limited to 150 bytes each and require text or an image. Ordering items
+and blank answers are also limited to 150 bytes;
 category names are limited to 100 bytes and category items to 150 bytes. The
 order of choice options, match pairs, and ordering items follows their array
 order in `config`. The answer configs are stored with the question; the current
 editor creates and edits questions, while quiz-taking behavior is not yet available.
 
-Run **Setup PostgreSQL On Server** before deploying this API version so the
-quiz schema and grants exist. Then run **Deploy Apps On Server**
-with `all` to publish the API and quiz app.
+Run **Setup PostgreSQL On Server** so the quiz image table and grants exist,
+then **Setup Nginx On Server** to install PHP ZIP support. Run **Deploy Apps On
+Server** with `all` to publish the API and quiz app.
 
 ## 1. Health check
 
