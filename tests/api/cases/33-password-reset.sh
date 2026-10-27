@@ -36,6 +36,9 @@ test_password_reset_full_flow_impl() (
   fetch_verify_token_for_email "${TEST_EMAIL}"
   api_request GET "/api/auth/verify?token=${TEST_VERIFY_TOKEN}"
   assert_status 200
+  email_sql="$(sql_escape_literal "${TEST_EMAIL}")"
+  reset_psql "UPDATE public.\"user\" SET approved_at = CURRENT_TIMESTAMP
+    WHERE email = '${email_sql}';" >/dev/null
 
   cookie_file="$(mktemp)"
   trap 'rm -f "${cookie_file}"' EXIT
@@ -51,7 +54,6 @@ test_password_reset_full_flow_impl() (
   assert_json_value '.message' 'If this account exists, a password reset email will be sent'
   api_request POST /api/auth/password-reset/request "${body}"
   assert_status 202
-  email_sql="$(sql_escape_literal "${TEST_EMAIL}")"
   count="$(reset_psql "SELECT count(*) FROM public.user_token t
     JOIN public.\"user\" u ON u.id = t.user_id
     WHERE u.email = '${email_sql}' AND t.type = 'password_reset';")"

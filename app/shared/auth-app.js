@@ -216,7 +216,7 @@ export function startAuthApp(config) {
         <section class="panel" aria-labelledby="signup-title">
           <button class="back-button" type="button" data-view="login">← Back to log in</button>
           <h1 id="signup-title">Create an account</h1>
-          <p>Sign up to get a verification link by email.</p>
+          <p>Sign up to get a verification link by email. After you verify, an admin will review your account.</p>
           <form id="signup-form">
             <label class="field"><span>Username</span><input name="username" type="text" autocomplete="username" required /></label>
             <label class="field"><span>Email</span><input name="email" type="email" autocomplete="email" required /></label>
@@ -226,7 +226,7 @@ export function startAuthApp(config) {
           <p id="signup-status" class="form-status" role="status" aria-live="polite"></p>
           <div id="signup-result" hidden>
             <h2>Check your email</h2>
-            <p>A verification link has been queued for <strong id="signup-email"></strong>.</p>
+            <p>A verification link has been queued for <strong id="signup-email"></strong>. An admin will be notified after you verify your email.</p>
             <p>Open the link in the email to verify your account.</p>
             <button class="auth-button auth-button-secondary" type="button" id="resend-button">Resend verification email</button>
           </div>

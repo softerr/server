@@ -12,7 +12,7 @@ function handleListUsers(): never
     $db = connectDb();
     $result = @pg_query(
         $db,
-        'SELECT id, username, email, role, verified, deleting, created
+        'SELECT id, username, email, role, verified, approved_at, deleting, created
          FROM public."user"
          ORDER BY id'
     );
@@ -39,7 +39,7 @@ function beginAdminMutation($db, int $adminId): void
     $lock = @pg_query($db, 'SELECT pg_advisory_xact_lock(20261027, 1)');
     $actor = $lock === false ? false : @pg_query_params(
         $db,
-        'SELECT role, deleting FROM public."user" WHERE id = $1',
+        'SELECT role, verified, approved_at, deleting FROM public."user" WHERE id = $1',
         [$adminId]
     );
     if ($actor === false) {
@@ -47,7 +47,8 @@ function beginAdminMutation($db, int $adminId): void
         respond(500, ['error' => 'Failed to authorize admin action']);
     }
     $row = pg_fetch_assoc($actor);
-    if ($row === false || $row['role'] !== 'admin' || $row['deleting'] === 't') {
+    if ($row === false || $row['role'] !== 'admin' || $row['verified'] !== 't'
+        || $row['approved_at'] === null || $row['deleting'] === 't') {
         @pg_query($db, 'ROLLBACK');
         respond(403, ['error' => 'Admin access required']);
     }
@@ -75,7 +76,8 @@ function handleUpdateUserRole(int $targetId): never
     $result = @pg_query_params(
         $db,
         'UPDATE public."user" SET role = $1 WHERE id = $2 AND deleting = FALSE
-         RETURNING id, username, email, role, verified, created',
+           AND verified = TRUE AND approved_at IS NOT NULL
+         RETURNING id, username, email, role, verified, approved_at, created',
         [$role, $targetId]
     );
     if ($result === false) {
@@ -89,6 +91,52 @@ function handleUpdateUserRole(int $targetId): never
     }
     if (@pg_query($db, 'COMMIT') === false) {
         respond(500, ['error' => 'Failed to update user role']);
+    }
+    respond(200, publicUser($user));
+}
+
+function handleApproveUser(int $targetId): never
+{
+    $currentUser = currentSessionUser();
+    if ($currentUser['role'] !== 'admin') {
+        respond(403, ['error' => 'Admin access required']);
+    }
+
+    header('Cache-Control: no-store');
+    $db = connectDb();
+    beginAdminMutation($db, (int) $currentUser['id']);
+    $targetResult = @pg_query_params($db,
+        'SELECT id, verified, approved_at, deleting
+         FROM public."user" WHERE id = $1 FOR UPDATE', [$targetId]);
+    if ($targetResult === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(500, ['error' => 'Failed to approve user']);
+    }
+    $target = pg_fetch_assoc($targetResult);
+    if ($target === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(404, ['error' => 'User not found']);
+    }
+    if ($target['verified'] !== 't' || $target['deleting'] === 't') {
+        @pg_query($db, 'ROLLBACK');
+        respond(409, ['error' => 'User must verify their email before approval']);
+    }
+    if ($target['approved_at'] !== null) {
+        @pg_query($db, 'ROLLBACK');
+        respond(409, ['error' => 'User is already approved']);
+    }
+
+    $result = @pg_query_params($db,
+        'UPDATE public."user" SET approved_at = CURRENT_TIMESTAMP, approved_by = $2
+         WHERE id = $1
+         RETURNING id, username, email, role, verified, approved_at, created',
+        [$targetId, $currentUser['id']]);
+    $user = $result === false ? false : pg_fetch_assoc($result);
+    $discard = $user === false ? false : @pg_query_params($db,
+        'DELETE FROM public.approval_email_outbox WHERE applicant_id = $1', [$targetId]);
+    if ($discard === false || @pg_query($db, 'COMMIT') === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(500, ['error' => 'Failed to approve user']);
     }
     respond(200, publicUser($user));
 }

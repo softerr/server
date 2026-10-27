@@ -87,6 +87,7 @@ paths:
                 email: john@example.com
                 role: user
                 verified: false
+                approved: false
                 created: '2026-10-26 14:30:00'
                 verification_email_queued: true
         '400':
@@ -121,7 +122,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: login
-      summary: Log in to a verified account
+      summary: Log in to a verified and approved account
       description: |
         Email is trimmed and lowercased. A successful login creates a PHP
         session and sets an HttpOnly, SameSite=Strict cookie scoped to /api/.
@@ -159,7 +160,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Correct credentials, but email is not verified.
+          description: Correct credentials, but email is unverified or account approval is pending.
           content:
             application/json:
               schema:
@@ -199,7 +200,7 @@ paths:
       tags: [Administration]
       operationId: listUsers
       summary: List all auth users
-      description: Requires a verified session whose current account role is admin. Results are ordered by ID and include unverified accounts. Password hashes and tokens are never returned. The response is not cached.
+      description: Requires an approved, verified session whose current account role is admin. Results are ordered by ID and include unverified and pending accounts. Password hashes and tokens are never returned. The response is not cached.
       security:
         - sessionCookie: []
       responses:
@@ -243,7 +244,7 @@ paths:
       tags: [Administration]
       operationId: updateUserRole
       summary: Change an auth user's role
-      description: Requires a verified admin session. Admins cannot change their own role. A role change takes effect on the target user's next authenticated request.
+      description: Requires an approved, verified admin session and an approved, verified target. Admins cannot change their own role. A role change takes effect on the target user's next authenticated request.
       security:
         - sessionCookie: []
       requestBody:
@@ -291,6 +292,62 @@ paths:
                 $ref: '#/components/schemas/Error'
         '413':
           description: Request body is too large; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/users/{userId}/approve:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    post:
+      tags: [Administration]
+      operationId: approveUser
+      summary: Approve a verified account
+      description: Requires an approved admin session. The target must have verified their email and still be awaiting approval.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Approved user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Current account is not an admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Target user does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Target is unverified, already approved, or deleting.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '405':
+          description: Method not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -537,6 +594,7 @@ paths:
                 email: john@example.com
                 role: user
                 verified: true
+                approved: false
                 created: '2026-10-26 14:30:00'
             text/html:
               schema:
@@ -1497,7 +1555,7 @@ components:
           description: Fallback IANA timezone if no valid header or cookie is supplied.
     User:
       type: object
-      required: [id, username, email, role, verified, created]
+      required: [id, username, email, role, verified, approved, created]
       properties:
         id:
           type: integer
@@ -1513,6 +1571,9 @@ components:
           description: Server-assigned account role. Signup always assigns user.
         verified:
           type: boolean
+        approved:
+          type: boolean
+          description: True after an admin approves the verified account.
         created:
           type: string
           description: |

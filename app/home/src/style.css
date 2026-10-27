@@ -129,6 +129,27 @@
   color: var(--error);
 }
 
+.user-approve {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--black);
+  color: var(--text-h);
+  font: inherit;
+  cursor: pointer;
+}
+
+.user-approve:hover,
+.user-approve:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.user-approve:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 .user-delete {
   display: grid;
   place-items: center;

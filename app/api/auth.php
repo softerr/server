@@ -70,6 +70,17 @@ if (is_string($path) && preg_match('#^/users/([1-9][0-9]*)/role$#', $path, $user
     handleUpdateUserRole($userId);
 }
 
+if (is_string($path) && preg_match('#^/users/([1-9][0-9]*)/approve$#', $path, $userMatch)) {
+    $userId = filter_var($userMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($userId === false) {
+        respond(404, ['error' => 'Not found']);
+    }
+    if ($method !== 'POST') {
+        respond(405, ['error' => 'Method not allowed']);
+    }
+    handleApproveUser($userId);
+}
+
 if (is_string($path) && preg_match('#^/users/([1-9][0-9]*)$#', $path, $userMatch)) {
     $userId = filter_var($userMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($userId === false) {

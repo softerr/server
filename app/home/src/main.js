@@ -10,7 +10,7 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
       <p id="users-status" class="form-status" role="status" aria-live="polite">Loading users…</p>
       <div id="users-table-wrap" class="users-table-wrap" hidden>
         <table class="users-table">
-          <thead><tr><th scope="col">ID</th><th scope="col">Username</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Verified</th><th scope="col">Created</th><th scope="col">Action</th></tr></thead>
+          <thead><tr><th scope="col">ID</th><th scope="col">Username</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Verified</th><th scope="col">Approval</th><th scope="col">Created</th><th scope="col">Action</th></tr></thead>
           <tbody id="users-table-body"></tbody>
         </table>
       </div>
@@ -67,11 +67,30 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
         roleSelect.append(option)
       }
       roleSelect.value = user.role
-      roleSelect.disabled = user.id === currentUser.id || user.deleting
+      roleSelect.disabled = user.id === currentUser.id || user.deleting || !user.approved
       roleCell.append(roleSelect)
       row.append(roleCell)
 
-      for (const value of [user.verified ? 'Yes' : 'No', user.created]) {
+      const verifiedCell = document.createElement('td')
+      verifiedCell.textContent = user.verified ? 'Yes' : 'No'
+      row.append(verifiedCell)
+
+      const approvalCell = document.createElement('td')
+      if (user.approved) {
+        approvalCell.textContent = 'Approved'
+      } else if (user.verified && !user.deleting) {
+        const approve = document.createElement('button')
+        approve.type = 'button'
+        approve.className = 'user-approve'
+        approve.textContent = 'Approve'
+        approve.setAttribute('aria-label', `Approve ${user.username}`)
+        approvalCell.append(approve)
+      } else {
+        approvalCell.textContent = user.deleting ? 'Deletion pending' : 'Awaiting verification'
+      }
+      row.append(approvalCell)
+
+      for (const value of [user.created]) {
         const cell = document.createElement('td')
         cell.textContent = String(value)
         row.append(cell)
@@ -92,7 +111,7 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
       rowStatus.setAttribute('role', 'status')
       rowStatus.setAttribute('aria-live', 'polite')
       if (user.deleting) rowStatus.textContent = 'Deletion pending'
-      else if (roleSelect.disabled) rowStatus.textContent = 'Your account'
+      else if (user.id === currentUser.id) rowStatus.textContent = 'Your account'
       action.append(remove, rowStatus)
       actionCell.append(action)
       row.append(actionCell)
@@ -142,6 +161,32 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
     app.querySelector('#delete-user-name').textContent = deletingRow.dataset.username
     setStatus(deleteStatus, '')
     deleteDialog.showModal()
+  })
+
+  body.addEventListener('click', async (event) => {
+    const approve = event.target.closest('.user-approve')
+    if (!approve || approve.disabled || !body.contains(approve)) return
+    const row = approve.closest('tr')
+    const rowStatus = row.querySelector('.role-status')
+    approve.disabled = true
+    setStatus(rowStatus, 'Approving…')
+    try {
+      const [response, payload] = await requestJson('POST', `/api/auth/users/${row.dataset.userId}/approve`)
+      if (!app.contains(row)) return
+      if (!response.ok) {
+        setStatus(rowStatus, responseError(response, payload), true)
+        approve.disabled = false
+        return
+      }
+      approve.parentElement.textContent = 'Approved'
+      row.querySelector('.role-select').disabled = payload.id === currentUser.id
+      setStatus(rowStatus, 'Approved')
+    } catch {
+      if (app.contains(row)) {
+        approve.disabled = false
+        setStatus(rowStatus, 'Could not approve user. Please try again.', true)
+      }
+    }
   })
 
   deleteDialog.addEventListener('cancel', (event) => {

@@ -41,14 +41,14 @@ function currentSessionUser(): array
     $db = connectDb();
     $result = @pg_query_params(
         $db,
-        'SELECT id, username, email, role, password, verified, deleting, created FROM public."user" WHERE id = $1',
+        'SELECT id, username, email, role, password, verified, approved_at, deleting, created FROM public."user" WHERE id = $1',
         [$userId]
     );
     if ($result === false) {
         respond(500, ['error' => 'Failed to look up account']);
     }
     $user = pg_fetch_assoc($result);
-    if ($user === false || $user['verified'] !== 't' || $user['deleting'] === 't'
+    if ($user === false || $user['verified'] !== 't' || $user['approved_at'] === null || $user['deleting'] === 't'
         || !hash_equals(hash('sha256', $user['password']), $fingerprint)) {
         $_SESSION = [];
         session_write_close();

@@ -27,6 +27,7 @@ test_auth_verify_success() {
   assert_json_value '.role' 'user' || return 1
   assert_json_value '.email' "${TEST_EMAIL}" || return 1
   assert_json_value '.verified' "true" || return 1
+  assert_json_value '.approved' "false" || return 1
 
   api_request "GET" "/api/auth/verify?token=${TEST_VERIFY_TOKEN}"
   assert_status "400" || return 1

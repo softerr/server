@@ -15,9 +15,11 @@ function handleReadiness(): never
         respond(503, ['status' => 'unavailable', 'error' => $error]);
     }
 
-    $schema = @pg_query($db, 'SELECT u.id, u.email, u.role, u.deleting, t.hash, t.email_attempted_at,
-            o.token_id, o.available_at, o.claimed_until, o.claim_id
-        FROM public."user" u, public.user_token t, public.verification_email_outbox o
+    $schema = @pg_query($db, 'SELECT u.id, u.email, u.role, u.deleting, u.approved_at, u.approved_by,
+            t.hash, t.email_attempted_at, o.token_id, o.available_at, o.claimed_until, o.claim_id,
+            a.applicant_id, a.recipient_id, a.available_at, a.claim_id
+        FROM public."user" u, public.user_token t, public.verification_email_outbox o,
+             public.approval_email_outbox a
         LIMIT 0');
     if ($schema === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Database schema is not ready']);

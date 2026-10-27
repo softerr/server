@@ -13,7 +13,9 @@ function respondVerification(int $statusCode, array $payload): never
 
     if ($statusCode === 200) {
         $title = 'Email verified';
-        $message = 'Your account is ready. You can now log in.';
+        $message = ($payload['approved'] ?? false)
+            ? 'Your account is ready. You can now log in.'
+            : 'Your email is verified. An admin must approve your account before you can log in.';
     } elseif ($statusCode === 400) {
         $title = 'Verification failed';
         $message = 'This verification link is invalid, expired, or already used.';
@@ -126,7 +128,7 @@ function handleVerify(): never
         'UPDATE public."user"
          SET verified = TRUE
          WHERE id = $1
-         RETURNING id, username, email, role, verified, created',
+         RETURNING id, username, email, role, verified, approved_at, created',
         [$candidate['user_id']]
     );
     if ($verifyResult === false) {
@@ -150,6 +152,21 @@ function handleVerify(): never
         respondVerification(500, ['error' => 'Failed to finalize verification']);
     }
 
+    if ($user['approved_at'] === null) {
+        $noticeResult = @pg_query_params($db,
+            'INSERT INTO public.approval_email_outbox (applicant_id, recipient_id)
+             SELECT $1, admin.id FROM public."user" admin
+             WHERE admin.role = $2 AND admin.verified = TRUE
+               AND admin.approved_at IS NOT NULL AND admin.deleting = FALSE
+               AND admin.id <> $1
+             ON CONFLICT (applicant_id, recipient_id) DO NOTHING',
+            [$candidate['user_id'], 'admin']);
+        if ($noticeResult === false) {
+            @pg_query($db, 'ROLLBACK');
+            respondVerification(500, ['error' => 'Failed to queue admin notification']);
+        }
+    }
+
     if (@pg_query($db, 'COMMIT') === false) {
         @pg_query($db, 'ROLLBACK');
         respondVerification(500, ['error' => 'Failed to commit verification']);
@@ -161,6 +178,7 @@ function handleVerify(): never
         'email' => $user['email'],
         'role' => $user['role'],
         'verified' => $user['verified'] === 't',
+        'approved' => $user['approved_at'] !== null,
         'created' => $user['created'],
     ]);
 }

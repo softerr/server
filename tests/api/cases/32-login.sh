@@ -63,6 +63,8 @@ test_auth_users_requires_admin() {
   assert_status 401 || return 1
   api_request GET /api/auth/users/1/role
   assert_status 405 || return 1
+  api_request POST /api/auth/users/1/approve
+  assert_status 401 || return 1
   api_request DELETE /api/auth/users/1
   assert_status 401 || return 1
   api_request GET /api/auth/users/1
@@ -79,6 +81,18 @@ test_auth_login_session_lifecycle() {
   api_request GET "/api/auth/verify?token=${TEST_VERIFY_TOKEN}"
   assert_status 200 || return 1
 
+  body="$(jq -nc --arg email "${TEST_EMAIL}" '{email:$email,password:"test_password_123"}')"
+  api_request POST /api/auth/login "${body}"
+  assert_status 403 || return 1
+  assert_json_value '.error' 'Your account is awaiting admin approval' || return 1
+  local escaped_approval_email
+  escaped_approval_email="$(sql_escape_literal "${TEST_EMAIL}")"
+  if ! sudo -n -u "${API_TEST_DB_SUPERUSER}" psql -X -v ON_ERROR_STOP=1 \
+    -d "${API_TEST_DB_NAME}" -c "UPDATE public.\"user\" SET approved_at = CURRENT_TIMESTAMP WHERE email = '${escaped_approval_email}'" >/dev/null; then
+    fail_test 'could not approve test account for session tests'
+    return 1
+  fi
+
   local cookie_file headers body response status response_body current_id
   cookie_file="$(mktemp)"
   headers="$(mktemp)"
@@ -88,7 +102,7 @@ test_auth_login_session_lifecycle() {
   status="${response##*$'\n'}"
   response_body="${response%$'\n'*}"
   current_id="$(jq -r '.id // empty' <<<"${response_body}")"
-  if [[ "${status}" != 200 ]] || ! jq -e --arg email "${TEST_EMAIL}" '.email == $email and .role == "user" and .verified == true' <<<"${response_body}" >/dev/null; then
+  if [[ "${status}" != 200 ]] || ! jq -e --arg email "${TEST_EMAIL}" '.email == $email and .role == "user" and .verified == true and .approved == true' <<<"${response_body}" >/dev/null; then
     rm -f "${cookie_file}" "${headers}"
     fail_test "login failed: HTTP ${status}; body=${response_body}"
     return 1
@@ -175,6 +189,44 @@ test_auth_login_session_lifecycle() {
           fail_test "admin could not list users safely: ${response}"
           return 1
         fi
+        response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' \
+          "${API_TEST_BASE_URL%/}/api/auth/users/${target_id}/approve")"
+        if [[ "${response##*$'\n'}" != 409 ]]; then
+          rm -f "${cookie_file}"
+          fail_test "admin could approve unverified account: ${response}"
+          return 1
+        fi
+        fetch_verify_token_for_email "${target_email}" || { rm -f "${cookie_file}"; return 1; }
+        api_request GET "/api/auth/verify?token=${TEST_VERIFY_TOKEN}"
+        assert_status 200 || { rm -f "${cookie_file}"; return 1; }
+        local queued_notice
+        queued_notice="$(sudo -n -u "${API_TEST_DB_SUPERUSER}" psql -X -At \
+          -d "${API_TEST_DB_NAME}" -c "SELECT count(*) FROM public.approval_email_outbox WHERE applicant_id = ${target_id} AND recipient_id = ${current_id}")"
+        if [[ -n "${API_TEST_MAILPIT_URL:-}" ]]; then
+          sudo -n systemctl start softerr-send-email.service
+          local approval_mail=''
+          approval_mail="$(curl -fsS --max-time 5 -G \
+            --data-urlencode "query=to:${TEST_EMAIL}" \
+            "${API_TEST_MAILPIT_URL%/}/view/latest.txt" 2>/dev/null)" || true
+          if [[ "${approval_mail}" != *"${target_email}"* ]] \
+            || [[ "${approval_mail}" != *'waiting for account approval'* ]]; then
+            rm -f "${cookie_file}"
+            fail_test 'admin approval email was not delivered'
+            return 1
+          fi
+        elif [[ "${queued_notice}" != 1 ]]; then
+          rm -f "${cookie_file}"
+          fail_test 'verification did not queue an admin approval email'
+          return 1
+        fi
+        response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' \
+          "${API_TEST_BASE_URL%/}/api/auth/users/${target_id}/approve")"
+        if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e '.verified == true and .approved == true' \
+          <<<"${response%$'\n'*}" >/dev/null; then
+          rm -f "${cookie_file}"
+          fail_test "admin could not approve verified account: ${response}"
+          return 1
+        fi
         response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
           --data '{"role":"owner"}' -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/auth/users/${target_id}/role")"
         if [[ "${response##*$'\n'}" != 400 ]]; then
@@ -214,9 +266,6 @@ test_auth_login_session_lifecycle() {
           fail_test "admin could delete own account: ${response}"
           return 1
         fi
-        fetch_verify_token_for_email "${target_email}" || { rm -f "${cookie_file}"; return 1; }
-        api_request GET "/api/auth/verify?token=${TEST_VERIFY_TOKEN}"
-        assert_status 200 || { rm -f "${cookie_file}"; return 1; }
         target_cookie="$(mktemp)"
         response="$(curl -sS -c "${target_cookie}" -H 'Content-Type: application/json' \
           --data "$(jq -nc --arg email "${target_email}" '{email:$email,password:"test_password_123"}')" \

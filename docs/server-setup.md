@@ -43,6 +43,10 @@ The workflow fails at the step that needs attention. Rerunning it reapplies the 
 
 PostgreSQL setup uses `configs/postgresql/init.sql` for the API role and databases, then applies `auth.sql` to `auth` and `quiz.sql` to `quiz`.
 
+To make the first admin, sign up and verify that account, then run the SQL command in [Server maintenance](server-maintenance.md). New accounts require approval in the home Users page after email verification. Verification queues an email for each active admin.
+
+When upgrading an existing auth database, already verified accounts are approved once so their sessions continue to work. Existing unverified accounts remain pending after verification.
+
 ## Later updates
 
 Use **Deploy Apps On Server** to deploy `api`, `home`, `quiz`, or `all` without repeating server setup. The home and quiz apps build on the GitHub runner; only their built files are uploaded. Each app is checked through Nginx after publication and restored to its previous release if the check fails. Run **Setup PostgreSQL On Server** before deploying API code that needs a new database column, such as account roles. Use **Setup Nginx On Server** after web server configuration or runtime settings change. The latter workflow runs PHP-FPM and email worker setup before Nginx setup. Those workflows use the same pinned SSH host key and production secrets.

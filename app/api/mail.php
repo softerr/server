@@ -64,6 +64,19 @@ function sendPasswordChangedEmail(string $email, string $username): bool
     return sendAccountEmail($email, 'Your password was changed', $body);
 }
 
+function sendApprovalRequestEmail(string $email, string $adminName, string $applicantName, string $applicantEmail): bool
+{
+    $baseUrl = appBaseUrl();
+    if ($baseUrl === null) {
+        return false;
+    }
+    $safeName = str_replace(["\r", "\n"], ' ', $applicantName);
+    $body = "Hello {$adminName},\n\n"
+        . "{$safeName} ({$applicantEmail}) verified their email and is waiting for account approval.\n\n"
+        . "Review users: {$baseUrl}/#users\n";
+    return sendAccountEmail($email, 'Account waiting for approval', $body);
+}
+
 function sendAccountEmail(string $email, string $subject, string $body): bool
 {
     $mailFrom = trim((string)(getenv('MAIL_FROM') ?: 'no-reply@localhost'));

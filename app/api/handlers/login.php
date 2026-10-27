@@ -9,6 +9,7 @@ function publicUser(array $user): array
         'email' => $user['email'],
         'role' => $user['role'],
         'verified' => $user['verified'] === 't',
+        'approved' => $user['approved_at'] !== null,
         'created' => $user['created'],
     ];
 }
@@ -31,7 +32,7 @@ function handleLogin(): never
     $db = connectDb();
     $result = @pg_query_params(
         $db,
-        'SELECT id, username, email, role, password, verified, deleting, created
+        'SELECT id, username, email, role, password, verified, approved_at, deleting, created
          FROM public."user" WHERE email = $1 LIMIT 1',
         [$email]
     );
@@ -52,6 +53,9 @@ function handleLogin(): never
     }
     if ($user['verified'] !== 't') {
         respond(403, ['error' => 'Verify your email before logging in']);
+    }
+    if ($user['approved_at'] === null) {
+        respond(403, ['error' => 'Your account is awaiting admin approval']);
     }
 
     startAuthSession();

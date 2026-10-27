@@ -189,6 +189,7 @@ Example response:
   "email": "john@example.com",
   "role": "user",
   "verified": false,
+  "approved": false,
   "created": "2026-05-17 14:30:00",
   "verification_email_queued": true
 }
@@ -261,6 +262,7 @@ Example response:
   "email": "john@example.com",
   "role": "user",
   "verified": true,
+  "approved": false,
   "created": "2026-05-17 14:30:00"
 }
 ```
@@ -269,6 +271,7 @@ Behavior:
 - Validates token from `public.user_token`.
 - Token must still be unexpired when the account lock is acquired.
 - Locks the account, rechecks the token, then marks the user as verified and deletes all verification tokens in one transaction. A token removed by a concurrent resend or another verification request is rejected.
+- Queues one approval notice for each active admin in the same transaction. The email worker delivers these notices; verification does not wait for SMTP.
 
 Common errors:
 - `400 {"error":"Invalid verification token"}`
@@ -283,10 +286,10 @@ Common errors:
 `POST /api/auth/login` accepts JSON with `email` and `password`. Email is
 trimmed and lowercased. Both fields must be strings and nonempty; email must
 be valid and at most 255 bytes, password at most 1024 bytes, and the body at
-most 4096 bytes. The account must have a verified email. The endpoint returns
+most 4096 bytes. The account must have a verified email and admin approval. The endpoint returns
 `200` with the same user fields as verification and sets a `softerr_session`
 cookie. Wrong email or password returns `401` with the same error message;
-correct credentials for an unverified account return `403`. Invalid input
+correct credentials for an unverified or unapproved account return `403`. Invalid input
 returns `400`. Nginx returns `429` when the per-IP limit of 10 requests per
 minute plus a burst of 10 is exceeded.
 
@@ -302,7 +305,7 @@ store and resend the cookie. Quiz endpoints require the same session cookie.
 
 `GET /api/auth/users` requires a verified session with the current `admin`
 role. It returns `{ "users": [...] }`, ordered by ID. Each entry has the same
-public fields as `/api/auth/me`: `id`, `username`, `email`, `role`, `verified`,
+public fields as `/api/auth/me`: `id`, `username`, `email`, `role`, `verified`, `approved`,
 and `created`, plus `deleting` to identify a blocked account awaiting cleanup.
 Unverified accounts are included; passwords and tokens are not.
 The response uses `Cache-Control: no-store`. A missing session returns `401`,
@@ -313,7 +316,13 @@ the updated user. The role must be `admin`, `mod`, or `user`. It requires an
 admin session, and admins cannot change their own role (`409`). Invalid input
 returns `400`, a missing target returns `404`, and a missing or non-admin
 session returns `401` or `403`. Role changes take effect on the target user's
-next authenticated request. The home Users table provides this control.
+next authenticated request. Role changes require an approved, verified target.
+The home Users table provides this control.
+
+`POST /api/auth/users/{userId}/approve` approves a verified account and returns
+the updated user. An unverified, already approved, or deleting account returns
+`409`; a missing account returns `404`. Only an approved admin can call it.
+The Users table shows an Approve button for verified accounts awaiting approval.
 
 `DELETE /api/auth/users/{userId}` permanently removes another account, its
 verification and reset tokens, and its quiz library. It requires an admin
@@ -351,6 +360,8 @@ in the URL fragment so the initial page request does not send it to Nginx.
 The `verification_email_queued` response field confirms that the job was committed to PostgreSQL. It does not mean the mail transport accepted or delivered the message. The systemd email worker checks the outbox every minute. It claims each job for 15 minutes, then sends without holding a database transaction open. The delivery schedule and claim are stored separately, so a resend during an active delivery leaves that claim intact; the in-flight delivery can satisfy the resend. Failed deliveries remain queued and are retried after two minutes while the token is valid. If the worker stops during delivery, the claim expires and the job becomes available again. Delivery may happen more than once if the worker stops after SMTP accepts a message but before it deletes the outbox row.
 
 The worker uses SMTP when `SMTP_HOST` is configured and PHP `mail()` otherwise. An SMTP failure does not fall back to `mail()`. Verification or token expiry removes obsolete queued jobs. The client can request another attempt with `POST /api/auth/resend-verification` after the one-minute cooldown.
+
+Successful verification queues one approval notice per active admin in `public.approval_email_outbox`. The same worker sends those notices and retries failures after two minutes. Approval removes notices that have not yet been sent. The worker discards queued notices for recipients who are no longer active admins when it processes them.
 
 Both PHP-FPM and the systemd email worker receive these runtime env vars:
 
