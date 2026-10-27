@@ -601,8 +601,9 @@ paths:
       operationId: createQuiz
       summary: Create a quiz in the current account's library
       description: |
-        Name is trimmed and must contain 1–100 bytes. The JSON body is limited
-        to 4096 bytes. Each account can have up to 100 quizzes.
+        Name is trimmed and must contain 1–100 bytes. Description is trimmed and
+        limited to 1000 bytes. The JSON body is limited to 4096 bytes. Each
+        account can have up to 100 quizzes.
       security:
         - sessionCookie: []
       requestBody:
@@ -617,6 +618,9 @@ paths:
                   type: string
                   minLength: 1
                   description: Trimmed before validation; at most 100 bytes.
+                description:
+                  type: string
+                  description: Trimmed before storage; at most 1000 bytes. Defaults to empty.
             example:
               name: Geography
       responses:
@@ -659,10 +663,40 @@ paths:
           type: integer
           format: int64
           minimum: 1
+    get:
+      tags: [Quizzes]
+      operationId: getQuiz
+      summary: Get a quiz owned by the current account
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Owned quiz.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quiz'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Quiz does not exist or belongs to another account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
     patch:
       tags: [Quizzes]
       operationId: updateQuiz
-      summary: Rename a quiz owned by the current account
+      summary: Update a quiz owned by the current account
+      description: |
+        Name is required. An omitted description retains its previous value.
+        Description is trimmed and limited to 1000 bytes.
       security:
         - sessionCookie: []
       requestBody:
@@ -677,6 +711,9 @@ paths:
                   type: string
                   minLength: 1
                   description: Trimmed before validation; at most 100 bytes.
+                description:
+                  type: string
+                  description: Trimmed before storage; at most 1000 bytes.
       responses:
         '200':
           description: Updated quiz.
@@ -723,6 +760,252 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Quiz does not exist or belongs to another account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /quiz/quizzes/{quizId}/questions:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    get:
+      tags: [Quizzes]
+      operationId: listQuizQuestions
+      summary: List questions in an owned quiz, in saved order
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Questions in the quiz.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [questions]
+                properties:
+                  questions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Question'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Quiz does not exist or belongs to another account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Quizzes]
+      operationId: createQuizQuestion
+      summary: Add a question to an owned quiz
+      description: A quiz can have up to 100 questions. Request bodies are limited to 4096 bytes.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionInput'
+      responses:
+        '201':
+          description: Question created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Question'
+        '400':
+          description: Invalid template, prompt, or template config.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Quiz does not exist or belongs to another account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Quiz already has 100 questions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request body is too large; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /quiz/quizzes/{quizId}/questions/order:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    put:
+      tags: [Quizzes]
+      operationId: reorderQuizQuestions
+      summary: Save the order of all questions in an owned quiz
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question_ids]
+              properties:
+                question_ids:
+                  type: array
+                  maxItems: 100
+                  uniqueItems: true
+                  items:
+                    type: integer
+                    format: int64
+                    minimum: 1
+      responses:
+        '200':
+          description: Question order saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [question_ids]
+                properties:
+                  question_ids:
+                    type: array
+                    items:
+                      type: integer
+                      format: int64
+        '400':
+          description: Invalid question ID list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Quiz does not exist or belongs to another account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: IDs do not match the current question list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request body is too large; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /quiz/quizzes/{quizId}/questions/{questionId}:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+      - name: questionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    patch:
+      tags: [Quizzes]
+      operationId: updateQuizQuestion
+      summary: Replace an owned question's prompt, template, and config
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionInput'
+      responses:
+        '200':
+          description: Updated question.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Question'
+        '400':
+          description: Invalid template, prompt, or template config.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Question or quiz does not exist or belongs to another account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request body is too large; Nginx may return a non-JSON body.
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Quizzes]
+      operationId: deleteQuizQuestion
+      summary: Delete a question from an owned quiz
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Question deleted; no response body.
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Question or quiz does not exist or belongs to another account.
           content:
             application/json:
               schema:
@@ -782,16 +1065,59 @@ components:
   schemas:
     Quiz:
       type: object
-      required: [id, name, created]
+      required: [id, name, description, created]
       properties:
         id:
           type: integer
           format: int64
         name:
           type: string
+        description:
+          type: string
         created:
           type: string
           description: PostgreSQL timestamp without timezone, formatted as YYYY-MM-DD HH:MM:SS.
+    QuestionInput:
+      type: object
+      required: [template, prompt, config]
+      description: |
+        `prompt` is trimmed and limited to 500 bytes. `config` depends on the
+        template; see the question template table in docs/api.md. Choice, match,
+        ordering, fill-in-the-blanks, and categorization templates have the row
+        limits described there. Answers and sample answers have the limits there.
+      properties:
+        template:
+          type: string
+          enum: [multiple_choice, one_choice, number, short_answer, open, true_false, yes_no, show_answer, no_answer, match, ordering, fill_blanks, categorize]
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 500
+        config:
+          type: object
+      example:
+        template: multiple_choice
+        prompt: Select the prime numbers
+        config:
+          options:
+            - {text: '2', correct: true}
+            - {text: '3', correct: true}
+            - {text: '4', correct: false}
+    Question:
+      allOf:
+        - $ref: '#/components/schemas/QuestionInput'
+        - type: object
+          required: [id, quiz_id, created]
+          properties:
+            id:
+              type: integer
+              format: int64
+            quiz_id:
+              type: integer
+              format: int64
+            created:
+              type: string
+              description: PostgreSQL timestamp without timezone, formatted as YYYY-MM-DD HH:MM:SS.
     PasswordResetRequest:
       type: object
       required: [email]

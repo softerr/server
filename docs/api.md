@@ -23,19 +23,60 @@ table, whose `auth_user_id` maps to the shared account. Each quiz has a foreign
 key to its local user. The API creates the local user on the first quiz create.
 
 - `GET /api/quiz/quizzes` returns `{ "quizzes": [...] }`, newest first. Each quiz has
-  `id`, `name`, and `created` fields.
+  `id`, `name`, `description`, and `created` fields.
+- `GET /api/quiz/quizzes/{quizId}` returns one owned quiz. A missing or other
+  account's quiz returns `404`.
 - `POST /api/quiz/quizzes` with `{ "name": "Geography" }` creates a quiz and returns
-  the quiz with HTTP `201`. The name is trimmed, must be 1–100 bytes, and the
-  request body must be at most 4096 bytes. An account may have 100 quizzes;
-  further creation returns `409`.
-- `PATCH /api/quiz/quizzes/{quizId}` with `{ "name": "New name" }` renames a quiz
-  owned by the account and returns the updated quiz. Name validation matches
-  creation. A missing or other account's quiz returns `404`.
+  the quiz with HTTP `201`. The name is trimmed and must be 1–100 bytes. Optional
+  `description` is trimmed and limited to 1000 bytes. The request body must be
+  at most 4096 bytes. An account may have 100 quizzes; further creation returns `409`.
+- `PATCH /api/quiz/quizzes/{quizId}` updates an owned quiz and returns it. `name`
+  is required; an omitted `description` retains its value. A
+  missing or other account's quiz returns `404`.
 - `DELETE /api/quiz/quizzes/{quizId}` deletes an owned quiz and returns `204` with
-  no body. A missing or other account's quiz returns `404`.
+  no body. Its questions are deleted too. A missing or other account's quiz returns `404`.
+- `GET /api/quiz/quizzes/{quizId}/questions` returns `{ "questions": [...] }` in
+  saved order. New questions appear last.
+- `POST /api/quiz/quizzes/{quizId}/questions` adds a question and returns it with
+  HTTP `201`. Each quiz may have 100 questions; further creation returns `409`.
+- `PATCH /api/quiz/quizzes/{quizId}/questions/{questionId}` replaces a question's
+  prompt, template, and config and returns the updated question.
+- `PUT /api/quiz/quizzes/{quizId}/questions/order` accepts
+  `{ "question_ids": [3, 2, 1] }` and returns the same object. Include every
+  question ID exactly once. Unknown, missing, or stale IDs return `409`.
+- `DELETE /api/quiz/quizzes/{quizId}/questions/{questionId}` returns `204` with no body.
+  Question endpoints return `404` for quizzes or questions owned by another account.
+
+Question create and update bodies require `template`, `prompt`, and `config`.
+The prompt is trimmed and limited to 500 bytes. Text inside `config` is trimmed.
+The complete JSON request is limited to 4096 bytes. Each returned question has
+`id`, `quiz_id`, `template`, `prompt`, `config`, and `created`.
+
+| Template | `config` | Rule |
+| --- | --- | --- |
+| `multiple_choice` | `{"options":[{"text":"A","correct":true},{"text":"B","correct":false}]}` | 2–8 options; at least one correct. Users may select multiple answers. |
+| `one_choice` | Same shape as `multiple_choice` | 2–8 options; exactly one correct. |
+| `number` | `{"answer":"42.5"}` | Decimal number as a string, up to 64 bytes. |
+| `short_answer` | `{"answer":"Paris"}` | Nonempty answer, up to 500 bytes. |
+| `open` | `{"sample_answer":"Explain..."}` | Optional sample answer, up to 1000 bytes; free-form response. |
+| `true_false` | `{"answer":true}` | Boolean answer. |
+| `yes_no` | `{"answer":false}` | Boolean answer. |
+| `show_answer` | `{"answer":"The answer"}` | Nonempty answer to reveal, up to 1000 bytes. |
+| `no_answer` | `{}` | Question only. |
+| `match` | `{"pairs":[{"keyword":"France","definition":"Paris"},{"keyword":"Italy","definition":"Rome"}]}` | 2–8 pairs. |
+| `ordering` | `{"items":["Wash","Cut","Cook"]}` | 2–8 distinct items, listed in the correct order. |
+| `fill_blanks` | `{"answers":["Paris","Rome"]}` | Put `{{1}}`, `{{2}}`, etc. in `prompt`, each exactly once. The answer array follows marker order; 1–8 blanks. |
+| `categorize` | `{"categories":[{"name":"Mammals","items":["Dog"]},{"name":"Birds","items":["Eagle"]}]}` | 2–8 distinct categories, each with 1–8 items; at most 16 distinct items total. |
+
+Choice option text and match keywords/definitions are nonempty and limited to
+150 bytes each. Ordering items and blank answers are also limited to 150 bytes;
+category names are limited to 100 bytes and category items to 150 bytes. The
+order of choice options, match pairs, and ordering items follows their array
+order in `config`. The answer configs are stored with the question; the current
+editor creates and edits questions, while quiz-taking behavior is not yet available.
 
 Run **Setup PostgreSQL On Server** before deploying this API version so the
-new `quiz.public."user"` and `quiz.public.quiz` tables and grants exist. Then run **Deploy Apps On Server**
+quiz description column, question table, and grants exist. Then run **Deploy Apps On Server**
 with `all` to publish the API and quiz app.
 
 ## 1. Health check

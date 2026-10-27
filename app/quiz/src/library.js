@@ -1,7 +1,6 @@
-const quizActionIcons = {
-  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4.5-1 11-11a2.12 2.12 0 0 0-3-3l-11 11L4 20Z" /></svg>',
-  delete: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>',
-}
+import { editIcon, deleteIcon } from './icons.js'
+
+const quizActionIcons = { edit: editIcon, delete: deleteIcon }
 
 function addQuizToLibrary(list, quiz) {
   if (list.querySelector(`[data-quiz-id="${quiz.id}"]`)) return
@@ -12,12 +11,16 @@ function addQuizToLibrary(list, quiz) {
   title.className = 'library-item-title'
   title.id = `quiz-title-${quiz.id}`
   title.textContent = quiz.name
+  const description = document.createElement('p')
+  description.className = 'library-item-description'
+  description.textContent = quiz.description ?? ''
+  description.hidden = !quiz.description
   const actions = document.createElement('div')
   actions.className = 'library-item-actions'
   for (const action of ['edit', 'delete']) {
     const button = document.createElement('button')
     button.type = 'button'
-    button.className = 'library-action'
+    button.className = 'icon-action'
     button.dataset.quizAction = action
     button.setAttribute('aria-label', `${action === 'edit' ? 'Edit' : 'Delete'} quiz`)
     button.setAttribute('aria-describedby', title.id)
@@ -25,7 +28,9 @@ function addQuizToLibrary(list, quiz) {
     button.innerHTML = quizActionIcons[action]
     actions.append(button)
   }
-  item.append(title, actions)
+  const details = document.createElement('div')
+  details.append(title, description)
+  item.append(details, actions)
   list.prepend(item)
 }
 
@@ -73,7 +78,6 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
   const deleteStatus = page.querySelector('#delete-quiz-status')
   const deleteButton = page.querySelector('#confirm-delete-quiz')
   const deletedQuizIds = new Set()
-  let editingQuizId = null
   let deletingQuizId = null
 
   fetch('/api/quiz/quizzes').then(async (response) => {
@@ -93,10 +97,7 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
   })
 
   page.querySelector('#create-quiz-button').addEventListener('click', () => {
-    editingQuizId = null
     form.reset()
-    page.querySelector('#quiz-name-title').textContent = 'Create quiz'
-    saveButton.textContent = 'Create'
     setStatus(nameStatus, '')
     dialog.showModal()
     nameInput.focus()
@@ -112,14 +113,7 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
     const item = action?.closest('.library-item')
     if (!item || !list.contains(item)) return
     if (action.dataset.quizAction === 'edit') {
-      editingQuizId = item.dataset.quizId
-      nameInput.value = item.querySelector('.library-item-title').textContent
-      page.querySelector('#quiz-name-title').textContent = 'Edit quiz'
-      saveButton.textContent = 'Save'
-      setStatus(nameStatus, '')
-      dialog.showModal()
-      nameInput.focus()
-      nameInput.select()
+      window.location.hash = `#edit?quiz=${item.dataset.quizId}`
     } else if (action.dataset.quizAction === 'delete') {
       deletingQuizId = item.dataset.quizId
       page.querySelector('#delete-quiz-name').textContent = item.querySelector('.library-item-title').textContent
@@ -137,25 +131,16 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
       return
     }
     button.disabled = true
-    const quizId = editingQuizId
-    setStatus(nameStatus, quizId === null ? 'Creating quiz…' : 'Saving quiz…')
+    setStatus(nameStatus, 'Creating quiz…')
     try {
-      const [response, payload] = quizId === null
-        ? await postJson('/api/quiz/quizzes', { name })
-        : await requestJson('PATCH', `/api/quiz/quizzes/${quizId}`, { name })
+      const [response, payload] = await postJson('/api/quiz/quizzes', { name })
       if (!app.contains(form)) return
       if (!response.ok) {
         setStatus(nameStatus, responseError(response, payload), true)
         return
       }
-      if (quizId === null) addQuizToLibrary(list, payload)
-      else {
-        const item = list.querySelector(`[data-quiz-id="${quizId}"]`)
-        if (item) item.querySelector('.library-item-title').textContent = payload.name
-      }
-      list.hidden = false
-      setStatus(libraryStatus, '')
       dialog.close()
+      window.location.hash = `#edit?quiz=${payload.id}`
     } catch {
       if (app.contains(form)) setStatus(nameStatus, 'Could not connect to the service. Please try again.', true)
     } finally {

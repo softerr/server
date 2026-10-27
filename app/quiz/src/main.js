@@ -1,12 +1,13 @@
 import './style.css'
 import { startAuthApp } from '../../shared/auth-app.js'
 import { renderLibrary } from './library.js'
+import { renderQuizEditor } from './editor.js'
 
 startAuthApp({
   name: 'Quiz',
   homeHref: '/quiz/',
   signupPrompt: 'New to Quiz?',
-  views: ['explore', 'library'],
+  views: ['explore', 'library', 'edit'],
   links: [
     { view: 'explore', label: 'Explore' },
     { view: 'library', label: 'Library' },
@@ -18,6 +19,10 @@ startAuthApp({
     }
     if (view === 'library') {
       renderLibrary(app, helpers)
+      return true
+    }
+    if (view === 'edit') {
+      renderQuizEditor(app, helpers)
       return true
     }
     return false

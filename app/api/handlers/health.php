@@ -24,8 +24,9 @@ function handleReadiness(): never
     if ($quizDb === false) {
         respond(503, ['status' => 'unavailable', 'error' => $quizError]);
     }
-    $quizSchema = @pg_query($quizDb, 'SELECT q.id, q.user_id, q.name, q.created, u.auth_user_id
-        FROM public.quiz q, public."user" u LIMIT 0');
+    $quizSchema = @pg_query($quizDb, 'SELECT q.id, q.user_id, q.name, q.description,
+            u.auth_user_id, t.id, t.quiz_id, t.template, t.prompt, t.config
+        FROM public.quiz q, public."user" u, public.question t LIMIT 0');
     if ($quizSchema === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
     }

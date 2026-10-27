@@ -6,6 +6,7 @@ function publicQuiz(array $quiz): array
     return [
         'id' => (int) $quiz['id'],
         'name' => $quiz['name'],
+        'description' => $quiz['description'],
         'created' => $quiz['created'],
     ];
 }
@@ -16,7 +17,7 @@ function handleListQuizzes(): never
     $db = connectQuizDb();
     $result = @pg_query_params(
         $db,
-        'SELECT q.id, q.name, q.created
+        'SELECT q.id, q.name, q.description, q.created
          FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
          WHERE u.auth_user_id = $1 ORDER BY q.id DESC',
         [$user['id']]
@@ -32,10 +33,29 @@ function handleListQuizzes(): never
     respond(200, ['quizzes' => $quizzes]);
 }
 
-function handleCreateQuiz(): never
+function handleGetQuiz(int $quizId): never
 {
     $user = currentSessionUser();
-    $payload = readJsonBody();
+    $db = connectQuizDb();
+    $result = @pg_query_params(
+        $db,
+        'SELECT q.id, q.name, q.description, q.created
+         FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
+         WHERE q.id = $1 AND u.auth_user_id = $2',
+        [$quizId, $user['id']]
+    );
+    if ($result === false) {
+        respond(500, ['error' => 'Failed to load quiz']);
+    }
+    $quiz = pg_fetch_assoc($result);
+    if ($quiz === false) {
+        respond(404, ['error' => 'Quiz not found']);
+    }
+    respond(200, publicQuiz($quiz));
+}
+
+function readQuizFields(?array $payload, bool $updating = false): array
+{
     if ($payload === null || !is_string($payload['name'] ?? null)) {
         respond(400, ['error' => 'Quiz name is required']);
     }
@@ -43,6 +63,21 @@ function handleCreateQuiz(): never
     if ($name === '' || strlen($name) > 100) {
         respond(400, ['error' => 'Quiz name must be between 1 and 100 bytes']);
     }
+    $hasDescription = array_key_exists('description', $payload);
+    $description = $hasDescription ? $payload['description'] : ($updating ? null : '');
+    if ($hasDescription && !is_string($description)) {
+        respond(400, ['error' => 'Quiz description must be at most 1000 bytes']);
+    }
+    if ($description !== null && strlen(trim($description)) > 1000) {
+        respond(400, ['error' => 'Quiz description must be at most 1000 bytes']);
+    }
+    return [$name, $description === null ? null : trim($description)];
+}
+
+function handleCreateQuiz(): never
+{
+    $user = currentSessionUser();
+    [$name, $description] = readQuizFields(readJsonBody());
 
     $db = connectQuizDb();
     if (@pg_query($db, 'BEGIN') === false) {
@@ -99,8 +134,10 @@ function handleCreateQuiz(): never
     }
     $result = @pg_query_params(
         $db,
-        'INSERT INTO public.quiz (user_id, name) VALUES ($1, $2) RETURNING id, name, created',
-        [$localUserId, $name]
+        'INSERT INTO public.quiz (user_id, name, description)
+         VALUES ($1, $2, $3)
+         RETURNING id, name, description, created',
+        [$localUserId, $name, $description]
     );
     if ($result === false) {
         @pg_query($db, 'ROLLBACK');
@@ -116,22 +153,17 @@ function handleCreateQuiz(): never
 function handleUpdateQuiz(int $quizId): never
 {
     $user = currentSessionUser();
-    $payload = readJsonBody();
-    if ($payload === null || !is_string($payload['name'] ?? null)) {
-        respond(400, ['error' => 'Quiz name is required']);
-    }
-    $name = trim($payload['name']);
-    if ($name === '' || strlen($name) > 100) {
-        respond(400, ['error' => 'Quiz name must be between 1 and 100 bytes']);
-    }
+    [$name, $description] = readQuizFields(readJsonBody(), true);
 
     $db = connectQuizDb();
     $result = @pg_query_params(
         $db,
-        'UPDATE public.quiz q SET name = $1 FROM public."user" u
-         WHERE q.id = $2 AND q.user_id = u.id AND u.auth_user_id = $3
-         RETURNING q.id, q.name, q.created',
-        [$name, $quizId, $user['id']]
+        'UPDATE public.quiz q SET name = $1,
+            description = COALESCE($2, q.description)
+         FROM public."user" u
+         WHERE q.id = $3 AND q.user_id = u.id AND u.auth_user_id = $4
+         RETURNING q.id, q.name, q.description, q.created',
+        [$name, $description, $quizId, $user['id']]
     );
     if ($result === false) {
         respond(500, ['error' => 'Failed to update quiz']);

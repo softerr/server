@@ -100,8 +100,9 @@ export function startAuthApp(config) {
           return
         }
         currentUser = payload
-        const destination = window.location.hash.slice(1).split('?')[0]
-        navigate(canOpenPrivateView(destination) || config.publicViews?.includes(destination) ? destination : 'home')
+        const destination = window.location.hash.slice(1)
+        const destinationView = destination.split('?')[0]
+        navigate(canOpenPrivateView(destinationView) || config.publicViews?.includes(destinationView) ? destination : 'home')
       } catch {
         if (app.contains(form)) setStatus(status, 'Could not connect to the service. Please try again.', true)
       } finally {
