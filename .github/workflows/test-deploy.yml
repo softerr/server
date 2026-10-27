@@ -127,9 +127,13 @@ jobs:
 
           tls_dir = Path(os.environ['TLS_TEST_DIR'])
           routes = Path('configs/nginx/softerr-routes.conf.template').read_text()
-          assert 'location ~ ^/api/(index|auth|quiz)\\.php$' in routes
+          assert 'location = /api/quiz.php {' in routes
+          assert 'location ~ ^/api/(index|auth)\\.php$ {' in routes
           assert 'location /api/auth/' in routes
           assert 'location /api/quiz/' in routes
+          assert 'location ~ ^/api/quiz/quizzes/import/*$ {' in routes
+          assert 'client_max_body_size 48m;' in routes
+          assert 'client_max_body_size 2m;' in routes
           assert 'location ~ ^/api/.*\\.php$' in routes
           assert 'location ~ ^/api/auth/signup/*$' in routes
           assert 'client_max_body_size 4k;' in routes
