@@ -31,12 +31,16 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       </div>
       <p class="image-library-usage-message">Loading image limits…</p>
     </div>
-    <input type="file" accept="image/png,image/jpeg,image/webp" hidden>
+    <input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
     <div class="image-library-grid">
       <div class="image-library-item" data-upload-tile>
         <button type="button" class="image-library-choice image-library-choice-upload" data-upload aria-label="Upload image" title="Upload image">${uploadImageIcon}</button>
         <span class="image-library-name">Upload image</span>
       </div>
+    </div>
+    <div class="image-library-multi-actions" hidden>
+      <span>Choose several images; empty rows are filled first.</span>
+      <button type="button" class="auth-button auth-button-primary" data-add-selected disabled>Add images</button>
     </div>
     <p class="form-status" role="status" aria-live="polite"></p>
   `
@@ -54,9 +58,45 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   const perImageLabel = usage.querySelector('[data-image-per-limit]')
   const status = dialog.querySelector('.form-status')
   const upload = dialog.querySelector('[data-upload]')
+  const multiActions = dialog.querySelector('.image-library-multi-actions')
+  const addSelected = dialog.querySelector('[data-add-selected]')
   let images = []
   let active = null
+  let onChooseMany = null
+  let selectionAnchor = null
+  const selectedIds = new Set()
   const pickers = new Set()
+
+  function updateMultiSelection() {
+    addSelected.disabled = selectedIds.size === 0
+    addSelected.textContent = selectedIds.size ? `Add ${selectedIds.size} image${selectedIds.size === 1 ? '' : 's'}` : 'Add images'
+    for (const button of grid.querySelectorAll('[data-library-image-id]')) {
+      const selected = selectedIds.has(Number(button.dataset.libraryImageId))
+      button.classList.toggle('is-selected', selected)
+      if (onChooseMany) button.setAttribute('aria-pressed', String(selected))
+      else button.removeAttribute('aria-pressed')
+    }
+  }
+
+  async function openLibrary(picker = null, callback = null) {
+    active = picker
+    onChooseMany = callback
+    selectedIds.clear()
+    selectionAnchor = null
+    multiActions.hidden = !callback
+    input.multiple = Boolean(callback)
+    upload.setAttribute('aria-label', callback ? 'Upload images' : 'Upload image')
+    upload.title = callback ? 'Upload images' : 'Upload image'
+    uploadTile.querySelector('.image-library-name').textContent = callback ? 'Upload images' : 'Upload image'
+    dialog.querySelector('.image-library-heading h2').textContent = callback ? 'Choose images' : 'Choose image'
+    setStatus(status, 'Loading images…')
+    dialog.showModal()
+    await refresh()
+  }
+
+  function chooseMany(callback) {
+    openLibrary(null, callback)
+  }
 
   function updatePicker(picker) {
     const id = Number(picker.querySelector('[data-image-id]').value)
@@ -98,12 +138,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     choose.dataset.chooseImage = ''
     choose.innerHTML = imageIcon
     choose.append(preview)
-    choose.addEventListener('click', async () => {
-      active = picker
-      setStatus(status, 'Loading images…')
-      dialog.showModal()
-      await refresh()
-    })
+    choose.addEventListener('click', () => openLibrary(picker))
     picker.append(field, choose)
     pickers.add(picker)
     updatePicker(picker)
@@ -119,6 +154,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     emptyChoice.setAttribute('aria-label', 'Use no image')
     emptyChoice.innerHTML = noImageIcon
     emptyChoice.addEventListener('click', () => {
+      if (onChooseMany) return
       if (active) setImage(active, null)
       dialog.close()
     })
@@ -127,6 +163,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     emptyName.textContent = 'No image'
     emptyTile.append(emptyChoice, emptyName)
     grid.replaceChildren(emptyTile, uploadTile)
+    emptyTile.hidden = Boolean(onChooseMany)
     for (const scope of ['shared', 'personal']) {
       const group = images.filter((image) => image.scope === scope)
       if (!group.length) continue
@@ -142,12 +179,25 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       choose.className = 'image-library-choice'
       choose.setAttribute('aria-label', `Use ${image.name}`)
       choose.title = image.name
+      choose.dataset.libraryImageId = String(image.id)
       const preview = document.createElement('img')
       preview.src = imageUrl(image.id)
       preview.alt = ''
       preview.loading = 'lazy'
       choose.append(preview)
-      choose.addEventListener('click', () => {
+      choose.addEventListener('click', (event) => {
+        if (onChooseMany) {
+          const orderedIds = images.map((item) => item.id)
+          const start = orderedIds.indexOf(selectionAnchor)
+          const end = orderedIds.indexOf(image.id)
+          if (event.shiftKey && start !== -1) {
+            for (const id of orderedIds.slice(Math.min(start, end), Math.max(start, end) + 1)) selectedIds.add(id)
+          } else if (selectedIds.has(image.id)) selectedIds.delete(image.id)
+          else selectedIds.add(image.id)
+          selectionAnchor = image.id
+          updateMultiSelection()
+          return
+        }
         if (active) setImage(active, image.id)
         dialog.close()
       })
@@ -171,6 +221,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
             }
           }
           images = images.filter((item) => item.id !== image.id)
+          selectedIds.delete(image.id)
           render()
           if (await refresh()) setStatus(status, 'Image deleted.', false, true)
         } catch {
@@ -188,6 +239,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       grid.append(tile)
       }
     }
+    updateMultiSelection()
   }
 
   async function refresh() {
@@ -201,6 +253,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
         return
       }
       images = payload.images
+      for (const id of selectedIds) if (!images.some((image) => image.id === id)) selectedIds.delete(id)
       countLabel.textContent = `${payload.usage.count} / ${payload.limits.count}`
       countBar.max = payload.limits.count
       countBar.value = payload.usage.count
@@ -225,37 +278,59 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
 
   upload.addEventListener('click', () => input.click())
   input.addEventListener('change', async () => {
-    const file = input.files?.[0]
+    const files = Array.from(input.files || [])
     input.value = ''
-    if (!file) return
-    if (file.size > 2097152) {
-      setStatus(status, 'Image must be at most 2 MiB.', true)
-      return
-    }
+    if (!files.length) return
     upload.disabled = true
-    setStatus(status, 'Uploading image…')
+    const uploaded = []
+    const failures = []
     try {
-      const response = await fetch('/api/media/images', {
-        method: 'POST', headers: {
-          'Content-Type': 'application/octet-stream',
-          'X-Image-Name': encodeURIComponent(file.name),
-        }, body: file,
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        setStatus(status, responseError(response, payload), true)
-        return
+      for (const [index, file] of files.entries()) {
+        setStatus(status, `Uploading ${index + 1} of ${files.length}…`)
+        if (file.size > 2097152) {
+          failures.push(`${file.name}: image must be at most 2 MiB`)
+          continue
+        }
+        try {
+          const response = await fetch('/api/media/images', {
+            method: 'POST', headers: {
+              'Content-Type': 'application/octet-stream',
+              'X-Image-Name': encodeURIComponent(file.name),
+            }, body: file,
+          })
+          const payload = await response.json().catch(() => null)
+          if (response.ok && Number.isInteger(payload?.id)) uploaded.push(payload.id)
+          else failures.push(`${file.name}: ${responseError(response, payload)}`)
+        } catch {
+          failures.push(`${file.name}: could not upload`)
+        }
       }
-      await refresh()
-      if (active?.isConnected) setImage(active, payload.id)
-      dialog.close()
+      if (!await refresh()) return
+      if (onChooseMany) {
+        for (const id of uploaded) selectedIds.add(id)
+        updateMultiSelection()
+        if (failures.length) setStatus(status, `${uploaded.length} ready. ${failures.slice(0, 3).join('; ')}`, true)
+      } else if (uploaded.length && active?.isConnected) {
+        setImage(active, uploaded[0])
+        dialog.close()
+      } else if (failures.length) {
+        setStatus(status, failures.slice(0, 3).join('; '), true)
+      }
     } catch {
-      setStatus(status, 'Could not upload image.', true)
+      setStatus(status, 'Could not upload images.', true)
     } finally {
       upload.disabled = false
     }
   })
+  addSelected.addEventListener('click', () => {
+    if (!onChooseMany || !selectedIds.size) return
+    const callback = onChooseMany
+    const ids = images.filter((image) => selectedIds.has(image.id)).map((image) => image.id)
+    dialog.close()
+    onChooseMany = null
+    callback(ids)
+  })
   dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close())
   render()
-  return { createPicker, setImage }
+  return { createPicker, setImage, chooseMany }
 }
