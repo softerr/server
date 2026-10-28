@@ -254,7 +254,7 @@ function handleCreateQuestion(int $quizId): never
     if (@pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
         respond(500, ['error' => 'Failed to create question']);
     }
-    verifyQuestionImages($db, (int) $user['id'], $config);
+    verifyQuestionImages((int) $user['id'], $config);
     $owner = @pg_query_params(
         $db,
         'SELECT q.id FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
@@ -374,7 +374,7 @@ function handleUpdateQuestion(int $quizId, int $questionId): never
         || @pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
         respond(500, ['error' => 'Failed to update question']);
     }
-    verifyQuestionImages($db, (int) $user['id'], $config);
+    verifyQuestionImages((int) $user['id'], $config);
     $result = @pg_query_params(
         $db,
         'UPDATE public.question t SET template = $1, prompt = $2, config = $3::jsonb

@@ -9,7 +9,8 @@ Content type:
 - PHP responses are JSON. Nginx redirects and errors (including some `413` and `429` responses) may not be JSON.
 
 The API uses separate PHP entrypoints: `/api/auth/*` is handled by the shared
-auth app, `/api/quiz/*` by the quiz app, and `/api/` by the readiness endpoint.
+auth app, `/api/quiz/*` by the quiz app, `/api/media/*` by the shared media app,
+and `/api/` by the readiness endpoint.
 The PHP files are internal to Nginx and are not public API URLs.
 
 ## Quiz library
@@ -55,32 +56,66 @@ key to its local user. The API creates the local user on the first quiz create.
   question ID exactly once. Unknown, missing, or stale IDs return `409`.
 - `DELETE /api/quiz/quizzes/{quizId}/questions/{questionId}` returns `204` with no body.
   Question endpoints return `404` for quizzes or questions owned by another account.
-- `GET /api/quiz/images` lists the account's reusable image metadata by filename
-  (case-insensitive), current usage (`count` and `bytes`), and limits (`count`,
-  `bytes`, and `per_image_bytes`).
-- `POST /api/quiz/images` accepts raw PNG, JPEG, or WebP bytes and returns image
+- `GET /api/media/images` lists reusable shared and personal images by filename
+  (case-insensitive) within each group. `scope` is `shared` or `personal`.
+  Image metadata includes pixel `width` and `height` and stored `size_bytes`.
+  Usage (`count` and `bytes`) and limits (`count`, `bytes`, and
+  `per_image_bytes`) apply to personal images only.
+- `GET /api/media/my-images` lists only the signed-in user's personal images.
+  Published images appear in the shared library instead of My uploads.
+- `GET /api/media/shared-images` lists every shared image, including its
+  `group_id` (`null` for ungrouped images). The Home Media page shows groups as
+  folders and opens a folder to show its images.
+- `GET /api/media/groups` lists shared folders with image counts and a cover
+  image ID. Any authenticated user can browse them.
+- Admins can create a folder with `POST /api/media/groups` and
+  `{ "name": "Nature" }`, rename it with `PATCH /api/media/groups/{groupId}`
+  and the same body, or delete it with `DELETE /api/media/groups/{groupId}`.
+  Names are unique without regard to case and limited to 100 UTF-8 bytes.
+  Deleting a folder leaves its images in the ungrouped area.
+- Admins can move any shared image with
+  `PATCH /api/media/images/{imageId}/group` and
+  `{ "group_id": 12 }`. Send `null` to ungroup it. Image IDs and quiz references
+  do not change when images move.
+- `POST /api/media/images` accepts raw PNG, JPEG, or WebP bytes and returns image
   metadata with HTTP `201`. Each image is limited to 2 MiB and 4096 pixels per
   side. Send the original filename in the required `X-Image-Name` header, encoded
   with `encodeURIComponent` or equivalent. Names may be up to 255 UTF-8 bytes and
-  cannot contain path separators or control characters. The library is limited
-  to 256 images and 32 MiB. Uploading identical bytes again returns the existing
-  image ID and its first uploaded name.
-- `GET /api/quiz/images/{imageId}` returns the original bytes to the owner.
-- `DELETE /api/quiz/images/{imageId}` returns `204` if the image is unused, or
+  cannot contain path separators or control characters. Personal storage is limited
+  to 256 images and 32 MiB across apps. Uploading identical bytes again returns
+  an existing personal or shared image ID and its first uploaded name. A shared
+  match does not consume personal storage.
+- `POST /api/media/images/{imageId}/publish` requires an admin session and an
+  image in that admin's personal library. It makes the image available to all
+  authenticated users while keeping its ID and original uploader. The image
+  stops counting toward personal storage. It returns `409` if its bytes are
+  already shared.
+- `GET /api/media/images/{imageId}` returns original bytes to the owner or any
+  authenticated user for a shared image.
+- `DELETE /api/media/images/{imageId}` deletes only a personal image. It returns
+  `204` if unused, or
   `409` if a saved question still references it. Removing an image from one
   question does not remove it from another.
+
+The legacy `/api/quiz/images` routes continue to serve the same media library
+for clients deployed before this change. New clients should use `/api/media/images`.
 
 The quiz editor's **Export JSON** button downloads the saved quiz as a portable
 document with `format: "softerr-quiz"`, `version: 1`, `name`, `description`, and
 an ordered `questions` array. Each question contains `template`, `prompt`, and
 `config`. Used images appear once in the `images` array with their original name
 and base64 data and are
-relinked to the importing account. **Export ZIP** stores the same quiz data in
+relinked to the importing account or matched to a published shared image by
+content. **Export ZIP** stores the same quiz data in
 `quiz.json`, with each used image in a separate file referenced by the
 manifest's `images` array. Its `name` field preserves the original filename;
 image IDs keep archive paths unique. Save pending edits before exporting. The library's
 **Import JSON/ZIP** button creates a new quiz; it does not replace an existing
 quiz. Only version 1 exports are accepted.
+
+Import accepts up to 4096 image entries within the 48 MiB request limit.
+Published shared matches do not use personal image count or storage quota;
+unmatched images are added to the user's personal library and do use it.
 
 Question create and update bodies require `template`, `prompt`, and `config`.
 The prompt is trimmed and limited to 500 bytes. Text inside `config` is trimmed.
@@ -122,7 +157,7 @@ order of choice options, match pairs, and ordering items follows their array
 order in `config`. The answer configs are stored with the question; the current
 editor creates and edits questions, while quiz-taking behavior is not yet available.
 
-Run **Setup PostgreSQL On Server** so the quiz image table and grants exist,
+Run **Setup PostgreSQL On Server** so the media image tables and grants exist,
 then **Setup Nginx On Server** to install PHP ZIP support. Run **Deploy Apps On
 Server** with `all` to publish the API and quiz app.
 
@@ -372,8 +407,8 @@ Both PHP-FPM and the systemd email worker receive these runtime env vars:
 - `DB_PASSWORD` (required)
 - `APP_BASE_URL` (required HTTPS origin for verification links; loopback HTTP is allowed for local tests)
 
-PHP-FPM also connects to the `quiz` database with the same server, role, and
-password for quiz routes. The email worker uses only `auth`.
+PHP-FPM also connects to the `quiz` and `media` databases with the same server,
+role, and password. The email worker uses only `auth`.
 
 Only the email worker receives the mail transport settings:
 
@@ -431,7 +466,7 @@ Optional test env vars:
 - `API_TEST_REQUIRE_EMAIL` (`1` or `0`, default `1` in both `qemu.sh test-api` and `scripts/test_api.sh`)
 - `API_TEST_MAILPIT_URL` (Mailpit origin; required for the full password reset email and session test)
 
-The test runner needs database access to both `auth` and `quiz`. It removes the accounts and quiz data created by each run when the tests finish, including after a test failure.
+The test runner needs database access to `auth`, `quiz`, and `media`. It removes the accounts, quiz data, and media images created by each run when the tests finish, including after a test failure.
 
 GitHub workflow:
 - `.github/workflows/test-api-runner.yml` (`Test API On Runner`) runs the OpenAPI contract check and endpoint tests for API, spec, and test-script changes.

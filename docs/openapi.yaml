@@ -3,7 +3,7 @@ info:
   title: Softerr API
   version: 1.0.0
   description: |
-    Account signup, email verification, login, admin user listing, password reset, and quiz library API. PHP responses are JSON. Nginx may return
+    Account signup, email verification, login, admin user listing, password reset, quiz library, and shared media API. PHP responses are JSON. Nginx may return
     redirects or HTML error pages before a request reaches PHP, notably for
     oversized or rate-limited requests. Clients should use HTTP status codes
     and should not assume every error response has a JSON body.
@@ -367,7 +367,7 @@ paths:
       description: |
         Requires a verified admin session. Admins cannot delete themselves.
         Deletion blocks the target account, removes its quiz database user and
-        quizzes, then removes the auth database user and its tokens. If cleanup
+        quizzes and its personal media images, then removes the auth database user and its tokens. If cleanup
         fails, the blocked account remains in the admin list so DELETE can be
         retried. Successful deletion cannot be undone.
       security:
@@ -626,16 +626,16 @@ paths:
                 type: string
               description: Browser page asking the user to try again later.
 
-  /quiz/images:
+  /media/images:
     get:
-      tags: [Quizzes]
-      operationId: listQuizImages
-      summary: List reusable images owned by the current account
+      tags: [Media]
+      operationId: listImages
+      summary: List personal and published shared images
       security:
         - sessionCookie: []
       responses:
         '200':
-          description: Image metadata sorted by filename, case-insensitively, with current usage and limits.
+          description: Shared images first, then personal images; each group is sorted by filename. Usage and limits cover personal images only.
           content:
             application/json:
               schema:
@@ -664,10 +664,10 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
     post:
-      tags: [Quizzes]
-      operationId: uploadQuizImage
-      summary: Upload or reuse an image in the account's image library
-      description: PNG, JPEG, or WebP, at most 2 MiB and 4096 pixels per side. A matching upload reuses the existing image and its first uploaded filename. The library is limited to 256 images and 32 MiB.
+      tags: [Media]
+      operationId: uploadImage
+      summary: Upload or reuse a personal image
+      description: PNG, JPEG, or WebP, at most 2 MiB and 4096 pixels per side. If identical bytes exist in the shared library, returns the shared entry without charging personal quota. Otherwise personal storage is limited to 256 images and 32 MiB across apps.
       security:
         - sessionCookie: []
       parameters:
@@ -693,22 +693,271 @@ paths:
         '401':
           description: No active session.
         '409':
-          description: Create a quiz first, or the image library is full.
+          description: Personal image library is full.
         '413':
           description: Image is too large.
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /quiz/images/{imageId}:
+  /media/my-images:
+    get:
+      tags: [Media]
+      operationId: listMyImages
+      summary: List the signed-in user's personal images
+      description: Published images appear in the shared library, not in this list. Usage covers personal images only.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Uploaded images with personal storage usage and limits.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [images, usage, limits]
+                properties:
+                  images:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuizImage'
+                  usage:
+                    type: object
+                    required: [count, bytes]
+                    properties:
+                      count: {type: integer, minimum: 0}
+                      bytes: {type: integer, minimum: 0}
+                  limits:
+                    type: object
+                    required: [count, bytes, per_image_bytes]
+                    properties:
+                      count: {type: integer, minimum: 1}
+                      bytes: {type: integer, minimum: 1}
+                      per_image_bytes: {type: integer, minimum: 1}
+        '401':
+          description: No active session.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /media/shared-images:
+    get:
+      tags: [Media]
+      operationId: listSharedImages
+      summary: List shared images and their folders
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Shared images, including ungrouped images.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [images]
+                properties:
+                  images:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuizImage'
+        '401':
+          description: No active session.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /media/groups:
+    get:
+      tags: [Media]
+      operationId: listMediaGroups
+      summary: List shared media folders
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Folders sorted by name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [groups]
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MediaGroup'
+        '401':
+          description: No active session.
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Media]
+      operationId: createMediaGroup
+      summary: Create a shared media folder
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MediaGroupInput'
+      responses:
+        '201':
+          description: Folder created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaGroup'
+        '400':
+          description: Invalid folder name.
+        '401':
+          description: No active session.
+        '403':
+          description: Admin access required.
+        '409':
+          description: A folder with the same name exists.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /media/groups/{groupId}:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        schema: {type: integer, format: int64}
+    patch:
+      tags: [Media]
+      operationId: renameMediaGroup
+      summary: Rename a shared media folder
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MediaGroupInput'
+      responses:
+        '200':
+          description: Folder renamed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaGroup'
+        '400':
+          description: Invalid folder name.
+        '401':
+          description: No active session.
+        '403':
+          description: Admin access required.
+        '404':
+          description: Folder not found.
+        '409':
+          description: A folder with the same name exists.
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Media]
+      operationId: deleteMediaGroup
+      summary: Delete folder and ungroup its images
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Folder deleted; images remain shared and ungrouped.
+        '401':
+          description: No active session.
+        '403':
+          description: Admin access required.
+        '404':
+          description: Folder not found.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /media/images/{imageId}/group:
+    parameters:
+      - name: imageId
+        in: path
+        required: true
+        schema: {type: integer, format: int64}
+    patch:
+      tags: [Media]
+      operationId: moveSharedImage
+      summary: Move a shared image into a folder or ungroup it
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [group_id]
+              properties:
+                group_id: {type: [integer, 'null'], format: int64, minimum: 1}
+      responses:
+        '200':
+          description: Image moved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, group_id]
+                properties:
+                  id: {type: integer, format: int64}
+                  group_id: {type: [integer, 'null'], format: int64, minimum: 1}
+        '400':
+          description: Invalid group ID.
+        '401':
+          description: No active session.
+        '403':
+          description: Admin access required.
+        '404':
+          description: Group or shared image not found.
+        '409':
+          description: Group changed during the request.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /media/images/{imageId}/publish:
+    parameters:
+      - name: imageId
+        in: path
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      tags: [Media]
+      operationId: publishImage
+      summary: Publish an uploaded personal image
+      description: Admin only. The image keeps its ID and uploader, becomes available to all users, and no longer counts toward personal storage.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Published image.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizImage'
+        '401':
+          description: No active session.
+        '403':
+          description: Admin access required.
+        '404':
+          description: Image does not exist or is not a personal image owned by this admin.
+        '409':
+          description: Identical image bytes are already shared.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /media/images/{imageId}:
     parameters:
       - name: imageId
         in: path
         required: true
         schema: {type: integer, format: int64}
     get:
-      tags: [Quizzes]
-      operationId: getQuizImage
-      summary: Read an image owned by the current account
+      tags: [Media]
+      operationId: getImage
+      summary: Read a personal or shared image
       security:
         - sessionCookie: []
       responses:
@@ -728,9 +977,9 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
     delete:
-      tags: [Quizzes]
-      operationId: deleteQuizImage
-      summary: Delete an unused image from the current account's library
+      tags: [Media]
+      operationId: deleteImage
+      summary: Delete an unused personal image
       security:
         - sessionCookie: []
       responses:
@@ -1358,7 +1607,7 @@ components:
         images:
           type: array
           description: Each referenced image is included once as base64 data.
-          maxItems: 256
+          maxItems: 4096
           items:
             type: object
             required: [id, name, data]
@@ -1374,7 +1623,7 @@ components:
                 contentEncoding: base64
     QuizImage:
       type: object
-      required: [id, name, mime_type, width, height]
+      required: [id, name, mime_type, width, height, size_bytes, scope, group_id]
       properties:
         id:
           type: integer
@@ -1389,6 +1638,35 @@ components:
           type: integer
         height:
           type: integer
+        size_bytes:
+          type: integer
+          minimum: 1
+          description: Size of the stored image in bytes.
+        scope:
+          type: string
+          enum: [personal, shared]
+        group_id:
+          type: [integer, 'null']
+          format: int64
+          minimum: 1
+          description: Shared media folder, or null for ungrouped and personal images.
+    MediaGroupInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Unique folder name, at most 100 UTF-8 bytes after trimming.
+    MediaGroup:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string}
+        image_count: {type: integer, minimum: 0}
+        cover_image_id: {type: [integer, 'null'], format: int64, minimum: 1}
     QuestionInput:
       type: object
       required: [template, prompt, config]
@@ -1399,7 +1677,7 @@ components:
         row counts but no fixed maximum. Request size and prompt length still
         bound them. Answers and sample answers have the limits described there.
         Optional `config.image_id` and `config.answer_image_id` refer to reusable
-        images owned by the account. Choice options may also have `image_id`.
+        personal images owned by the account or published shared images. Choice options may also have `image_id`.
         Match pairs may use `keyword_image_id` and `definition_image_id`;
         categories may use `name_image_id`. Ordering items, blank answers, and
         category items are `{text, image_id?}` objects. The same

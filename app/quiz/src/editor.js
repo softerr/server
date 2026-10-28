@@ -1,6 +1,6 @@
 import { mountQuestionEditor } from './questions.js'
 
-export function renderQuizEditor(app, { requestJson, responseError, setStatus }) {
+export function renderQuizEditor(app, { currentUser, requestJson, responseError, setStatus }) {
   const quizId = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('quiz')
   const page = app.querySelector('#page')
   page.innerHTML = `
@@ -91,7 +91,7 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
     const questions = page.querySelector('#question-editor-section')
     questions.hidden = false
     questionEditor = mountQuestionEditor(app, questions, quizId, {
-      requestJson, responseError, setStatus,
+      currentUser, requestJson, responseError, setStatus,
       onChange() {
         setStatus(saveAllStatus, '')
         updateSaveAllButton()
@@ -197,7 +197,7 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
       const [quizResult, questionsResult, imagesResult] = await Promise.all([
         requestJson('GET', `/api/quiz/quizzes/${quizId}`),
         requestJson('GET', `/api/quiz/quizzes/${quizId}/questions`),
-        requestJson('GET', '/api/quiz/images'),
+        requestJson('GET', '/api/media/images'),
       ])
       if (!app.contains(form)) return
       const [quizResponse, quiz] = quizResult
@@ -225,7 +225,7 @@ export function renderQuizEditor(app, { requestJson, responseError, setStatus })
       for (const id of imageIds) {
         const name = imageNames.get(id)
         if (typeof name !== 'string') throw new Error('Could not export image name')
-        const response = await fetch(`/api/quiz/images/${id}`)
+        const response = await fetch(`/api/media/images/${id}`)
         if (!response.ok) throw new Error('Could not export image')
         const bytes = new Uint8Array(await response.arrayBuffer())
         let binary = ''

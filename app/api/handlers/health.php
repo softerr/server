@@ -30,9 +30,8 @@ function handleReadiness(): never
         respond(503, ['status' => 'unavailable', 'error' => $quizError]);
     }
     $quizSchema = @pg_query($quizDb, 'SELECT q.id, q.user_id, q.name, q.description,
-            u.auth_user_id, t.id, t.quiz_id, t.template, t.prompt, t.config,
-            i.id, i.user_id, i.original_name, i.mime_type, i.content
-        FROM public.quiz q, public."user" u, public.question t, public.image i LIMIT 0');
+            u.auth_user_id, t.id, t.quiz_id, t.template, t.prompt, t.config
+        FROM public.quiz q, public."user" u, public.question t LIMIT 0');
     if ($quizSchema === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
     }
@@ -40,6 +39,20 @@ function handleReadiness(): never
         WHERE conrelid = 'public.quiz'::regclass AND conname = 'quiz_user_id_fkey'");
     if ($quizOwnerConstraint === false || pg_num_rows($quizOwnerConstraint) !== 1) {
         respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
+    }
+
+    [$mediaDb, $mediaError] = openMediaDb();
+    if ($mediaDb === false) {
+        respond(503, ['status' => 'unavailable', 'error' => $mediaError]);
+    }
+    $mediaSchema = @pg_query($mediaDb, 'SELECT i.id, i.blob_id, i.owner_auth_user_id, i.uploaded_by_auth_user_id, i.group_id,
+            i.shared, i.original_name, b.sha256, b.mime_type, b.content
+        FROM public.image i, public.image_blob b LIMIT 0');
+    if ($mediaSchema === false) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Media database schema is not ready']);
+    }
+    if (@pg_query($mediaDb, 'SELECT id, name FROM public.media_group LIMIT 0') === false) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Media database schema is not ready']);
     }
 
     respond(200, ['status' => 'ok', 'message' => 'API is ready']);

@@ -1,6 +1,6 @@
 import { imageIcon, noImageIcon, removeIcon, uploadImageIcon } from './icons.js'
 
-const imageUrl = (id) => `/api/quiz/images/${id}`
+const imageUrl = (id) => `/api/media/images/${id}`
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`
@@ -16,7 +16,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       <h2>Choose image</h2>
       <button type="button" class="image-library-close" data-close aria-label="Close image picker" title="Close">${removeIcon}</button>
     </div>
-    <p>PNG, JPEG, or WebP images can be reused in any quiz.</p>
+    <p>Personal images can be reused across apps. Shared images do not use your storage limit.</p>
     <div class="image-library-usage" aria-live="polite">
       <div class="image-library-usage-bars" hidden>
         <div class="image-library-usage-row">
@@ -127,7 +127,14 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     emptyName.textContent = 'No image'
     emptyTile.append(emptyChoice, emptyName)
     grid.replaceChildren(emptyTile, uploadTile)
-    for (const image of images) {
+    for (const scope of ['shared', 'personal']) {
+      const group = images.filter((image) => image.scope === scope)
+      if (!group.length) continue
+      const heading = document.createElement('h3')
+      heading.className = 'image-library-group-title'
+      heading.textContent = scope === 'shared' ? 'Shared images' : 'My images'
+      grid.append(heading)
+      for (const image of group) {
       const tile = document.createElement('div')
       tile.className = 'image-library-item'
       const choose = document.createElement('button')
@@ -165,7 +172,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
           }
           images = images.filter((item) => item.id !== image.id)
           render()
-          if (await refresh()) setStatus(status, 'Image deleted.')
+          if (await refresh()) setStatus(status, 'Image deleted.', false, true)
         } catch {
           setStatus(status, 'Could not delete image.', true)
         } finally {
@@ -176,14 +183,16 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       name.className = 'image-library-name'
       name.textContent = image.name
       name.title = image.name
-      tile.append(choose, name, remove)
+      tile.append(choose, name)
+      if (scope === 'personal') tile.append(remove)
       grid.append(tile)
+      }
     }
   }
 
   async function refresh() {
     try {
-      const [response, payload] = await requestJson('GET', '/api/quiz/images')
+      const [response, payload] = await requestJson('GET', '/api/media/images')
       if (!response.ok) {
         usageBars.hidden = true
         usageMessage.hidden = false
@@ -226,7 +235,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     upload.disabled = true
     setStatus(status, 'Uploading image…')
     try {
-      const response = await fetch('/api/quiz/images', {
+      const response = await fetch('/api/media/images', {
         method: 'POST', headers: {
           'Content-Type': 'application/octet-stream',
           'X-Image-Name': encodeURIComponent(file.name),

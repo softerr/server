@@ -200,6 +200,26 @@ function handleDeleteUser(int $targetId): never
         respond(500, ['error' => 'Failed to delete quiz data']);
     }
 
+    $mediaDb = connectMediaDb();
+    if (@pg_query($mediaDb, 'BEGIN') === false
+        || @pg_query_params($mediaDb, 'SELECT pg_advisory_xact_lock($1)', [$targetId]) === false) {
+        respond(500, ['error' => 'Failed to delete user images']);
+    }
+    $mediaDelete = @pg_query_params($mediaDb,
+        'DELETE FROM public.image WHERE owner_auth_user_id = $1', [$targetId]);
+    if ($mediaDelete === false) {
+        respond(500, ['error' => 'Failed to delete user images']);
+    }
+    $mediaGc = @pg_query($mediaDb,
+        'DELETE FROM public.image_blob b
+         WHERE NOT EXISTS (SELECT 1 FROM public.image i WHERE i.blob_id = b.id)');
+    if ($mediaGc === false) {
+        respond(500, ['error' => 'Failed to clean up user images']);
+    }
+    if (@pg_query($mediaDb, 'COMMIT') === false) {
+        respond(500, ['error' => 'Failed to delete user images']);
+    }
+
     $deleted = @pg_query_params(
         $authDb,
         'DELETE FROM public."user" WHERE id = $1 AND deleting = TRUE',

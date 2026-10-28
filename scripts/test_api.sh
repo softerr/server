@@ -22,6 +22,12 @@ export API_TEST_BASE_URL API_TEST_DB_NAME API_TEST_DB_SUPERUSER API_TEST_REQUIRE
 
 source "${TEST_ROOT}/lib.sh"
 
+# Repeated local runs share Nginx's per-IP buckets. Start each local suite
+# with a fresh window; individual cases still exercise configured limits.
+if [[ "${API_TEST_BASE_URL}" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/?$ ]]; then
+  sudo -n systemctl restart nginx
+fi
+
 require_command curl
 require_command jq
 
@@ -56,8 +62,11 @@ auth_cleanup_access="$(test_psql "${API_TEST_DB_NAME}" \
     AND has_table_privilege(current_user, 'public.\"user\"', 'DELETE');")" || auth_cleanup_access=''
 quiz_cleanup_access="$(test_psql quiz \
   "SELECT has_table_privilege(current_user, 'public.\"user\"', 'DELETE');")" || quiz_cleanup_access=''
-if [[ "${auth_cleanup_access}" != t || "${quiz_cleanup_access}" != t ]]; then
-  echo 'API tests need read/delete access to auth users and delete access to quiz users for cleanup.' >&2
+media_cleanup_access="$(test_psql media \
+  "SELECT has_table_privilege(current_user, 'public.image', 'DELETE')
+    AND has_table_privilege(current_user, 'public.media_group', 'DELETE');")" || media_cleanup_access=''
+if [[ "${auth_cleanup_access}" != t || "${quiz_cleanup_access}" != t || "${media_cleanup_access}" != t ]]; then
+  echo 'API tests need auth, quiz, and media cleanup access.' >&2
   exit 1
 fi
 
@@ -81,6 +90,12 @@ cleanup_test_users() {
     return 1
   fi
   test_psql quiz "DELETE FROM public.\"user\" WHERE auth_user_id IN (${ids});" >/dev/null || return 1
+  test_psql media "DELETE FROM public.image WHERE owner_auth_user_id IN (${ids})
+    OR (shared = TRUE AND left(original_name, length('${auth_prefix}')) = '${auth_prefix}');
+    DELETE FROM public.media_group
+    WHERE left(name, length('${auth_prefix}')) = '${auth_prefix}';
+    DELETE FROM public.image_blob b WHERE NOT EXISTS
+      (SELECT 1 FROM public.image i WHERE i.blob_id = b.id);" >/dev/null || return 1
   test_psql "${API_TEST_DB_NAME}" "DELETE FROM public.\"user\"
     WHERE id IN (${ids})
       AND (left(username, length('${auth_prefix}')) = '${auth_prefix}'

@@ -189,7 +189,7 @@ function readZipQuizImport(): ?array
     if ($zip->open($path, ZipArchive::CHECKCONS) !== true) {
         respond(400, ['error' => 'Invalid ZIP file']);
     }
-    if ($zip->numFiles < 1 || $zip->numFiles > QUIZ_IMAGE_MAX_COUNT + 1) {
+    if ($zip->numFiles < 1 || $zip->numFiles > QUIZ_IMPORT_MAX_IMAGES + 1) {
         respond(400, ['error' => 'Invalid quiz ZIP contents']);
     }
     $names = [];
@@ -226,7 +226,7 @@ function readZipQuizImport(): ?array
             respond(400, ['error' => 'Invalid quiz image in ZIP']);
         }
         $expected[$image['file']] = true;
-        $bytes = $zip->getFromName($image['file'], QUIZ_IMAGE_MAX_BYTES + 1);
+        $bytes = $zip->getFromName($image['file'], MEDIA_IMAGE_MAX_BYTES + 1);
         if ($bytes === false) respond(400, ['error' => 'Invalid quiz image in ZIP']);
         validQuizImage($bytes);
         unset($image['file']);
@@ -273,7 +273,7 @@ function handleImportQuiz(): never
     }
 
     $images = $payload['images'] ?? null;
-    if (!is_array($images) || !array_is_list($images) || count($images) > QUIZ_IMAGE_MAX_COUNT) {
+    if (!is_array($images) || !array_is_list($images) || count($images) > QUIZ_IMPORT_MAX_IMAGES) {
         respond(400, ['error' => 'Invalid quiz images']);
     }
     $decodedImages = [];
@@ -288,7 +288,7 @@ function handleImportQuiz(): never
         $bytes = base64_decode($image['data'], true);
         if ($bytes === false) respond(400, ['error' => 'Invalid quiz image']);
         $totalImageBytes += strlen($bytes);
-        if ($totalImageBytes > QUIZ_IMAGE_TOTAL_BYTES) respond(413, ['error' => 'Quiz images are too large']);
+        if ($totalImageBytes > QUIZ_IMPORT_MAX_BYTES) respond(413, ['error' => 'Quiz images are too large']);
         [$mime, $width, $height] = validQuizImage($bytes);
         $decodedImages[$image['id']] = [$imageName, $bytes, $mime, $width, $height];
     }
@@ -307,9 +307,16 @@ function handleImportQuiz(): never
     $db = connectQuizDb();
     $error = 'Failed to import quiz';
     $localUserId = beginQuizCreation($db, $user, $error);
+    $mediaDb = connectMediaDb();
+    if (@pg_query($mediaDb, 'BEGIN') === false
+        || @pg_query_params($mediaDb, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(500, ['error' => $error]);
+    }
+    ensureMediaAccountActive((int) $user['id']);
     $imageIds = [];
     foreach ($decodedImages as $oldId => [$imageName, $bytes, $mime, $width, $height]) {
-        $stored = saveQuizImage($db, $localUserId, $imageName, $bytes, $mime, $width, $height);
+        $stored = saveMediaImage($mediaDb, (int) $user['id'], $imageName, $bytes, $mime, $width, $height);
         $imageIds[$oldId] = $stored['id'];
     }
     $quiz = insertQuizRow($db, $localUserId, $name, $description, $error);
@@ -328,7 +335,7 @@ function handleImportQuiz(): never
             respond(500, ['error' => $error]);
         }
     }
-    if (@pg_query($db, 'COMMIT') === false) {
+    if (@pg_query($mediaDb, 'COMMIT') === false || @pg_query($db, 'COMMIT') === false) {
         respond(500, ['error' => $error]);
     }
     respond(201, $quiz);
@@ -370,10 +377,13 @@ function handleExportQuizZip(int $quizId): never
         'name' => $quiz['name'], 'description' => $quiz['description'],
         'questions' => $questions, 'images' => [],
     ];
+    $mediaDb = connectMediaDb();
     foreach ($imageIds as $id) {
-        $imageResult = @pg_query_params($db,
-            'SELECT original_name, mime_type, content FROM public.image WHERE id = $1 AND user_id = $2',
-            [$id, $quiz['user_id']]);
+        $imageResult = @pg_query_params($mediaDb,
+            'SELECT i.original_name, b.mime_type, b.content
+             FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
+             WHERE i.id = $1 AND (i.owner_auth_user_id = $2 OR i.shared = TRUE)',
+            [$id, $user['id']]);
         if ($imageResult === false) respond(500, ['error' => 'Failed to export quiz']);
         $image = pg_fetch_assoc($imageResult);
         if ($image === false) respond(500, ['error' => 'Quiz image is missing']);

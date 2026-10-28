@@ -15,7 +15,7 @@ test_api_health_method_not_allowed() {
 
 test_api_php_entrypoints_are_internal() {
   local entrypoint
-  for entrypoint in index auth quiz; do
+  for entrypoint in index auth quiz media; do
     api_request GET "/api/${entrypoint}.php"
     assert_status 404 || return 1
   done

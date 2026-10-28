@@ -1,4 +1,5 @@
 import { editIcon, deleteIcon } from './icons.js'
+import { createPageNotice } from '../../shared/page-notice.js'
 
 const quizActionIcons = { edit: editIcon, delete: deleteIcon }
 
@@ -72,6 +73,7 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
     </main>
   `
 
+  const notice = createPageNotice(page.querySelector('.library-page'))
   const list = page.querySelector('#quiz-list')
   const libraryStatus = page.querySelector('#library-status')
   const dialog = page.querySelector('#quiz-name-dialog')
@@ -159,7 +161,8 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
       addQuizToLibrary(list, quiz)
       list.hidden = false
       setStatus(libraryStatus, '')
-      setStatus(importStatus, `Imported “${quiz.name}”.`)
+      setStatus(importStatus, '')
+      notice.show(`Imported “${quiz.name}”.`)
     } catch {
       if (app.contains(list)) setStatus(importStatus, 'Could not import this quiz. Please try again.', true)
     } finally {
@@ -230,10 +233,13 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
         return
       }
       deletedQuizIds.add(quizId)
-      list.querySelector(`[data-quiz-id="${quizId}"]`)?.remove()
+      const item = list.querySelector(`[data-quiz-id="${quizId}"]`)
+      const name = item?.querySelector('.library-item-title')?.textContent ?? 'Quiz'
+      item?.remove()
       list.hidden = list.children.length === 0
       setStatus(libraryStatus, list.hidden ? 'Your library is empty.' : '')
       deleteDialog.close()
+      notice.show(`“${name}” deleted.`)
     } catch {
       if (app.contains(deleteDialog)) setStatus(deleteStatus, 'Could not connect to the service. Please try again.', true)
     } finally {

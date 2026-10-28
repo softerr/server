@@ -13,6 +13,8 @@ source "${SCRIPT_DIR}/lib/apt_locks.sh"
 INIT_SQL_FILE="${REPO_ROOT}/configs/postgresql/init.sql"
 AUTH_SQL_FILE="${REPO_ROOT}/configs/postgresql/auth.sql"
 QUIZ_SQL_FILE="${REPO_ROOT}/configs/postgresql/quiz.sql"
+MEDIA_SQL_FILE="${REPO_ROOT}/configs/postgresql/media.sql"
+MEDIA_UPGRADE_SQL_FILE="${REPO_ROOT}/configs/postgresql/migrate_quiz_images.sql"
 PRUNE_SQL_FILE="${REPO_ROOT}/configs/postgresql/prune_user_tokens.sql"
 PRUNE_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.service"
 PRUNE_TIMER_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.timer"
@@ -25,7 +27,7 @@ if ! command -v apt-get >/dev/null 2>&1; then
   exit 1
 fi
 
-for config_file in "${INIT_SQL_FILE}" "${AUTH_SQL_FILE}" "${QUIZ_SQL_FILE}" \
+for config_file in "${INIT_SQL_FILE}" "${AUTH_SQL_FILE}" "${QUIZ_SQL_FILE}" "${MEDIA_SQL_FILE}" "${MEDIA_UPGRADE_SQL_FILE}" \
   "${PRUNE_SQL_FILE}" "${PRUNE_SERVICE_FILE}" "${PRUNE_TIMER_FILE}" \
   "${BACKUP_SCRIPT_FILE}" "${BACKUP_SERVICE_FILE}" "${BACKUP_TIMER_FILE}"; do
   if [[ ! -f "${config_file}" ]]; then
@@ -66,6 +68,11 @@ sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${AUTH_SQL_FILE}"
 echo "Applying quiz database schema: ${QUIZ_SQL_FILE}"
 sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d quiz < "${QUIZ_SQL_FILE}"
 
+echo "Applying shared media database schema: ${MEDIA_SQL_FILE}"
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d media < "${MEDIA_SQL_FILE}"
+echo "Copying existing quiz images into shared media storage..."
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 -1 -d media < "${MEDIA_UPGRADE_SQL_FILE}"
+
 echo "Pruning expired verification tokens..."
 sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${PRUNE_SQL_FILE}"
 
@@ -88,4 +95,4 @@ systemctl start softerr-backup-postgresql.service
 systemctl enable --now softerr-backup-postgresql.timer
 
 echo "Done."
-echo "PostgreSQL is installed and auth and quiz database schemas are initialized."
+echo "PostgreSQL is installed and auth, quiz, and media database schemas are initialized."

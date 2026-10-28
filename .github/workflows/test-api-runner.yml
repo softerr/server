@@ -172,13 +172,16 @@ jobs:
       - name: Check expired-token pruning
         run: bash tests/db/prune_user_tokens.sh
 
-      - name: Check quiz database separation
+      - name: Check database separation
         run: |
           set -euo pipefail
           test "$(sudo -u postgres psql -X -Atq -d auth -c "SELECT to_regclass('public.quiz') IS NULL")" = t
           test "$(sudo -u postgres psql -X -Atq -d quiz -c "SELECT to_regclass('public.quiz') IS NOT NULL")" = t
           test "$(sudo -u postgres psql -X -Atq -d quiz -c "SELECT to_regclass('public.\"user\"') IS NOT NULL")" = t
+          test "$(sudo -u postgres psql -X -Atq -d quiz -c "SELECT to_regclass('public.image') IS NULL")" = t
           test "$(sudo -u postgres psql -X -Atq -d quiz -c "SELECT COUNT(*) FROM pg_constraint WHERE conrelid = 'public.quiz'::regclass AND contype = 'f' AND confrelid = 'public.\"user\"'::regclass")" = 1
+          test "$(sudo -u postgres psql -X -Atq -d media -c "SELECT to_regclass('public.image') IS NOT NULL")" = t
+          test "$(sudo -u postgres psql -X -Atq -d auth -c "SELECT to_regclass('public.image') IS NULL")" = t
 
       - name: Check verified database backup
         run: |
@@ -186,7 +189,11 @@ jobs:
           sudo systemctl start softerr-backup-postgresql.service
           sudo -u postgres sh -c 'find /var/backups/softerr -maxdepth 1 -type f -name "auth-*.dump" | grep -q .'
           sudo -u postgres sh -c 'find /var/backups/softerr -maxdepth 1 -type f -name "quiz-*.dump" | grep -q .'
+          sudo -u postgres sh -c 'find /var/backups/softerr -maxdepth 1 -type f -name "media-*.dump" | grep -q .'
           test "$(sudo -u postgres psql -X -Atqc "SELECT count(*) FROM pg_database WHERE datname LIKE 'softerr_restore_check_%'")" = 0
+
+      - name: Check legacy quiz image migration
+        run: bash tests/db/migrate_quiz_images.sh
 
       - name: Print service logs on failure
         if: failure()

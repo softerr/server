@@ -71,3 +71,5 @@ backup_database auth \
   'SELECT 1 FROM public."user", public.user_token, public.verification_email_outbox, public.approval_email_outbox LIMIT 0'
 backup_database quiz \
   'SELECT q.id, q.user_id, q.name, q.created, u.auth_user_id FROM public.quiz q, public."user" u LIMIT 0'
+backup_database media \
+  'SELECT i.id, i.blob_id, b.sha256 FROM public.image i, public.image_blob b LIMIT 0'

@@ -42,6 +42,8 @@ test_quiz_library_requires_login() {
   assert_status 401 || return 1
   api_request GET /api/quiz/images
   assert_status 401 || return 1
+  api_request GET /api/media/images
+  assert_status 401 || return 1
   api_request GET /api/quiz/images/1
   assert_status 401 || return 1
   api_request DELETE /api/quiz/images/1

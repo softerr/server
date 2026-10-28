@@ -1,5 +1,7 @@
 import './style.css'
 import { startAuthApp } from '../../shared/auth-app.js'
+import { renderMedia } from './media.js'
+import { createPageNotice } from '../../shared/page-notice.js'
 
 const deleteIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>'
 
@@ -26,6 +28,7 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
     </main>
   `
 
+  const notice = createPageNotice(app.querySelector('.users-page'))
   const status = app.querySelector('#users-status')
   const tableWrap = app.querySelector('#users-table-wrap')
   const body = app.querySelector('#users-table-body')
@@ -138,16 +141,19 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
       if (!app.contains(row)) return
       if (!response.ok) {
         select.value = select.dataset.savedRole
-        setStatus(rowStatus, responseError(response, payload), true)
+        setStatus(rowStatus, '')
+        notice.show(`Could not change ${row.dataset.username}'s role: ${responseError(response, payload)}`, 'error')
         return
       }
       select.dataset.savedRole = payload.role
       select.value = payload.role
-      setStatus(rowStatus, 'Saved')
+      setStatus(rowStatus, '')
+      notice.show(`${row.dataset.username}'s role changed to ${payload.role}.`)
     } catch {
       if (app.contains(row)) {
         select.value = select.dataset.savedRole
-        setStatus(rowStatus, 'Could not save role. Please try again.', true)
+        setStatus(rowStatus, '')
+        notice.show(`Could not change ${row.dataset.username}'s role. Please try again.`, 'error')
       }
     } finally {
       if (app.contains(row)) select.disabled = false
@@ -174,17 +180,20 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
       const [response, payload] = await requestJson('POST', `/api/auth/users/${row.dataset.userId}/approve`)
       if (!app.contains(row)) return
       if (!response.ok) {
-        setStatus(rowStatus, responseError(response, payload), true)
+        setStatus(rowStatus, '')
+        notice.show(`Could not approve ${row.dataset.username}: ${responseError(response, payload)}`, 'error')
         approve.disabled = false
         return
       }
       approve.parentElement.textContent = 'Approved'
       row.querySelector('.role-select').disabled = payload.id === currentUser.id
-      setStatus(rowStatus, 'Approved')
+      setStatus(rowStatus, '')
+      notice.show(`${row.dataset.username} approved.`)
     } catch {
       if (app.contains(row)) {
         approve.disabled = false
-        setStatus(rowStatus, 'Could not approve user. Please try again.', true)
+        setStatus(rowStatus, '')
+        notice.show(`Could not approve ${row.dataset.username}. Please try again.`, 'error')
       }
     }
   })
@@ -209,6 +218,7 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
       row.remove()
       tableWrap.hidden = body.children.length === 0
       setStatus(status, body.children.length ? `${body.children.length} users` : 'No users found.')
+      notice.show(`${row.dataset.username} deleted.`)
       deletingRow = null
       deleteDialog.close()
     } catch {
@@ -226,14 +236,19 @@ startAuthApp({
   signupPrompt: 'New here?',
   defaultView: 'apps',
   publicViews: ['apps'],
-  views: ['users'],
+  views: ['users', 'media'],
   links: [
     { view: 'apps', label: 'Apps' },
+    { view: 'media', label: 'Media', roles: ['user', 'mod', 'admin'] },
     { view: 'users', label: 'Users', roles: ['admin'] },
   ],
   showLinksWhenLoggedOut: true,
   showGuestLogin: true,
   renderView(view, app, helpers) {
+    if (view === 'media') {
+      renderMedia(app, helpers)
+      return true
+    }
     if (view === 'users') {
       renderUsers(app, helpers)
       return true

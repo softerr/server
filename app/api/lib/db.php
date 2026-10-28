@@ -45,3 +45,8 @@ function openQuizDb(): array
     return openDb(3, 'quiz');
 }
 
+function openMediaDb(): array
+{
+    return openDb(3, 'media');
+}
+

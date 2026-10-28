@@ -553,7 +553,7 @@ function collectConfig(form, template) {
   return config
 }
 
-export function mountQuestionEditor(app, section, quizId, { requestJson, responseError, setStatus, onChange = () => {} }) {
+export function mountQuestionEditor(app, section, quizId, { currentUser, requestJson, responseError, setStatus, onChange = () => {} }) {
   section.innerHTML = `
     <div class="questions-heading">
       <h2>Questions</h2>
@@ -589,7 +589,7 @@ export function mountQuestionEditor(app, section, quizId, { requestJson, respons
   const deleteDialog = section.querySelector('#delete-question-dialog')
   const deleteStatus = section.querySelector('#delete-question-status')
   const confirmDelete = section.querySelector('#confirm-delete-question')
-  const imageLibrary = mountImageLibrary(section, { requestJson, responseError, setStatus })
+  const imageLibrary = mountImageLibrary(section, { currentUser, requestJson, responseError, setStatus })
   const encoder = new TextEncoder()
   let questions = []
   let draftCard = null

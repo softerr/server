@@ -55,3 +55,12 @@ function connectQuizDb()
     return $conn;
 }
 
+function connectMediaDb()
+{
+    [$conn, $error] = openMediaDb();
+    if ($conn === false) {
+        respond(500, ['error' => $error]);
+    }
+    return $conn;
+}
+

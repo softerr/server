@@ -6,7 +6,7 @@ Assumptions:
 - Ubuntu server
 - Services managed by `systemd`
 - Project path: `/home/ubuntu/server`
-- PostgreSQL DB: `auth`
+- PostgreSQL databases: `auth`, `quiz`, `media`
 
 ## 1. Service health
 
@@ -100,7 +100,7 @@ The Users navbar item is visible to admins. Once the first admin is assigned
 through PostgreSQL, that admin can change other accounts' roles in the Users
 table. An admin cannot change their own role there.
 Admins can also delete other accounts from that table. Deletion removes the
-auth account and its quiz data. If cleanup fails, the account remains blocked
+auth account, quiz data, and personal media images. If cleanup fails, the account remains blocked
 and visible in the Users table so deletion can be retried.
 
 ## 4. Dump one table
@@ -133,7 +133,7 @@ sudo -u postgres psql -d auth -c "\copy (SELECT * FROM public.user_token ORDER B
 
 ## 6. Verified database backups
 
-PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after 03:00 server time, makes a custom-format dump of `auth`, restores the dump into a temporary database, checks the expected tables, and only then publishes the archive under `/var/backups/softerr`. The directory is accessible only to `postgres` and root. Verified archives are kept for 30 days. A failed dump or restore leaves earlier backups in place and makes the service fail. Keep enough free disk space for both the archive and a temporary restored copy of the database.
+PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after 03:00 server time, dumps `auth`, `quiz`, and `media`, restores each dump into a temporary database, checks the expected tables, and only then publishes the archives under `/var/backups/softerr`. The directory is accessible only to `postgres` and root. Verified archives are kept for 30 days. A failed dump or restore leaves earlier backups in place and makes the service fail. Keep enough free disk space for each archive and its temporary restored database.
 
 Check the timer, run a backup now, and inspect the result:
 

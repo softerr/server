@@ -31,9 +31,10 @@ export function startAuthApp(config) {
     return typeof payload?.error === 'string' ? payload.error : 'The request could not be completed.'
   }
 
-  function setStatus(element, message, isError = false) {
+  function setStatus(element, message, isError = false, isSuccess = false) {
     element.textContent = message
     element.classList.toggle('error', isError)
+    element.classList.toggle('success', isSuccess)
   }
 
   async function requestJson(method, path, data) {
@@ -143,7 +144,7 @@ export function startAuthApp(config) {
         if (!app.contains(form)) return
         setStatus(status, response.ok
           ? 'If this account exists, a reset link will arrive by email.'
-          : responseError(response, payload), !response.ok)
+          : responseError(response, payload), !response.ok, response.ok)
       } catch {
         if (app.contains(form)) setStatus(status, 'Could not connect to the service. Please try again.', true)
       } finally {
@@ -199,7 +200,7 @@ export function startAuthApp(config) {
         currentUser = null
         window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#login`)
         render()
-        setStatus(app.querySelector('#login-status'), 'Password updated. Please log in.')
+        setStatus(app.querySelector('#login-status'), 'Password updated. Please log in.', false, true)
       } catch {
         if (app.contains(form)) setStatus(status, 'Could not connect to the service. Please try again.', true)
       } finally {
@@ -282,7 +283,7 @@ export function startAuthApp(config) {
         if (!app.contains(resendButton)) return
         setStatus(status, response.ok
           ? 'Request accepted. If eligible, another email will arrive shortly.'
-          : responseError(response, payload), !response.ok)
+          : responseError(response, payload), !response.ok, response.ok)
       } catch {
         if (app.contains(resendButton)) setStatus(status, 'Could not connect to the service. Please try again.', true)
       } finally {

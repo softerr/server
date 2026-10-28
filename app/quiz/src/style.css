@@ -616,6 +616,13 @@
   margin: 18px 0;
 }
 
+.image-library-group-title {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  color: var(--text-h);
+  font-size: 0.85rem;
+}
+
 .image-library-item {
   display: grid;
   align-content: start;
