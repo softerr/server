@@ -1,14 +1,24 @@
 const imageUrl = (id) => `/api/media/images/${id}`
 import { renderSharedMedia, renameIcon } from './shared-media.js'
-import { formatBytes, formatImageDetails } from './media-format.js'
+import { formatBytes, formatImageDetails, mediaImageIcon } from './media-format.js'
 import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
 import { createPageNotice } from '../../shared/page-notice.js'
 
+const viewOptions = [
+  ['list', 'List', '<rect x="3" y="4" width="4" height="4"/><path d="M10 6h11"/><rect x="3" y="10" width="4" height="4"/><path d="M10 12h11"/><rect x="3" y="16" width="4" height="4"/><path d="M10 18h11"/>'],
+  ['small', 'Small icons', '<path d="M3 3h4v4H3zM10 3h4v4h-4zM17 3h4v4h-4zM3 10h4v4H3zM10 10h4v4h-4zM17 10h4v4h-4zM3 17h4v4H3zM10 17h4v4h-4zM17 17h4v4h-4z"/>'],
+  ['medium', 'Medium icons', '<path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/>'],
+  ['large', 'Large icons', '<rect x="3" y="3" width="18" height="18" rx="1"/>'],
+]
+
 export function renderMedia(app, { currentUser, requestJson, responseError, setStatus }) {
+  const viewButtonsMarkup = viewOptions.map(([value, label, shapes]) =>
+    `<button class="media-view-button" type="button" data-media-layout-option="${value}" aria-label="${label} view" title="${label} view" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shapes}</svg></button>`).join('')
   app.querySelector('#page').innerHTML = `
     <main class="media-page">
       <div class="media-header">
         <h1 class="section-title">Media</h1>
+        <div class="media-view-control" role="group" aria-label="Media view">${viewButtonsMarkup}</div>
       </div>
       <div class="media-tabs" role="tablist" aria-label="Media libraries">
         <button id="media-tab-personal" class="media-tab" type="button" role="tab" aria-controls="media-personal" aria-selected="true">My library</button>
@@ -39,6 +49,27 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
     </main>
   `
   const page = app.querySelector('.media-page')
+  const viewButtons = [...page.querySelectorAll('.media-view-button')]
+  const viewStorageKey = 'softerr-media-view'
+  let savedView = null
+  try { savedView = localStorage.getItem(viewStorageKey) } catch { /* Storage may be unavailable. */ }
+  function setView(view, save = false) {
+    page.dataset.mediaLayout = view
+    for (const button of viewButtons) {
+      button.setAttribute('aria-pressed', String(button.dataset.mediaLayoutOption === view))
+    }
+    for (const preview of page.querySelectorAll('.media-card > img')) {
+      if (view === 'list') preview.removeAttribute('src')
+      else preview.src = preview.dataset.src
+    }
+    if (save) {
+      try { localStorage.setItem(viewStorageKey, view) } catch { /* Keep this view for the current page. */ }
+    }
+  }
+  setView(viewOptions.some(([value]) => value === savedView) ? savedView : 'medium')
+  for (const button of viewButtons) {
+    button.addEventListener('click', () => setView(button.dataset.mediaLayoutOption, true))
+  }
   const notice = createPageNotice(page)
   const grid = page.querySelector('#media-grid')
   const usage = page.querySelector('#media-usage')
@@ -145,9 +176,14 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
       const card = document.createElement('article')
       card.className = 'media-card'
       const preview = document.createElement('img')
-      preview.src = imageUrl(image.id)
+      preview.dataset.src = imageUrl(image.id)
+      if (page.dataset.mediaLayout !== 'list') preview.src = preview.dataset.src
       preview.alt = image.name
       preview.loading = 'lazy'
+      const listIcon = document.createElement('span')
+      listIcon.className = 'media-list-image-icon'
+      listIcon.setAttribute('aria-hidden', 'true')
+      listIcon.innerHTML = mediaImageIcon
       const details = document.createElement('div')
       details.className = 'media-card-details'
       const name = document.createElement('span')
@@ -169,7 +205,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
       rename.addEventListener('click', () => openRename(image, refresh))
       title.append(name, rename)
       details.append(title, metadata)
-      card.append(preview, details)
+      card.append(preview, listIcon, details)
       if (publish && image.scope === 'personal') bindMediaCardSelection(card, image, {
         grid, selected, anchor: selectionAnchor, visibleIds: () => images.map((item) => item.id),
         busy: () => busy, changed: updatePublishButton,

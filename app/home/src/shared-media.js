@@ -1,4 +1,4 @@
-import { formatImageDetails } from './media-format.js'
+import { formatImageDetails, mediaImageIcon } from './media-format.js'
 import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
 
 const imageUrl = (id) => `/api/media/images/${id}`
@@ -139,9 +139,14 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
       const card = document.createElement('article')
       card.className = 'media-card'
       const preview = document.createElement('img')
-      preview.src = imageUrl(image.id)
+      preview.dataset.src = imageUrl(image.id)
+      if (section.closest('.media-page').dataset.mediaLayout !== 'list') preview.src = preview.dataset.src
       preview.alt = image.name
       preview.loading = 'lazy'
+      const listIcon = document.createElement('span')
+      listIcon.className = 'media-list-image-icon'
+      listIcon.setAttribute('aria-hidden', 'true')
+      listIcon.innerHTML = mediaImageIcon
       const details = document.createElement('div')
       details.className = 'media-card-details'
       const name = document.createElement('span')
@@ -166,7 +171,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
         title.append(rename)
       }
       details.append(title, metadata)
-      card.append(preview, details)
+      card.append(preview, listIcon, details)
       if (admin) bindMediaCardSelection(card, image, {
         grid: imageGrid, selected, anchor: selectionAnchor,
         visibleIds: () => visible.map((item) => item.id), busy: () => busy, changed: updateMoveButton,

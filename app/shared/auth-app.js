@@ -333,7 +333,7 @@ export function startAuthApp(config) {
       }).catch(() => {})
       return
     }
-    const button = event.target.closest('[data-view]')
+    const button = event.target.closest('button[data-view]')
     if (button && app.contains(button)) navigate(button.dataset.view)
   })
   window.addEventListener('hashchange', render)
