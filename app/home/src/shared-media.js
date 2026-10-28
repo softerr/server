@@ -11,23 +11,29 @@ const createFolderIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 export function renderSharedMedia(section, { currentUser, requestJson, responseError, setStatus, notify }) {
   const admin = currentUser.role === 'admin'
   section.innerHTML = `
-    <div id="shared-breadcrumb" class="shared-breadcrumb" hidden></div>
+    <div id="shared-toolbar" class="shared-toolbar" ${admin ? '' : 'hidden'}>
+      <div id="shared-breadcrumb" class="shared-breadcrumb" hidden></div>
+      ${admin ? '<button id="shared-upload-button" type="button" class="auth-button auth-button-secondary media-upload">Upload images</button><input id="shared-upload-files" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>' : ''}
+    </div>
     <div id="shared-folders" class="media-grid"></div>
     <h3 id="shared-image-heading" class="shared-image-heading">Ungrouped images</h3>
     <div id="shared-images" class="media-grid"></div>
     ${admin ? '<div class="shared-move"><button id="shared-move-button" class="auth-button auth-button-secondary" type="button" disabled>Move selected</button></div>' : ''}
     <p id="shared-status" class="form-status" role="status" aria-live="polite">Loading shared library…</p>
-    ${admin ? '<dialog id="shared-group-dialog" class="user-dialog" aria-labelledby="shared-group-dialog-title"><form id="shared-group-create"><h2 id="shared-group-dialog-title">Create folder</h2><label class="field"><span>Name</span><input name="name" maxlength="100" required></label><p id="shared-group-dialog-status" class="form-status" role="status" aria-live="polite"></p><div class="user-dialog-actions"><button type="button" class="auth-button auth-button-secondary" data-cancel>Cancel</button><button type="submit" class="auth-button auth-button-primary">Create folder</button></div></form></dialog>' : ''}
+    ${admin ? '<dialog id="shared-group-dialog" class="user-dialog" aria-labelledby="shared-group-dialog-title"><form id="shared-group-form"><h2 id="shared-group-dialog-title">Create folder</h2><label class="field"><span>Name</span><input name="name" maxlength="100" required></label><p id="shared-group-dialog-status" class="form-status" role="status" aria-live="polite"></p><div class="user-dialog-actions"><button type="button" class="auth-button auth-button-secondary" data-cancel>Cancel</button><button type="submit" class="auth-button auth-button-primary">Create folder</button></div></form></dialog>' : ''}
     ${admin ? '<dialog id="shared-move-dialog" class="user-dialog" aria-labelledby="shared-move-title"><form id="shared-move-form"><h2 id="shared-move-title">Move images</h2><p id="shared-move-count"></p><fieldset class="media-destination-fieldset"><legend>Destination</legend><div id="shared-destinations" class="media-destinations"></div></fieldset><p id="shared-move-status" class="form-status" role="status" aria-live="polite"></p><div class="user-dialog-actions"><button type="button" class="auth-button auth-button-secondary" data-cancel>Cancel</button><button type="submit" class="auth-button auth-button-primary" disabled>Move images</button></div></form></dialog>' : ''}
   `
   const folderGrid = section.querySelector('#shared-folders')
   const imageGrid = section.querySelector('#shared-images')
+  const toolbar = section.querySelector('#shared-toolbar')
   const breadcrumb = section.querySelector('#shared-breadcrumb')
   const imageHeading = section.querySelector('#shared-image-heading')
   const status = section.querySelector('#shared-status')
-  const createForm = section.querySelector('#shared-group-create')
-  const createDialog = section.querySelector('#shared-group-dialog')
-  const createStatus = section.querySelector('#shared-group-dialog-status')
+  const uploadButton = section.querySelector('#shared-upload-button')
+  const uploadInput = section.querySelector('#shared-upload-files')
+  const groupForm = section.querySelector('#shared-group-form')
+  const groupDialog = section.querySelector('#shared-group-dialog')
+  const groupStatus = section.querySelector('#shared-group-dialog-status')
   const moveButton = section.querySelector('#shared-move-button')
   const moveDialog = section.querySelector('#shared-move-dialog')
   const moveForm = section.querySelector('#shared-move-form')
@@ -39,16 +45,30 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
   let groups = []
   let images = []
   let activeGroupId = null
+  let editingGroupId = null
   let busy = false
   const selected = new Set()
   let selectionAnchor = null
 
+  function openGroupDialog(group = null) {
+    editingGroupId = group?.id ?? null
+    groupForm.reset()
+    groupForm.elements.name.value = group?.name ?? ''
+    groupDialog.querySelector('#shared-group-dialog-title').textContent = group ? 'Rename folder' : 'Create folder'
+    groupForm.querySelector('[type="submit"]').textContent = group ? 'Save name' : 'Create folder'
+    setStatus(groupStatus, '')
+    groupDialog.showModal()
+    groupForm.elements.name.focus()
+  }
+
   function render() {
     const activeGroup = groups.find((group) => group.id === activeGroupId)
     if (activeGroupId !== null && !activeGroup) activeGroupId = null
+    if (uploadButton) uploadButton.disabled = busy
     folderGrid.replaceChildren()
     breadcrumb.replaceChildren()
     breadcrumb.hidden = activeGroupId === null
+    toolbar.hidden = !admin && activeGroupId === null
     if (activeGroupId === null) {
       if (admin) {
         const card = document.createElement('div')
@@ -59,12 +79,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
         open.setAttribute('aria-label', 'Create folder')
         open.disabled = busy
         open.innerHTML = `<span class="media-folder-icon">${createFolderIcon}</span><span class="media-folder-label"><strong>Create folder</strong><span>New shared folder</span></span>`
-        open.addEventListener('click', () => {
-          createForm.reset()
-          setStatus(createStatus, '')
-          createDialog.showModal()
-          createForm.querySelector('input[name="name"]').focus()
-        })
+        open.addEventListener('click', () => openGroupDialog())
         card.append(open)
         folderGrid.append(card)
       }
@@ -162,22 +177,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
     rename.setAttribute('aria-label', `Rename ${group.name}`)
     rename.title = `Rename ${group.name}`
     rename.disabled = busy
-    rename.addEventListener('click', async () => {
-      const name = window.prompt('Rename folder', group.name)
-      if (name === null || name.trim() === group.name) return
-      busy = true; render()
-      try {
-        const [response, payload] = await requestJson('PATCH', `/api/media/groups/${group.id}`, { name })
-        if (!section.isConnected) return
-        if (!response.ok) notify(responseError(response, payload), 'error')
-        else if (await refresh()) notify('Folder renamed.')
-        else notify('Folder renamed, but the shared library could not reload.', 'error')
-      } catch {
-        if (section.isConnected) notify('Could not rename folder.', 'error')
-      } finally {
-        busy = false; if (section.isConnected) render()
-      }
-    })
+    rename.addEventListener('click', () => openGroupDialog(group))
     const remove = document.createElement('button')
     remove.type = 'button'
     remove.innerHTML = deleteIcon
@@ -251,36 +251,101 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
     return true
   }
 
-  createForm?.addEventListener('submit', async (event) => {
-    event.preventDefault()
-    if (busy) return
-    const name = createForm.querySelector('input[name="name"]').value
+  uploadButton?.addEventListener('click', () => { if (!busy) uploadInput.click() })
+  uploadInput?.addEventListener('change', async () => {
+    const files = Array.from(uploadInput.files || [])
+    uploadInput.value = ''
+    if (!files.length || busy) return
+    const groupId = activeGroupId
+    const target = groupId === null ? 'Ungrouped' : groups.find((group) => group.id === groupId)?.name ?? 'folder'
+    const url = groupId === null ? '/api/media/shared-images' : `/api/media/groups/${groupId}/images`
     busy = true
-    createForm.querySelector('[type="submit"]').disabled = true
-    setStatus(createStatus, 'Creating folder…')
+    render()
+    let uploaded = 0
+    let existing = 0
+    const failures = []
     try {
-      const [response, payload] = await requestJson('POST', '/api/media/groups', { name })
+      for (const [index, file] of files.entries()) {
+        if (!section.isConnected) return
+        notify(`Uploading ${index + 1} of ${files.length} to ${target}: ${file.name}…`, 'info')
+        if (file.size > 2097152) {
+          failures.push(`${file.name}: image must be at most 2 MiB`)
+          continue
+        }
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream', 'X-Image-Name': encodeURIComponent(file.name) },
+            body: file,
+          })
+          const payload = await response.json().catch(() => null)
+          if (!response.ok) {
+            failures.push(`${file.name}: ${responseError(response, payload)}`)
+          } else if (response.status === 201) uploaded++
+          else existing++
+        } catch {
+          failures.push(`${file.name}: could not upload`)
+        }
+      }
       if (!section.isConnected) return
-      if (!response.ok) setStatus(createStatus, responseError(response, payload), true)
-      else {
-        createDialog.close()
-        if (await refresh()) notify('Folder created.')
-        else notify('Folder created, but the shared library could not reload.', 'error')
+      if (!await refresh()) {
+        notify('Uploads finished, but the shared library could not be reloaded.', 'error')
+        return
       }
+      const summary = [`${uploaded} uploaded to ${target}`]
+      if (existing) summary.push(`${existing} already there`)
+      if (failures.length) {
+        const details = failures.slice(0, 3).join('; ')
+        summary.push(`${failures.length} failed (${details}${failures.length > 3 ? '; more…' : ''})`)
+      }
+      notify(summary.join(' · '), failures.length ? (uploaded || existing ? 'warning' : 'error') : 'success')
+      setStatus(status, '')
     } catch {
-      if (section.isConnected) {
-        if (createDialog.open) setStatus(createStatus, 'Could not create folder.', true)
-        else notify('Folder created, but could not reload folders.', 'error')
-      }
+      if (section.isConnected) notify('Could not reload the shared library after uploading.', 'error')
     } finally {
       busy = false
-      createForm.querySelector('[type="submit"]').disabled = false
       if (section.isConnected) render()
     }
   })
-  createDialog?.addEventListener('cancel', (event) => { if (busy) event.preventDefault() })
-  createDialog?.querySelector('[data-cancel]').addEventListener('click', () => {
-    if (!busy) createDialog.close()
+
+  groupForm?.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    if (busy) return
+    const groupId = editingGroupId
+    const name = groupForm.elements.name.value
+    if (groupId !== null && name.trim() === groups.find((group) => group.id === groupId)?.name) {
+      groupDialog.close()
+      return
+    }
+    const action = groupId === null ? 'Creating' : 'Renaming'
+    busy = true
+    groupForm.querySelector('[type="submit"]').disabled = true
+    setStatus(groupStatus, `${action} folder…`)
+    try {
+      const [response, payload] = await requestJson(groupId === null ? 'POST' : 'PATCH',
+        groupId === null ? '/api/media/groups' : `/api/media/groups/${groupId}`, { name })
+      if (!section.isConnected) return
+      if (!response.ok) setStatus(groupStatus, responseError(response, payload), true)
+      else {
+        groupDialog.close()
+        const result = groupId === null ? 'created' : 'renamed'
+        if (await refresh()) notify(`Folder ${result}.`)
+        else notify(`Folder ${result}, but the shared library could not reload.`, 'error')
+      }
+    } catch {
+      if (section.isConnected) {
+        if (groupDialog.open) setStatus(groupStatus, `Could not ${groupId === null ? 'create' : 'rename'} folder.`, true)
+        else notify('Folder saved, but could not reload folders.', 'error')
+      }
+    } finally {
+      busy = false
+      groupForm.querySelector('[type="submit"]').disabled = false
+      if (section.isConnected) render()
+    }
+  })
+  groupDialog?.addEventListener('cancel', (event) => { if (busy) event.preventDefault() })
+  groupDialog?.querySelector('[data-cancel]').addEventListener('click', () => {
+    if (!busy) groupDialog.close()
   })
 
   moveButton?.addEventListener('click', () => {

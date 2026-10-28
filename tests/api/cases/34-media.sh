@@ -4,13 +4,15 @@ test_shared_media_across_users_and_quizzes() (
   set -e
   # Earlier login cases may have exhausted the per-IP Nginx bucket.
   sudo -n systemctl restart nginx
-  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file response status shared_id private_id group_id quiz_id archive manifest count
+  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file direct_file folder_file response status shared_id private_id direct_id folder_id group_id quiz_id archive manifest count
   admin_cookie="$(mktemp)"
   user_cookie="$(mktemp)"
   png_file="$(mktemp)"
   private_file="$(mktemp)"
+  direct_file="$(mktemp)"
+  folder_file="$(mktemp)"
   archive="$(mktemp)"
-  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$private_file" "$archive"' EXIT
+  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$private_file" "$direct_file" "$folder_file" "$archive"' EXIT
 
   create_test_identity
   admin_email="$TEST_EMAIL"
@@ -46,11 +48,31 @@ test_shared_media_across_users_and_quizzes() (
   printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=' | base64 -d > "$png_file"
   cp "$png_file" "$private_file"
   printf 'personal' >> "$private_file"
+  cp "$png_file" "$direct_file"
+  printf 'direct-shared' >> "$direct_file"
+  cp "$png_file" "$folder_file"
+  printf 'folder-shared' >> "$folder_file"
 
-  response="$(curl -sS -b "$admin_cookie" -X POST --data-binary @"$png_file" \
-    -H 'X-Image-Name: old-route.png' -w $'\n%{http_code}' \
+  response="$(curl -sS -b "$user_cookie" -X POST --data-binary @"$direct_file" \
+    -H 'X-Image-Name: denied.png' -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/shared-images")"
-  [[ "${response##*$'\n'}" == 405 ]] || { fail_test "direct shared upload route still accepts POST: ${response}"; return 1; }
+  [[ "${response##*$'\n'}" == 403 ]] || { fail_test "user could upload directly to shared media: ${response}"; return 1; }
+
+  response="$(curl -sS -b "$admin_cookie" -X POST --data-binary @"$direct_file" \
+    -H "X-Image-Name: api_test_${API_TEST_RUN_ID}_direct.png" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/shared-images")"
+  direct_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  [[ "${response##*$'\n'}" == 201 && "$direct_id" =~ ^[0-9]+$ ]] \
+    || { fail_test "admin direct shared upload failed: ${response}"; return 1; }
+  jq -e --argjson id "$direct_id" '.id == $id and .scope == "shared" and .group_id == null' \
+    <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "direct shared image was not ungrouped: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X POST --data-binary @"$direct_file" \
+    -H 'X-Image-Name: duplicate.png' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/shared-images")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "identical shared upload was not reused: ${response}"; return 1; }
+  jq -e --argjson id "$direct_id" '.id == $id' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "identical shared upload changed image ID: ${response}"; return 1; }
 
   response="$(curl -sS -b "$admin_cookie" -X POST --data-binary @"$png_file" \
     -H "X-Image-Name: api_test_${API_TEST_RUN_ID}_shared.png" -w $'\n%{http_code}' \
@@ -137,6 +159,24 @@ test_shared_media_across_users_and_quizzes() (
   response="$(curl -sS -b "$user_cookie" "${API_TEST_BASE_URL%/}/api/media/images")"
   jq -e --argjson id "$shared_id" --argjson group "$group_id" '.images | any(.id == $id and .group_id == $group)' <<<"$response" >/dev/null \
     || { fail_test "image library did not include group assignment: ${response}"; return 1; }
+
+  response="$(curl -sS -b "$user_cookie" -X POST --data-binary @"$folder_file" \
+    -H 'X-Image-Name: denied.png' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/groups/${group_id}/images")"
+  [[ "${response##*$'\n'}" == 403 ]] || { fail_test "user could upload to shared folder: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X POST --data-binary @"$folder_file" \
+    -H "X-Image-Name: api_test_${API_TEST_RUN_ID}_folder.png" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/groups/${group_id}/images")"
+  folder_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  [[ "${response##*$'\n'}" == 201 && "$folder_id" =~ ^[0-9]+$ ]] \
+    || { fail_test "admin folder upload failed: ${response}"; return 1; }
+  jq -e --argjson id "$folder_id" --argjson group "$group_id" \
+    '.id == $id and .scope == "shared" and .group_id == $group' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "direct folder upload was not grouped: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X POST --data-binary @"$folder_file" \
+    -H 'X-Image-Name: wrong-folder.png' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/shared-images")"
+  [[ "${response##*$'\n'}" == 409 ]] || { fail_test "duplicate upload moved shared image: ${response}"; return 1; }
 
   # This admin did not upload the image but can still organize shared media.
   test_psql auth "UPDATE public.\"user\" SET role = 'admin' WHERE id = ${user_id};" >/dev/null

@@ -25,6 +25,7 @@ if ($path === '/my-images') {
 
 if ($path === '/shared-images') {
     if ($method === 'GET') handleListSharedImages();
+    if ($method === 'POST') handleUploadSharedImage();
     respond(405, ['error' => 'Method not allowed']);
 }
 
@@ -39,6 +40,13 @@ if (is_string($path) && preg_match('#^/groups/([1-9][0-9]*)$#', $path, $match)) 
     if ($groupId === false) respond(404, ['error' => 'Not found']);
     if ($method === 'PATCH') handleRenameMediaGroup($groupId);
     if ($method === 'DELETE') handleDeleteMediaGroup($groupId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/groups/([1-9][0-9]*)/images$#', $path, $match)) {
+    $groupId = filter_var($match[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($groupId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'POST') handleUploadSharedImage($groupId);
     respond(405, ['error' => 'Method not allowed']);
 }
 

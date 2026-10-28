@@ -104,6 +104,19 @@ function mediaImageByHash($db, int $authUserId, string $hash): ?array
     return $row === false ? null : publicMediaImage($row);
 }
 
+function mediaBlobId($db, string $hash, string $bytes, string $mime, int $width, int $height): string
+{
+    $insert = @pg_query_params($db,
+        'INSERT INTO public.image_blob (sha256, mime_type, width, height, content)
+         VALUES ($1, $2, $3, $4, $5::bytea) ON CONFLICT (sha256) DO NOTHING',
+        [$hash, $mime, $width, $height, '\\x' . bin2hex($bytes)]);
+    $blob = $insert === false ? false : @pg_query_params($db,
+        'SELECT id FROM public.image_blob WHERE sha256 = $1', [$hash]);
+    $blobId = $blob === false ? false : pg_fetch_result($blob, 0, 'id');
+    if ($blobId === false) respond(500, ['error' => 'Failed to save image']);
+    return $blobId;
+}
+
 function saveMediaImage($db, int $authUserId, string $name, string $bytes,
     string $mime, int $width, int $height): array
 {
@@ -122,14 +135,7 @@ function saveMediaImage($db, int $authUserId, string $name, string $bytes,
         respond(409, ['error' => 'Image library is full (256 images or 32 MiB)']);
     }
 
-    $insertBlob = @pg_query_params($db,
-        'INSERT INTO public.image_blob (sha256, mime_type, width, height, content)
-         VALUES ($1, $2, $3, $4, $5::bytea) ON CONFLICT (sha256) DO NOTHING',
-        [$hash, $mime, $width, $height, '\\x' . bin2hex($bytes)]);
-    $blob = $insertBlob === false ? false : @pg_query_params($db,
-        'SELECT id FROM public.image_blob WHERE sha256 = $1', [$hash]);
-    $blobId = $blob === false ? false : pg_fetch_result($blob, 0, 'id');
-    if ($blobId === false) respond(500, ['error' => 'Failed to save image']);
+    $blobId = mediaBlobId($db, $hash, $bytes, $mime, $width, $height);
 
     $insert = @pg_query_params($db,
         'INSERT INTO public.image (blob_id, owner_auth_user_id, uploaded_by_auth_user_id, shared, original_name)
@@ -190,9 +196,8 @@ function handleListMyImages(): never
     listMediaImages(true);
 }
 
-function handleUploadImage(): never
+function readMediaUpload(): array
 {
-    $user = currentSessionUser();
     $rawName = $_SERVER['HTTP_X_IMAGE_NAME'] ?? '';
     if (!is_string($rawName) || preg_match('/%(?![0-9A-Fa-f]{2})/', $rawName)) {
         respond(400, ['error' => 'X-Image-Name must be a URL-encoded filename']);
@@ -201,6 +206,13 @@ function handleUploadImage(): never
     $bytes = file_get_contents('php://input', false, null, 0, MEDIA_IMAGE_MAX_BYTES + 1);
     if ($bytes === false) respond(400, ['error' => 'Could not read image']);
     [$mime, $width, $height] = validQuizImage($bytes);
+    return [$name, $bytes, $mime, $width, $height];
+}
+
+function handleUploadImage(): never
+{
+    $user = currentSessionUser();
+    [$name, $bytes, $mime, $width, $height] = readMediaUpload();
     $db = connectMediaDb();
     if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to save image']);
     $lock = @pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]);
@@ -209,6 +221,44 @@ function handleUploadImage(): never
     $image = saveMediaImage($db, (int) $user['id'], $name, $bytes, $mime, $width, $height);
     if (@pg_query($db, 'COMMIT') === false) respond(500, ['error' => 'Failed to save image']);
     respond(201, $image);
+}
+
+function handleUploadSharedImage(?int $groupId = null): never
+{
+    $user = currentSessionUser();
+    if ($user['role'] !== 'admin') respond(403, ['error' => 'Admin access required']);
+    [$name, $bytes, $mime, $width, $height] = readMediaUpload();
+    $db = connectMediaDb();
+    if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to save image']);
+    ensureMediaAccountActive((int) $user['id'], true);
+    if ($groupId !== null) {
+        $group = @pg_query_params($db,
+            'SELECT id FROM public.media_group WHERE id = $1 FOR KEY SHARE', [$groupId]);
+        if ($group === false) respond(500, ['error' => 'Failed to check folder']);
+        if (pg_num_rows($group) === 0) respond(404, ['error' => 'Folder not found']);
+    }
+
+    $hash = hash('sha256', $bytes);
+    $blobId = mediaBlobId($db, $hash, $bytes, $mime, $width, $height);
+
+    $insert = @pg_query_params($db,
+        'INSERT INTO public.image (blob_id, uploaded_by_auth_user_id, group_id, shared, original_name)
+         VALUES ($1, $2, $3, TRUE, $4) ON CONFLICT DO NOTHING RETURNING id',
+        [$blobId, $user['id'], $groupId, $name]);
+    if ($insert === false) respond(500, ['error' => 'Failed to save image']);
+    $created = pg_num_rows($insert) > 0;
+    $stored = @pg_query_params($db,
+        'SELECT i.id, i.original_name, i.shared, i.group_id, b.mime_type, b.width, b.height,
+                octet_length(b.content) AS size_bytes
+         FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
+         WHERE i.blob_id = $1 AND i.shared = TRUE', [$blobId]);
+    $row = $stored === false ? false : pg_fetch_assoc($stored);
+    if ($row === false) respond(500, ['error' => 'Failed to save image']);
+    if (($row['group_id'] === null ? null : (int) $row['group_id']) !== $groupId) {
+        respond(409, ['error' => 'This image is already shared in another folder']);
+    }
+    if (@pg_query($db, 'COMMIT') === false) respond(500, ['error' => 'Failed to save image']);
+    respond($created ? 201 : 200, publicMediaImage($row));
 }
 
 function handlePublishImage(int $imageId): never

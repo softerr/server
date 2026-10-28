@@ -66,6 +66,13 @@ key to its local user. The API creates the local user on the first quiz create.
 - `GET /api/media/shared-images` lists every shared image, including its
   `group_id` (`null` for ungrouped images). The Home Media page shows groups as
   folders and opens a folder to show its images.
+- Admins can upload images directly into the ungrouped shared library with
+  `POST /api/media/shared-images`, or into a folder with
+  `POST /api/media/groups/{groupId}/images`. Use the same raw image body and
+  `X-Image-Name` header as personal uploads. Shared uploads do not use personal
+  storage. Reuploading identical bytes to the same destination returns the
+  existing image with HTTP `200`; an existing shared image in another folder
+  returns `409` so the upload cannot move it unexpectedly.
 - `GET /api/media/groups` lists shared folders with image counts and a cover
   image ID. Any authenticated user can browse them.
 - Admins can create a folder with `POST /api/media/groups` and

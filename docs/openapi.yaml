@@ -762,6 +762,49 @@ paths:
           description: No active session.
         '500':
           $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Media]
+      operationId: uploadSharedImage
+      summary: Upload an image directly to ungrouped shared media
+      description: Admin only. Uses the same image format and size limits as personal uploads, without personal quota. Identical bytes already shared in Ungrouped return the existing image with HTTP 200; an image in a folder returns 409.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: X-Image-Name
+          in: header
+          required: true
+          description: Original filename, percent encoded. Maximum 255 UTF-8 bytes after decoding; no path separators or control characters.
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '200':
+          description: Image already exists in Ungrouped.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizImage'
+        '201':
+          description: Shared image created in Ungrouped.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizImage'
+        '400':
+          description: Invalid image or filename.
+        '401':
+          description: No active session.
+        '403':
+          description: Admin access required.
+        '409':
+          description: Identical image is already shared in another folder.
+        '413':
+          description: Image is too large.
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /media/groups:
     get:
@@ -854,6 +897,7 @@ paths:
           description: A folder with the same name exists.
         '500':
           $ref: '#/components/responses/InternalError'
+
     delete:
       tags: [Media]
       operationId: deleteMediaGroup
@@ -872,6 +916,57 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /media/groups/{groupId}/images:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        schema: {type: integer, format: int64}
+    post:
+      tags: [Media]
+      operationId: uploadSharedImageToGroup
+      summary: Upload an image directly to a shared media folder
+      description: Admin only. Uses the same image limits as personal uploads, without personal quota. Identical bytes already in this folder return HTTP 200; an identical shared image elsewhere returns 409.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: X-Image-Name
+          in: header
+          required: true
+          description: Original filename, percent encoded. Maximum 255 UTF-8 bytes after decoding; no path separators or control characters.
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '200':
+          description: Image already exists in this folder.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizImage'
+        '201':
+          description: Shared image created in this folder.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizImage'
+        '400':
+          description: Invalid image or filename.
+        '401':
+          description: No active session.
+        '403':
+          description: Admin access required.
+        '404':
+          description: Folder not found.
+        '409':
+          description: Identical image is already shared elsewhere.
+        '413':
+          description: Image is too large.
+        '500':
+          $ref: '#/components/responses/InternalError'
   /media/images/{imageId}/group:
     parameters:
       - name: imageId

@@ -394,8 +394,22 @@
   gap: 10px;
 }
 
+.shared-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.shared-toolbar .shared-breadcrumb {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
 .shared-breadcrumb {
-  margin: 26px 0 16px;
   flex-wrap: wrap;
 }
 
@@ -601,11 +615,10 @@
   margin: 0 0 16px;
 }
 
-#shared-group-create .field {
+#shared-group-form .field {
   margin-bottom: 16px;
 }
 
 #shared-group-dialog-status {
-  min-height: 1em;
-  margin: 0 0 16px;
+  margin: 0 0 16px !important;
 }
