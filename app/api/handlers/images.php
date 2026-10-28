@@ -313,6 +313,31 @@ function handleGetImage(int $imageId): never
     exit;
 }
 
+function handleRenameImage(int $imageId): never
+{
+    $user = currentSessionUser();
+    $payload = readJsonBody();
+    if (!is_array($payload) || !is_string($payload['name'] ?? null)) {
+        respond(400, ['error' => 'Image name is required']);
+    }
+    $name = validQuizImageName($payload['name']);
+    $db = connectMediaDb();
+    $result = @pg_query_params($db,
+        'WITH renamed AS (
+           UPDATE public.image SET original_name = $1
+           WHERE id = $2 AND (owner_auth_user_id = $3 OR (shared = TRUE AND $4::boolean))
+           RETURNING id, blob_id, original_name, shared, group_id
+         )
+         SELECT i.id, i.original_name, i.shared, i.group_id, b.mime_type, b.width, b.height,
+                octet_length(b.content) AS size_bytes
+         FROM renamed i JOIN public.image_blob b ON b.id = i.blob_id',
+        [$name, $imageId, $user['id'], $user['role'] === 'admin' ? 'true' : 'false']);
+    if ($result === false) respond(500, ['error' => 'Failed to rename image']);
+    $row = pg_fetch_assoc($result);
+    if ($row === false) respond(404, ['error' => 'Image not found']);
+    respond(200, publicMediaImage($row));
+}
+
 function handleDeleteImage(int $imageId): never
 {
     $user = currentSessionUser();

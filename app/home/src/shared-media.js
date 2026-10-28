@@ -1,22 +1,26 @@
 import { formatImageDetails } from './media-format.js'
-import { selectImageRange } from './media-selection.js'
+import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
 
 const imageUrl = (id) => `/api/media/images/${id}`
-const renameIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4.5-1 11-11a2.12 2.12 0 0 0-3-3l-11 11L4 20Z" /></svg>'
+export const renameIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4.5-1 11-11a2.12 2.12 0 0 0-3-3l-11 11L4 20Z" /></svg>'
 const deleteIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>'
 const folderIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'
 const ungroupedIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m5 20 14-14"/></svg>'
 const createFolderIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v6m-3-3h6"/></svg>'
 
-export function renderSharedMedia(section, { currentUser, requestJson, responseError, setStatus, notify }) {
+export function renderSharedMedia(section, { currentUser, requestJson, responseError, setStatus, notify, renameImage }) {
   const admin = currentUser.role === 'admin'
   section.innerHTML = `
     <div id="shared-toolbar" class="shared-toolbar" ${admin ? '' : 'hidden'}>
-      <div id="shared-breadcrumb" class="shared-breadcrumb" hidden></div>
+      <div id="shared-path" class="shared-path" hidden>
+        <nav id="shared-breadcrumb" aria-label="Shared media folder"></nav>
+        <span class="shared-path-separator" aria-hidden="true">/</span>
+        <h2 id="shared-folder-title"></h2>
+        <div id="shared-path-rename" class="media-folder-actions" hidden></div>
+      </div>
       ${admin ? '<button id="shared-upload-button" type="button" class="auth-button auth-button-secondary media-upload">Upload images</button><input id="shared-upload-files" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>' : ''}
     </div>
     <div id="shared-folders" class="media-grid"></div>
-    <h3 id="shared-image-heading" class="shared-image-heading">Ungrouped images</h3>
     <div id="shared-images" class="media-grid"></div>
     ${admin ? '<div class="shared-move"><button id="shared-move-button" class="auth-button auth-button-secondary" type="button" disabled>Move selected</button></div>' : ''}
     <p id="shared-status" class="form-status" role="status" aria-live="polite">Loading shared library…</p>
@@ -26,8 +30,10 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
   const folderGrid = section.querySelector('#shared-folders')
   const imageGrid = section.querySelector('#shared-images')
   const toolbar = section.querySelector('#shared-toolbar')
+  const path = section.querySelector('#shared-path')
   const breadcrumb = section.querySelector('#shared-breadcrumb')
-  const imageHeading = section.querySelector('#shared-image-heading')
+  const folderTitle = section.querySelector('#shared-folder-title')
+  const pathRename = section.querySelector('#shared-path-rename')
   const status = section.querySelector('#shared-status')
   const uploadButton = section.querySelector('#shared-upload-button')
   const uploadInput = section.querySelector('#shared-upload-files')
@@ -48,7 +54,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
   let editingGroupId = null
   let busy = false
   const selected = new Set()
-  let selectionAnchor = null
+  const selectionAnchor = { id: null }
 
   function openGroupDialog(group = null) {
     editingGroupId = group?.id ?? null
@@ -67,7 +73,9 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
     if (uploadButton) uploadButton.disabled = busy
     folderGrid.replaceChildren()
     breadcrumb.replaceChildren()
-    breadcrumb.hidden = activeGroupId === null
+    path.hidden = activeGroupId === null
+    pathRename.hidden = activeGroupId === null || !admin
+    pathRename.replaceChildren()
     toolbar.hidden = !admin && activeGroupId === null
     if (activeGroupId === null) {
       if (admin) {
@@ -113,20 +121,18 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
       const back = document.createElement('button')
       back.type = 'button'
       back.className = 'text-button'
-      back.textContent = '← Folders'
+      back.textContent = 'Folders'
       back.addEventListener('click', () => { activeGroupId = null; render() })
-      const title = document.createElement('strong')
-      title.textContent = activeGroup.name
-      breadcrumb.append(back, title)
-      if (admin) breadcrumb.append(folderActions(activeGroup))
+      breadcrumb.append(back)
+      folderTitle.textContent = activeGroup.name
+      if (admin) pathRename.append(folderRenameButton(activeGroup))
     }
-    imageHeading.textContent = activeGroupId === null ? 'Ungrouped images' : 'Images'
     imageGrid.replaceChildren()
     const visible = images.filter((image) => image.group_id === activeGroupId)
-    if (!visible.length) {
+    if (!visible.length && activeGroupId !== null) {
       const empty = document.createElement('p')
       empty.className = 'media-empty'
-      empty.textContent = activeGroupId === null ? 'No ungrouped images.' : 'This folder is empty.'
+      empty.textContent = 'This folder is empty.'
       imageGrid.append(empty)
     }
     for (const image of visible) {
@@ -145,32 +151,33 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
       const metadata = document.createElement('span')
       metadata.className = 'media-card-meta'
       metadata.textContent = formatImageDetails(image)
-      details.append(name, metadata)
-      card.append(preview, details)
+      const title = document.createElement('div')
+      title.className = 'media-card-title'
+      title.append(name)
       if (admin) {
-        const label = document.createElement('label')
-        label.className = 'media-select'
-        const checkbox = document.createElement('input')
-        checkbox.type = 'checkbox'
-        checkbox.dataset.imageSelect = String(image.id)
-        checkbox.checked = selected.has(image.id)
-        checkbox.disabled = busy
-        checkbox.addEventListener('click', (event) => {
-          selectionAnchor = selectImageRange(event, image.id, visible.map((item) => item.id),
-            selected, selectionAnchor, imageGrid)
-          updateMoveButton()
-        })
-        label.append(checkbox, document.createTextNode('Select'))
-        card.append(label)
+        const rename = document.createElement('button')
+        rename.type = 'button'
+        rename.className = 'media-rename-button'
+        rename.innerHTML = renameIcon
+        rename.setAttribute('aria-label', `Rename ${image.name}`)
+        rename.title = `Rename ${image.name}`
+        rename.disabled = busy
+        rename.addEventListener('click', () => renameImage(image, refresh))
+        title.append(rename)
       }
+      details.append(title, metadata)
+      card.append(preview, details)
+      if (admin) bindMediaCardSelection(card, image, {
+        grid: imageGrid, selected, anchor: selectionAnchor,
+        visibleIds: () => visible.map((item) => item.id), busy: () => busy, changed: updateMoveButton,
+      })
       imageGrid.append(card)
     }
+    updateMediaCardSelection(imageGrid, selected)
     updateMoveButton()
   }
 
-  function folderActions(group) {
-    const actions = document.createElement('div')
-    actions.className = 'media-folder-actions'
+  function folderRenameButton(group) {
     const rename = document.createElement('button')
     rename.type = 'button'
     rename.innerHTML = renameIcon
@@ -178,6 +185,12 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
     rename.title = `Rename ${group.name}`
     rename.disabled = busy
     rename.addEventListener('click', () => openGroupDialog(group))
+    return rename
+  }
+
+  function folderActions(group) {
+    const actions = document.createElement('div')
+    actions.className = 'media-folder-actions'
     const remove = document.createElement('button')
     remove.type = 'button'
     remove.innerHTML = deleteIcon
@@ -202,7 +215,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
         busy = false; if (section.isConnected) render()
       }
     })
-    actions.append(rename, remove)
+    actions.append(folderRenameButton(group), remove)
     return actions
   }
 

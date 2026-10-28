@@ -98,6 +98,16 @@ test_shared_media_across_users_and_quizzes() (
   response="$(curl -sS -b "$admin_cookie" -X POST -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${shared_id}/publish")"
   [[ "${response##*$'\n'}" == 404 ]] || { fail_test "published image could be published again: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"unauthorized.png"}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${shared_id}")"
+  [[ "${response##*$'\n'}" == 404 ]] || { fail_test "non-admin renamed shared image: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"renamed-shared.png"}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${shared_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "admin could not rename shared image: ${response}"; return 1; }
+  jq -e '.name == "renamed-shared.png" and .scope == "shared"' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "shared image rename returned wrong image: ${response}"; return 1; }
   response="$(curl -sS -b "$admin_cookie" "${API_TEST_BASE_URL%/}/api/media/my-images")"
   jq -e --argjson id "$shared_id" '.usage.count == 0 and all(.images[]; .scope == "personal" and .id != $id)' <<<"$response" >/dev/null \
     || { fail_test "shared image remained in admin personal uploads: ${response}"; return 1; }
@@ -119,6 +129,20 @@ test_shared_media_across_users_and_quizzes() (
     -H 'X-Image-Name: private.png' "${API_TEST_BASE_URL%/}/api/media/images")"
   private_id="$(jq -r '.id // empty' <<<"$response")"
   [[ "$private_id" =~ ^[0-9]+$ ]] || { fail_test "personal upload failed: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"../invalid.png"}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"
+  [[ "${response##*$'\n'}" == 400 ]] || { fail_test "invalid image filename was accepted: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"unauthorized.png"}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"
+  [[ "${response##*$'\n'}" == 404 ]] || { fail_test "another user renamed personal image: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"renamed-private.png"}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "owner could not rename personal image: ${response}"; return 1; }
+  jq -e '.name == "renamed-private.png" and .scope == "personal"' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "personal image rename returned wrong image: ${response}"; return 1; }
   response="$(curl -sS -b "$user_cookie" -X POST -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${private_id}/publish")"
   [[ "${response##*$'\n'}" == 403 ]] || { fail_test "user could publish another image: ${response}"; return 1; }
@@ -180,6 +204,12 @@ test_shared_media_across_users_and_quizzes() (
 
   # This admin did not upload the image but can still organize shared media.
   test_psql auth "UPDATE public.\"user\" SET role = 'admin' WHERE id = ${user_id};" >/dev/null
+  response="$(curl -sS -b "$user_cookie" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"renamed-by-second-admin.png"}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${shared_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "second admin could not rename shared image: ${response}"; return 1; }
+  jq -e '.name == "renamed-by-second-admin.png" and .scope == "shared"' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "second admin image rename returned wrong image: ${response}"; return 1; }
   response="$(curl -sS -b "$user_cookie" -X PATCH -H 'Content-Type: application/json' \
     --data "$(jq -nc --arg name "api_test_${API_TEST_RUN_ID}_renamed" '{name:$name}')" \
     -w $'\n%{http_code}' \

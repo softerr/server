@@ -1,14 +1,14 @@
 const imageUrl = (id) => `/api/media/images/${id}`
-import { renderSharedMedia } from './shared-media.js'
+import { renderSharedMedia, renameIcon } from './shared-media.js'
 import { formatBytes, formatImageDetails } from './media-format.js'
-import { selectImageRange } from './media-selection.js'
+import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
 import { createPageNotice } from '../../shared/page-notice.js'
 
 export function renderMedia(app, { currentUser, requestJson, responseError, setStatus }) {
   app.querySelector('#page').innerHTML = `
     <main class="media-page">
       <div class="media-header">
-        <div><h1 class="section-title">Media</h1><p>Your images and the shared library.</p></div>
+        <h1 class="section-title">Media</h1>
       </div>
       <div class="media-tabs" role="tablist" aria-label="Media libraries">
         <button id="media-tab-personal" class="media-tab" type="button" role="tab" aria-controls="media-personal" aria-selected="true">My library</button>
@@ -35,6 +35,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
         <p id="media-status" class="form-status" role="status" aria-live="polite">Loading images…</p>
       </section>
       <section id="shared-media" class="shared-media media-panel" role="tabpanel" aria-labelledby="media-tab-shared" tabindex="0" hidden></section>
+      <dialog id="media-rename-dialog" class="user-dialog" aria-labelledby="media-rename-title"><form id="media-rename-form"><h2 id="media-rename-title">Rename image</h2><label class="field"><span>Filename</span><input name="name" maxlength="255" required></label><p id="media-rename-status" class="form-status" role="status" aria-live="polite"></p><div class="user-dialog-actions"><button type="button" class="auth-button auth-button-secondary" data-cancel>Cancel</button><button type="submit" class="auth-button auth-button-primary">Save name</button></div></form></dialog>
     </main>
   `
   const page = app.querySelector('.media-page')
@@ -45,10 +46,13 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
   const fileInput = page.querySelector('#media-file')
   const upload = page.querySelector('#media-upload')
   const publish = page.querySelector('#media-publish')
+  const renameDialog = page.querySelector('#media-rename-dialog')
+  const renameForm = page.querySelector('#media-rename-form')
+  const renameStatus = page.querySelector('#media-rename-status')
   const selected = new Set()
-  let selectionAnchor = null
+  const selectionAnchor = { id: null }
   const sharedMedia = renderSharedMedia(page.querySelector('#shared-media'), {
-    currentUser, requestJson, responseError, setStatus, notify: notice.show,
+    currentUser, requestJson, responseError, setStatus, notify: notice.show, renameImage: openRename,
   })
   const tabs = [...page.querySelectorAll('.media-tab')]
   const personalPanel = page.querySelector('#media-personal')
@@ -78,6 +82,50 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
   })
   let images = []
   let busy = false
+  let renaming = null
+  let renameBusy = false
+
+  function openRename(image, refreshLibrary) {
+    if (renameBusy) return
+    renaming = { image, refreshLibrary }
+    renameForm.elements.name.value = image.name
+    setStatus(renameStatus, '')
+    renameDialog.showModal()
+    renameForm.elements.name.focus()
+    renameForm.elements.name.select()
+  }
+
+  renameForm.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    if (renameBusy || !renaming) return
+    const { image, refreshLibrary } = renaming
+    const name = renameForm.elements.name.value
+    if (name === image.name) { renameDialog.close(); return }
+    renameBusy = true
+    renameForm.querySelector('[type="submit"]').disabled = true
+    setStatus(renameStatus, 'Renaming image…')
+    try {
+      const [response, payload] = await requestJson('PATCH', imageUrl(image.id), { name })
+      if (!page.isConnected) return
+      if (!response.ok) setStatus(renameStatus, responseError(response, payload), true)
+      else {
+        renameDialog.close()
+        try {
+          if (await refreshLibrary()) notice.show('Image renamed.')
+          else notice.show('Image renamed, but the library could not reload.', 'error')
+        } catch { notice.show('Image renamed, but the library could not reload.', 'error') }
+      }
+    } catch {
+      if (page.isConnected) setStatus(renameStatus, 'Could not rename image.', true)
+    } finally {
+      renameBusy = false
+      renameForm.querySelector('[type="submit"]').disabled = false
+    }
+  })
+  renameDialog.addEventListener('cancel', (event) => { if (renameBusy) event.preventDefault() })
+  renameForm.querySelector('[data-cancel]').addEventListener('click', () => {
+    if (!renameBusy) renameDialog.close()
+  })
 
   function updatePublishButton() {
     if (!publish) return
@@ -109,26 +157,26 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
       const metadata = document.createElement('span')
       metadata.className = 'media-card-meta'
       metadata.textContent = formatImageDetails(image)
-      details.append(name, metadata)
+      const title = document.createElement('div')
+      title.className = 'media-card-title'
+      const rename = document.createElement('button')
+      rename.type = 'button'
+      rename.className = 'media-rename-button'
+      rename.innerHTML = renameIcon
+      rename.setAttribute('aria-label', `Rename ${image.name}`)
+      rename.title = `Rename ${image.name}`
+      rename.disabled = busy
+      rename.addEventListener('click', () => openRename(image, refresh))
+      title.append(name, rename)
+      details.append(title, metadata)
       card.append(preview, details)
-      if (publish && image.scope === 'personal') {
-        const label = document.createElement('label')
-        label.className = 'media-select'
-        const checkbox = document.createElement('input')
-        checkbox.type = 'checkbox'
-        checkbox.dataset.imageSelect = String(image.id)
-        checkbox.checked = selected.has(image.id)
-        checkbox.disabled = busy
-        checkbox.addEventListener('click', (event) => {
-          selectionAnchor = selectImageRange(event, image.id, images.map((item) => item.id),
-            selected, selectionAnchor, grid)
-          updatePublishButton()
-        })
-        label.append(checkbox, document.createTextNode('Select to share'))
-        card.append(label)
-      }
+      if (publish && image.scope === 'personal') bindMediaCardSelection(card, image, {
+        grid, selected, anchor: selectionAnchor, visibleIds: () => images.map((item) => item.id),
+        busy: () => busy, changed: updatePublishButton,
+      })
       grid.append(card)
     }
+    updateMediaCardSelection(grid, selected)
     updatePublishButton()
   }
 

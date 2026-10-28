@@ -68,6 +68,7 @@ if (is_string($path) && preg_match('#^/images/([1-9][0-9]*)$#', $path, $match)) 
     $imageId = filter_var($match[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($imageId === false) respond(404, ['error' => 'Not found']);
     if ($method === 'GET') handleGetImage($imageId);
+    if ($method === 'PATCH') handleRenameImage($imageId);
     if ($method === 'DELETE') handleDeleteImage($imageId);
     respond(405, ['error' => 'Method not allowed']);
 }

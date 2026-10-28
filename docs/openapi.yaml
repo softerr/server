@@ -1071,6 +1071,40 @@ paths:
           description: Image does not exist or belongs to another account.
         '500':
           $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Media]
+      operationId: renameImage
+      summary: Rename an owned image or, as an admin, a shared image
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                  description: Valid UTF-8 filename of at most 255 bytes, without path separators or control characters.
+      responses:
+        '200':
+          description: Image renamed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizImage'
+        '400':
+          description: Invalid filename.
+        '401':
+          description: No active session.
+        '404':
+          description: Image does not exist or cannot be renamed by this account.
+        '500':
+          $ref: '#/components/responses/InternalError'
     delete:
       tags: [Media]
       operationId: deleteImage
@@ -1236,7 +1270,7 @@ paths:
       tags: [Quizzes]
       operationId: exportQuizZip
       summary: Export an owned quiz as a ZIP archive
-      description: ZIP contains quiz.json and each used image once under images/{imageId}/{originalFilename}. The manifest also preserves each original filename in its name field.
+      description: ZIP contains quiz.json and each used image once under images/{imageId}/{filename}. The manifest also preserves each current filename in its name field.
       security:
         - sessionCookie: []
       responses:
@@ -1725,7 +1759,7 @@ components:
           format: int64
         name:
           type: string
-          description: Original uploaded filename.
+          description: Image filename, initially the uploaded filename.
         mime_type:
           type: string
           enum: [image/png, image/jpeg, image/webp]
