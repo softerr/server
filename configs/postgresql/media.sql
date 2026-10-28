@@ -27,23 +27,6 @@ CREATE TABLE IF NOT EXISTS public.image (
     CONSTRAINT image_group_shared_check CHECK (group_id IS NULL OR shared = TRUE),
     UNIQUE (owner_auth_user_id, blob_id)
 );
-ALTER TABLE public.image ADD COLUMN IF NOT EXISTS uploaded_by_auth_user_id BIGINT;
-ALTER TABLE public.image ADD COLUMN IF NOT EXISTS group_id BIGINT;
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint
-                   WHERE conname = 'image_group_id_fkey' AND conrelid = 'public.image'::regclass) THEN
-        ALTER TABLE public.image ADD CONSTRAINT image_group_id_fkey
-            FOREIGN KEY (group_id) REFERENCES public.media_group(id) ON DELETE SET NULL;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint
-                   WHERE conname = 'image_group_shared_check' AND conrelid = 'public.image'::regclass) THEN
-        ALTER TABLE public.image ADD CONSTRAINT image_group_shared_check
-            CHECK (group_id IS NULL OR shared = TRUE);
-    END IF;
-END $$;
-UPDATE public.image SET uploaded_by_auth_user_id = owner_auth_user_id
-    WHERE uploaded_by_auth_user_id IS NULL AND owner_auth_user_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS image_shared_blob_idx
     ON public.image (blob_id) WHERE shared = TRUE;
 CREATE INDEX IF NOT EXISTS image_owner_id_idx

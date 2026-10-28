@@ -192,9 +192,6 @@ jobs:
           sudo -u postgres sh -c 'find /var/backups/softerr -maxdepth 1 -type f -name "media-*.dump" | grep -q .'
           test "$(sudo -u postgres psql -X -Atqc "SELECT count(*) FROM pg_database WHERE datname LIKE 'softerr_restore_check_%'")" = 0
 
-      - name: Check legacy quiz image migration
-        run: bash tests/db/migrate_quiz_images.sh
-
       - name: Print service logs on failure
         if: failure()
         run: |

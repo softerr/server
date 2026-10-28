@@ -13,20 +13,6 @@ CREATE TABLE IF NOT EXISTS public."user" (
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Existing verified accounts predate approval and must retain access. This
--- runs only when upgrading the old schema, never for new accounts.
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_schema = 'public' AND table_name = 'user'
-                     AND column_name = 'approved_at') THEN
-        ALTER TABLE public."user" ADD COLUMN approved_at TIMESTAMP;
-        UPDATE public."user" SET approved_at = CURRENT_TIMESTAMP WHERE verified = TRUE;
-    END IF;
-END $$;
-ALTER TABLE public."user" ADD COLUMN IF NOT EXISTS approved_by BIGINT
-    REFERENCES public."user"(id) ON DELETE SET NULL;
-
 CREATE TABLE IF NOT EXISTS public.user_token (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES public."user"(id) ON DELETE CASCADE,
