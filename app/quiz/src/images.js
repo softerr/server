@@ -106,7 +106,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     const label = picker.dataset.imageLabel
     const name = images.find((image) => image.id === id)?.name
     preview.hidden = !id
-    icon.hidden = Boolean(id)
+    icon.toggleAttribute('hidden', Boolean(id))
     if (id) preview.src = imageUrl(id)
     else preview.removeAttribute('src')
     button.setAttribute('aria-label', `${id ? 'Change' : 'Choose'} ${label.toLowerCase()}`)
