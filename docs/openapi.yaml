@@ -1575,7 +1575,7 @@ paths:
         in: query
         required: false
         description: Return attempts with IDs lower than this cursor.
-        schema: { type: integer, minimum: 1 }
+        schema: { type: integer, format: int64, minimum: 1, maximum: 9223372036854775807 }
     get:
       tags: [Quizzes]
       operationId: listQuizAttempts
@@ -1598,6 +1598,8 @@ paths:
                   next_before:
                     type: [integer, 'null']
                     description: Pass this as `before` to load the next page; null means there are no more attempts.
+        '400':
+          description: Invalid before cursor.
         '401':
           description: No active session.
         '404':

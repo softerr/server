@@ -99,6 +99,8 @@ export OPENAPI_IMAGEID="${image_id}"
 python3 "${REPO_ROOT}/tests/api/authenticated_openapi.py" \
   "${REPO_ROOT}/docs/openapi.yaml" "${test_dir}/authenticated-openapi.yaml"
 cd "${test_dir}"
+seed_args=()
+if [[ -n "${OPENAPI_TEST_SEED:-}" ]]; then seed_args=(--seed "${OPENAPI_TEST_SEED}"); fi
 schemathesis run authenticated-openapi.yaml \
   --origin "${origin}" \
   --header "Cookie: softerr_session=${OPENAPI_AUTH_COOKIE}" \
@@ -107,4 +109,5 @@ schemathesis run authenticated-openapi.yaml \
   --workers 1 \
   --max-examples 3 \
   --checks not_a_server_error,status_code_conformance,content_type_conformance,response_schema_conformance \
+  "${seed_args[@]}" \
   --no-color

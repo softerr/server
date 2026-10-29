@@ -501,6 +501,7 @@ that 18 protected operations return HTTP 200, then checks their responses with
 Schemathesis. The fixture is removed when the check ends. To run this check
 manually, use a provisioned local test server with Schemathesis, Python, `psql`,
 and passwordless `sudo -u postgres` access; it should not be run against production.
+Set `OPENAPI_TEST_SEED` to replay a reported Schemathesis seed.
 
 Run against local QEMU VM:
 
