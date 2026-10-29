@@ -34,7 +34,13 @@ function addQuizToLibrary(list, quiz) {
   details.href = `#play?quiz=${quiz.id}`
   details.setAttribute('aria-label', `Play ${quiz.name}`)
   details.append(title, description)
-  item.append(details, actions)
+  const footer = document.createElement('div')
+  footer.className = 'library-item-footer'
+  const plays = document.createElement('span')
+  plays.className = 'library-item-plays'
+  plays.textContent = `${quiz.play_count} ${quiz.play_count === 1 ? 'play' : 'plays'}`
+  footer.append(plays, actions)
+  item.append(details, footer)
   list.prepend(item)
 }
 

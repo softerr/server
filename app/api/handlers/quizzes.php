@@ -9,8 +9,12 @@ function publicQuiz(array $quiz): array
         'description' => $quiz['description'],
         'play_style' => $quiz['play_style'],
         'show_correct_answers' => $quiz['show_correct_answers'] === 't',
+        'is_public' => $quiz['is_public'] === 't',
+        'allow_go_back' => $quiz['allow_go_back'] === 't',
         'randomize_questions' => $quiz['randomize_questions'] === 't',
         'question_limit' => $quiz['question_limit'] === null ? null : (int) $quiz['question_limit'],
+        'time_limit_seconds' => $quiz['time_limit_seconds'] === null ? null : (int) $quiz['time_limit_seconds'],
+        'play_count' => (int) ($quiz['play_count'] ?? 0),
         'created' => $quiz['created'],
     ];
 }
@@ -21,7 +25,8 @@ function handleListQuizzes(): never
     $db = connectQuizDb();
     $result = @pg_query_params(
         $db,
-        'SELECT q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.randomize_questions, q.question_limit, q.created
+        'SELECT q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.question_limit, q.time_limit_seconds, q.created,
+            (SELECT COUNT(*) FROM public.quiz_attempt a WHERE a.quiz_id = q.id) AS play_count
          FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
          WHERE u.auth_user_id = $1 ORDER BY q.id DESC',
         [$user['id']]
@@ -37,15 +42,44 @@ function handleListQuizzes(): never
     respond(200, ['quizzes' => $quizzes]);
 }
 
+function handleExploreQuizzes(): never
+{
+    currentSessionUser();
+    $before = $_GET['before'] ?? null;
+    if ($before !== null && (!is_string($before) || !preg_match('/^[1-9][0-9]*$/', $before)
+        || filter_var($before, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false)) {
+        respond(400, ['error' => 'Invalid before cursor']);
+    }
+    $db = connectQuizDb();
+    $result = @pg_query_params($db,
+        'SELECT q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.is_public,
+            q.allow_go_back, q.randomize_questions, q.question_limit, q.time_limit_seconds, q.created,
+            (SELECT COUNT(*) FROM public.quiz_attempt a WHERE a.quiz_id = q.id) AS play_count
+         FROM public.quiz q
+         WHERE q.is_public = TRUE AND ($1::bigint IS NULL OR q.id < $1)
+         ORDER BY q.id DESC LIMIT 51', [$before]);
+    if ($result === false) respond(500, ['error' => 'Failed to explore quizzes']);
+    $quizzes = [];
+    while (count($quizzes) < 50 && ($row = pg_fetch_assoc($result))) {
+        $quizzes[] = publicQuiz($row);
+    }
+    $hasMore = pg_fetch_assoc($result) !== false;
+    respond(200, ['quizzes' => $quizzes,
+        'next_before' => $hasMore ? $quizzes[array_key_last($quizzes)]['id'] : null]);
+}
+
 function handleGetQuiz(int $quizId): never
 {
     $user = currentSessionUser();
     $db = connectQuizDb();
     $result = @pg_query_params(
         $db,
-        'SELECT q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.randomize_questions, q.question_limit, q.created
+        'SELECT q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.question_limit, q.time_limit_seconds, q.created,
+            (SELECT COUNT(*) FROM public.quiz_attempt a WHERE a.quiz_id = q.id) AS play_count
          FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
-         WHERE q.id = $1 AND u.auth_user_id = $2',
+         WHERE q.id = $1 AND (u.auth_user_id = $2 OR q.is_public = TRUE OR EXISTS (
+            SELECT 1 FROM public.quiz_attempt a JOIN public."user" p ON p.id = a.user_id
+            WHERE a.quiz_id = q.id AND p.auth_user_id = $2))',
         [$quizId, $user['id']]
     );
     if ($result === false) {
@@ -86,6 +120,16 @@ function readQuizFields(?array $payload, bool $updating = false): array
     if ($hasShowCorrectAnswers && !is_bool($showCorrectAnswers)) {
         respond(400, ['error' => 'Show correct answers must be a boolean']);
     }
+    $isPublic = array_key_exists('is_public', $payload)
+        ? $payload['is_public'] : ($updating ? null : false);
+    if (array_key_exists('is_public', $payload) && !is_bool($isPublic)) {
+        respond(400, ['error' => 'Public visibility must be a boolean']);
+    }
+    $allowGoBack = array_key_exists('allow_go_back', $payload)
+        ? $payload['allow_go_back'] : ($updating ? null : true);
+    if (array_key_exists('allow_go_back', $payload) && !is_bool($allowGoBack)) {
+        respond(400, ['error' => 'Allow go back must be a boolean']);
+    }
     $randomize = array_key_exists('randomize_questions', $payload)
         ? $payload['randomize_questions'] : ($updating ? null : false);
     if (array_key_exists('randomize_questions', $payload) && !is_bool($randomize)) {
@@ -97,8 +141,13 @@ function readQuizFields(?array $payload, bool $updating = false): array
         respond(400, ['error' => 'Question limit must be All or an integer from 0 to 1000']);
     }
     $limitProvided = array_key_exists('question_limit', $payload);
+    $timeLimitProvided = array_key_exists('time_limit_seconds', $payload);
+    $timeLimit = $payload['time_limit_seconds'] ?? null;
+    if ($timeLimit !== null && (!is_int($timeLimit) || $timeLimit < 1 || $timeLimit > 86400)) {
+        respond(400, ['error' => 'Time limit must be 1 to 86400 seconds']);
+    }
     return [$name, $description === null ? null : trim($description), $playStyle,
-        $showCorrectAnswers, $randomize, $questionLimit, $limitProvided];
+        $showCorrectAnswers, $randomize, $questionLimit, $limitProvided, $timeLimit, $timeLimitProvided, $allowGoBack, $isPublic];
 }
 
 function beginQuizCreation($db, array $user, string $error): string
@@ -158,15 +207,15 @@ function beginQuizCreation($db, array $user, string $error): string
     return $localUserId;
 }
 
-function insertQuizRow($db, string $localUserId, string $name, string $description, string $playStyle, bool $showCorrectAnswers, bool $randomize, ?int $questionLimit, string $error): array
+function insertQuizRow($db, string $localUserId, string $name, string $description, string $playStyle, bool $showCorrectAnswers, bool $randomize, ?int $questionLimit, ?int $timeLimit, bool $allowGoBack, bool $isPublic, string $error): array
 {
     $result = @pg_query_params(
         $db,
-        'INSERT INTO public.quiz (user_id, name, description, play_style, show_correct_answers, randomize_questions, question_limit)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, name, description, play_style, show_correct_answers, randomize_questions, question_limit, created',
+        'INSERT INTO public.quiz (user_id, name, description, play_style, show_correct_answers, is_public, randomize_questions, question_limit, time_limit_seconds, allow_go_back)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, name, description, play_style, show_correct_answers, is_public, allow_go_back, randomize_questions, question_limit, time_limit_seconds, created',
         [$localUserId, $name, $description, $playStyle, $showCorrectAnswers ? 't' : 'f',
-            $randomize ? 't' : 'f', $questionLimit]
+            $isPublic ? 't' : 'f', $randomize ? 't' : 'f', $questionLimit, $timeLimit, $allowGoBack ? 't' : 'f']
     );
     if ($result === false) {
         @pg_query($db, 'ROLLBACK');
@@ -178,11 +227,11 @@ function insertQuizRow($db, string $localUserId, string $name, string $descripti
 function handleCreateQuiz(): never
 {
     $user = currentSessionUser();
-    [$name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit] = readQuizFields(readJsonBody());
+    [$name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, , $timeLimit, , $allowGoBack, $isPublic] = readQuizFields(readJsonBody());
     $db = connectQuizDb();
     $error = 'Failed to create quiz';
     $localUserId = beginQuizCreation($db, $user, $error);
-    $quiz = insertQuizRow($db, $localUserId, $name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $error);
+    $quiz = insertQuizRow($db, $localUserId, $name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $timeLimit, $allowGoBack, $isPublic, $error);
     if (@pg_query($db, 'COMMIT') === false) {
         respond(500, ['error' => $error]);
     }
@@ -291,7 +340,7 @@ function handleImportQuiz(): never
         || count($payload['questions']) > 100) {
         respond(400, ['error' => 'Invalid quiz export']);
     }
-    [$name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit] = readQuizFields($payload);
+    [$name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, , $timeLimit, , $allowGoBack, $isPublic] = readQuizFields($payload);
     $questions = [];
     foreach ($payload['questions'] as $question) {
         if (!is_array($question)) {
@@ -347,16 +396,16 @@ function handleImportQuiz(): never
         $stored = saveMediaImage($mediaDb, (int) $user['id'], $imageName, $bytes, $mime, $width, $height);
         $imageIds[$oldId] = $stored['id'];
     }
-    $quiz = insertQuizRow($db, $localUserId, $name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $error);
-    foreach ($questions as $position => [$template, $prompt, $config]) {
+    $quiz = insertQuizRow($db, $localUserId, $name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $timeLimit, $allowGoBack, $isPublic, $error);
+    foreach ($questions as $position => [$template, $prompt, $config, $questionTimeLimit]) {
         $details = json_decode($config, true, 512, JSON_THROW_ON_ERROR);
         remapQuizImageIds($details, $imageIds);
         $config = json_encode((object) $details, JSON_THROW_ON_ERROR);
         $result = @pg_query_params(
             $db,
-            'INSERT INTO public.question (quiz_id, template, prompt, config, position)
-             VALUES ($1, $2, $3, $4::jsonb, $5)',
-            [$quiz['id'], $template, $prompt, $config, $position + 1]
+            'INSERT INTO public.question (quiz_id, template, prompt, config, position, time_limit_seconds)
+             VALUES ($1, $2, $3, $4::jsonb, $5, $6)',
+            [$quiz['id'], $template, $prompt, $config, $position + 1, $questionTimeLimit]
         );
         if ($result === false) {
             @pg_query($db, 'ROLLBACK');
@@ -375,21 +424,22 @@ function handleExportQuizZip(int $quizId): never
     $user = currentSessionUser();
     $db = connectQuizDb();
     $owner = @pg_query_params($db,
-        'SELECT q.name, q.description, q.play_style, q.show_correct_answers, q.randomize_questions, q.question_limit, q.user_id FROM public.quiz q
+        'SELECT q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.question_limit, q.time_limit_seconds, q.user_id FROM public.quiz q
          JOIN public."user" u ON u.id = q.user_id
          WHERE q.id = $1 AND u.auth_user_id = $2', [$quizId, $user['id']]);
     if ($owner === false) respond(500, ['error' => 'Failed to export quiz']);
     $quiz = pg_fetch_assoc($owner);
     if ($quiz === false) respond(404, ['error' => 'Quiz not found']);
     $result = @pg_query_params($db,
-        'SELECT template, prompt, config FROM public.question
+        'SELECT template, prompt, config, time_limit_seconds FROM public.question
          WHERE quiz_id = $1 ORDER BY position, id', [$quizId]);
     if ($result === false) respond(500, ['error' => 'Failed to export quiz']);
     $questions = [];
     $imageIds = [];
     while ($row = pg_fetch_assoc($result)) {
         $config = json_decode($row['config'], true, 512, JSON_THROW_ON_ERROR);
-        $questions[] = ['template' => $row['template'], 'prompt' => $row['prompt'], 'config' => $config];
+        $questions[] = ['template' => $row['template'], 'prompt' => $row['prompt'], 'config' => $config,
+            'time_limit_seconds' => $row['time_limit_seconds'] === null ? null : (int) $row['time_limit_seconds']];
         array_push($imageIds, ...imageIdsFromConfig($config));
     }
     $imageIds = array_values(array_unique($imageIds));
@@ -404,8 +454,11 @@ function handleExportQuizZip(int $quizId): never
         'format' => 'softerr-quiz', 'version' => 1,
         'name' => $quiz['name'], 'description' => $quiz['description'], 'play_style' => $quiz['play_style'],
         'show_correct_answers' => $quiz['show_correct_answers'] === 't',
+        'is_public' => $quiz['is_public'] === 't',
+        'allow_go_back' => $quiz['allow_go_back'] === 't',
         'randomize_questions' => $quiz['randomize_questions'] === 't',
         'question_limit' => $quiz['question_limit'] === null ? null : (int) $quiz['question_limit'],
+        'time_limit_seconds' => $quiz['time_limit_seconds'] === null ? null : (int) $quiz['time_limit_seconds'],
         'questions' => $questions, 'images' => [],
     ];
     $mediaDb = connectMediaDb();
@@ -440,7 +493,7 @@ function handleExportQuizZip(int $quizId): never
 function handleUpdateQuiz(int $quizId): never
 {
     $user = currentSessionUser();
-    [$name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $limitProvided] = readQuizFields(readJsonBody(), true);
+    [$name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $limitProvided, $timeLimit, $timeLimitProvided, $allowGoBack, $isPublic] = readQuizFields(readJsonBody(), true);
 
     $db = connectQuizDb();
     $result = @pg_query_params(
@@ -449,13 +502,17 @@ function handleUpdateQuiz(int $quizId): never
             description = COALESCE($2, q.description),
             play_style = COALESCE($3, q.play_style),
             show_correct_answers = COALESCE($4::boolean, q.show_correct_answers),
+            is_public = COALESCE($13::boolean, q.is_public),
+            allow_go_back = COALESCE($12::boolean, q.allow_go_back),
             randomize_questions = COALESCE($7::boolean, q.randomize_questions),
-            question_limit = CASE WHEN $8::boolean THEN $9::integer ELSE q.question_limit END
+            question_limit = CASE WHEN $8::boolean THEN $9::integer ELSE q.question_limit END,
+            time_limit_seconds = CASE WHEN $10::boolean THEN $11::integer ELSE q.time_limit_seconds END
          FROM public."user" u
          WHERE q.id = $5 AND q.user_id = u.id AND u.auth_user_id = $6
-         RETURNING q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.randomize_questions, q.question_limit, q.created',
+         RETURNING q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.question_limit, q.time_limit_seconds, q.created',
         [$name, $description, $playStyle, $showCorrectAnswers === null ? null : ($showCorrectAnswers ? 't' : 'f'), $quizId, $user['id'],
-            $randomize === null ? null : ($randomize ? 't' : 'f'), $limitProvided ? 't' : 'f', $questionLimit]
+            $randomize === null ? null : ($randomize ? 't' : 'f'), $limitProvided ? 't' : 'f', $questionLimit, $timeLimitProvided ? 't' : 'f', $timeLimit,
+            $allowGoBack === null ? null : ($allowGoBack ? 't' : 'f'), $isPublic === null ? null : ($isPublic ? 't' : 'f')]
     );
     if ($result === false) {
         respond(500, ['error' => 'Failed to update quiz']);
@@ -464,6 +521,10 @@ function handleUpdateQuiz(int $quizId): never
     if ($quiz === false) {
         respond(404, ['error' => 'Quiz not found']);
     }
+    $plays = @pg_query_params($db,
+        'SELECT COUNT(*) FROM public.quiz_attempt WHERE quiz_id = $1', [$quizId]);
+    if ($plays === false) respond(500, ['error' => 'Failed to update quiz']);
+    $quiz['play_count'] = pg_fetch_result($plays, 0, 0);
     respond(200, publicQuiz($quiz));
 }
 

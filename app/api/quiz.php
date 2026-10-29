@@ -9,10 +9,16 @@ require_once __DIR__ . '/lib/session.php';
 require_once __DIR__ . '/handlers/images.php';
 require_once __DIR__ . '/handlers/quizzes.php';
 require_once __DIR__ . '/handlers/questions.php';
+require_once __DIR__ . '/handlers/attempt_presentation.php';
 require_once __DIR__ . '/handlers/attempts.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $path = apiRequestPath('/api/quiz');
+
+if ($path === '/explore') {
+    if ($method === 'GET') handleExploreQuizzes();
+    respond(405, ['error' => 'Method not allowed']);
+}
 
 if ($path === '/images') {
     if ($method === 'GET') handleListImages();
@@ -82,6 +88,24 @@ if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/attempts/([1-9][0-9
     $questionId = filter_var($answerMatch[3], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($quizId === false || $attemptId === false || $questionId === false) respond(404, ['error' => 'Not found']);
     if ($method === 'PUT') handleSaveQuizAnswer($quizId, $attemptId, $questionId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/attempts/([1-9][0-9]*)/questions/([1-9][0-9]*)/start$#', $path, $timerMatch)) {
+    $quizId = filter_var($timerMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $attemptId = filter_var($timerMatch[2], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $questionId = filter_var($timerMatch[3], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($quizId === false || $attemptId === false || $questionId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'POST') handleStartAttemptQuestion($quizId, $attemptId, $questionId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/attempts/([1-9][0-9]*)/questions/([1-9][0-9]*)/reveal$#', $path, $revealMatch)) {
+    $quizId = filter_var($revealMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $attemptId = filter_var($revealMatch[2], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $questionId = filter_var($revealMatch[3], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($quizId === false || $attemptId === false || $questionId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'POST') handleRevealQuizAnswer($quizId, $attemptId, $questionId);
     respond(405, ['error' => 'Method not allowed']);
 }
 

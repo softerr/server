@@ -17,6 +17,7 @@ export function openQuizPreview(dialog, quiz, questions) {
       <h1 class="section-title"></h1>
       <p class="play-description" hidden></p>
       <div class="play-progress"></div>
+      <div class="play-timers" data-preview-timers hidden><span data-preview-quiz-timer hidden></span><span data-preview-question-timer hidden></span></div>
       <div class="quiz-preview-questions"></div>
       <div class="play-controls">
         <button class="auth-button auth-button-secondary" type="button" data-preview-previous>Previous</button>
@@ -33,6 +34,9 @@ export function openQuizPreview(dialog, quiz, questions) {
   const gameShow = quiz.play_style === 'game_show'
   page.classList.add(gameShow ? 'is-game-show' : 'is-basic')
   const progress = page.querySelector('.play-progress')
+  const timerArea = page.querySelector('[data-preview-timers]')
+  const quizTimer = page.querySelector('[data-preview-quiz-timer]')
+  const questionTimer = page.querySelector('[data-preview-question-timer]')
   const questionArea = page.querySelector('.quiz-preview-questions')
   const controls = page.querySelector('.play-controls')
   const previous = page.querySelector('[data-preview-previous]')
@@ -64,9 +68,19 @@ export function openQuizPreview(dialog, quiz, questions) {
     return pool[choice]
   }
   const views = []
+  const deadlines = []
+  const quizDeadline = quiz.time_limit_seconds === null ? null : Date.now() + quiz.time_limit_seconds * 1000
+  const remaining = (deadline) => Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+  const clockText = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+  let tickTimer = null
+  let completed = false
+  const expiredQuestions = new Set()
   function appendView() {
-    const view = buildQuestion(sourceAt(views.length), views.length)
+    const source = sourceAt(views.length)
+    const view = buildQuestion(source, views.length)
+    view.timeLimit = source.time_limit_seconds
     views.push(view)
+    deadlines.push(null)
     questionArea.append(view.card)
   }
   const initialCount = unlimited ? 1 : quiz.question_limit === null ? pool.length : quiz.question_limit
@@ -74,18 +88,42 @@ export function openQuizPreview(dialog, quiz, questions) {
   let position = 0
 
   function showPosition() {
+    if (views[position].timeLimit !== null && deadlines[position] === null) {
+      deadlines[position] = Date.now() + views[position].timeLimit * 1000
+    }
     views.forEach(({ card }, index) => { card.hidden = index !== position })
     progress.textContent = unlimited ? `Question ${position + 1} · Until you finish` : `Question ${position + 1} of ${views.length}`
     if (!unlimited) progress.style.setProperty('--progress', `${(position / views.length) * 100}%`)
-    previous.hidden = position === 0
+    previous.hidden = !quiz.allow_go_back || position === 0
     next.textContent = !unlimited && position === views.length - 1 ? 'Finish preview' : 'Next'
     dialog.scrollTop = 0
+    tick()
+  }
+
+  function tick() {
+    if (completed || !dialog.open) { clearInterval(tickTimer); return }
+    quizTimer.hidden = quizDeadline === null
+    if (quizDeadline !== null) quizTimer.textContent = `Quiz ${clockText(remaining(quizDeadline))}`
+    const deadline = deadlines[position]
+    questionTimer.hidden = deadline === null
+    if (deadline !== null) questionTimer.textContent = `Question ${clockText(remaining(deadline))}`
+    timerArea.hidden = quizTimer.hidden && questionTimer.hidden
+    if (quizDeadline !== null && remaining(quizDeadline) === 0) { completePreview(); return }
+    if (deadline !== null && remaining(deadline) === 0 && !expiredQuestions.has(position)) {
+      expiredQuestions.add(position)
+      views[position].lock()
+      if (!unlimited && position === views.length - 1) completePreview()
+      else if (!unlimited) advancePreview()
+    }
   }
 
   previous.addEventListener('click', () => {
-    if (position > 0) { position--; showPosition() }
+    if (quiz.allow_go_back && position > 0) { position--; showPosition() }
   })
   function completePreview() {
+    if (completed) return
+    completed = true
+    clearInterval(tickTimer)
     const results = views.map((view) => view.complete())
     const graded = results.filter((result) => result !== null).length
     const correct = results.filter((result) => result === true).length
@@ -97,18 +135,21 @@ export function openQuizPreview(dialog, quiz, questions) {
       element('p', '', 'Answers were not saved.'))
     questionArea.replaceChildren(summary)
     progress.hidden = true
+    timerArea.hidden = true
     controls.hidden = true
     dialog.scrollTop = 0
   }
   finish.addEventListener('click', completePreview)
-  next.addEventListener('click', () => {
+  function advancePreview() {
     if (position < views.length - 1) { position++; showPosition(); return }
     if (!unlimited) { completePreview(); return }
     appendView()
     position++
     showPosition()
-  })
-  dialog.querySelector('.quiz-preview-close').addEventListener('click', () => dialog.close())
+  }
+  next.addEventListener('click', advancePreview)
+  dialog.querySelector('.quiz-preview-close').addEventListener('click', () => { clearInterval(tickTimer); dialog.close() })
   dialog.showModal()
   showPosition()
+  tickTimer = setInterval(tick, 250)
 }

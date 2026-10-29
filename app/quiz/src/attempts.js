@@ -17,6 +17,10 @@ function attemptIdFromHash() {
   return id && /^[1-9][0-9]*$/.test(id) ? id : null
 }
 
+function fromExplore() {
+  return new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('source') === 'explore'
+}
+
 function attemptDate(value) {
   return value ? `${String(value).replace(' ', ' · ')} UTC` : ''
 }
@@ -34,7 +38,7 @@ function answerContent(text, imageId) {
 }
 
 function correctAnswers(question) {
-  const config = question.config || {}
+  const config = question.solution || {}
   const rows = []
   const row = (...parts) => {
     const item = element('li', 'review-answer-item')
@@ -69,13 +73,13 @@ function correctAnswers(question) {
 
 function markReviewedChoices(card, question) {
   const choices = card.querySelectorAll('.play-choice-list .play-choice')
-  const options = question.config?.options || []
+  const options = question.solution?.options || []
   const booleanChoice = question.template === 'true_false' || question.template === 'yes_no'
   choices.forEach((choice, index) => {
     const input = choice.querySelector('input')
     const selected = input?.checked === true
     const correct = booleanChoice
-      ? input?.value === String(question.config?.answer)
+      ? input?.value === String(question.solution?.answer)
       : options[index]?.correct === true
     choice.classList.add(selected === correct ? 'is-review-correct' : 'is-review-incorrect')
     const status = selected
@@ -96,11 +100,12 @@ function correctAnswerButton(text, imageId) {
 
 function markReviewedMatch(card, question, savedAnswer) {
   const rows = card.querySelectorAll('.play-drag-activity.is-match .play-drop-row')
-  const pairs = question.config?.pairs || []
+  const pairs = question.solution?.pairs || []
+  const displayOrder = question.solution?._display_order || pairs.map((_, index) => index)
   pairs.forEach((pair, index) => {
     const row = rows[index]
     if (!row) return
-    const correct = String(savedAnswer?.assignments?.[index]) === String(index)
+    const correct = String(savedAnswer?.assignments?.[index]) === String(displayOrder.indexOf(index))
     const dragged = row.querySelector('.play-drop-zone .play-drag-card')
     if (dragged) dragged.classList.add(correct ? 'is-review-correct' : 'is-review-incorrect')
     row.append(element('span', 'review-choice-status', correct ? 'Correct match' : 'Incorrect match'))
@@ -113,9 +118,11 @@ function markReviewedMatch(card, question, savedAnswer) {
 }
 
 function markReviewedCategories(card, question, savedAnswer) {
-  const categories = question.config?.categories || []
-  const expectedItems = categories.flatMap((category, categoryIndex) =>
+  const categories = question.solution?.categories || []
+  const sourceItems = categories.flatMap((category, categoryIndex) =>
     (category.items || []).map((answer) => ({ answer, categoryIndex })))
+  const expectedItems = (question.solution?._display_order || sourceItems.map((_, index) => index))
+    .map((source) => sourceItems[source])
   const items = card.querySelectorAll('.play-drag-activity .play-drag-card[data-source]')
   items.forEach((item) => {
     const source = Number(item.dataset.source)
@@ -141,15 +148,16 @@ function markReviewedCategories(card, question, savedAnswer) {
 }
 
 function markReviewedBlanks(card, question) {
-  const answers = question.config?.answers || []
+  const answers = question.solution?.answers || []
   card.querySelectorAll('.play-fill-line [data-answer-index]').forEach((input) => {
     const answerIndex = Number(input.dataset.answerIndex)
     const expected = answers[answerIndex]
     if (!expected) return
+    const imagePosition = question.solution?._image_answer_indices?.indexOf(answerIndex) ?? -1
     const correct = expected.text
       ? input.value.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
         === expected.text.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
-      : input.value === String(answerIndex)
+      : input.value === String(question.solution?._display_order?.indexOf(imagePosition) ?? answerIndex)
     input.classList.add(correct ? 'is-review-correct' : 'is-review-incorrect')
     input.setAttribute('aria-description', correct ? 'Correct answer' : 'Incorrect answer')
     if (!correct) {
@@ -163,14 +171,15 @@ function markReviewedBlanks(card, question) {
 }
 
 function markReviewedOrdering(card, question, savedAnswer) {
-  const items = question.config?.items || []
+  const items = question.solution?.items || []
+  const displayOrder = question.solution?._display_order || items.map((_, index) => index)
   const order = savedAnswer?.order
   if (!Array.isArray(order) || order.length !== items.length
     || new Set(order).size !== items.length
     || !order.every((value) => Number.isInteger(value) && value >= 0 && value < items.length)) return false
   card.querySelectorAll('.play-order-list .play-order-entry').forEach((entry, position) => {
     const row = entry.querySelector('.play-order-row')
-    const correct = order[position] === position
+    const correct = displayOrder[order[position]] === position
     row.classList.add(correct ? 'is-review-correct' : 'is-review-incorrect')
     row.setAttribute('aria-description', correct ? 'Correct position' : 'Incorrect position')
     entry.classList.add('review-order-entry')
@@ -194,17 +203,18 @@ function markReviewedTextAnswer(card, question, correct) {
   const correction = element('div', 'review-text-correction')
   correction.append(element('span', 'review-text-correction-label', 'Correct answer'))
   const value = element('div', 'review-text-answer')
-  value.append(answerContent(question.config?.answer, question.config?.answer_image_id))
+  value.append(answerContent(question.solution?.answer, question.solution?.answer_image_id))
   correction.append(value)
   answerArea.append(correction)
 }
 
 export function renderQuizAttempts(app, { requestJson, responseError, setStatus }) {
   const quizId = quizIdFromHash()
+  const explore = fromExplore()
   const page = app.querySelector('#page')
   page.innerHTML = `
     <main class="quiz-attempts-page">
-      <a class="back-button" href="#library">← Library</a>
+      <a class="back-button" href="#${explore ? 'explore' : 'library'}">← ${explore ? 'Explore' : 'Library'}</a>
       <div class="attempt-heading">
         <h1 class="section-title">Attempts</h1>
         <a id="attempts-play" class="auth-button auth-button-primary" href="#library">Play quiz</a>
@@ -219,21 +229,21 @@ export function renderQuizAttempts(app, { requestJson, responseError, setStatus 
   const list = page.querySelector('#attempts-list')
   const more = page.querySelector('#attempts-more')
   if (!quizId) { setStatus(status, 'Quiz not found.', true); return }
-  page.querySelector('#attempts-play').href = `#play?quiz=${quizId}`
+  page.querySelector('#attempts-play').href = `#play?quiz=${quizId}${explore ? '&source=explore' : ''}`
   let nextBefore = null
 
   function addAttempts(attempts) {
     for (const attempt of attempts) {
       const item = element('li', 'attempt-item')
       const link = element('a', 'attempt-review-link')
-      link.href = `#attempt?quiz=${quizId}&attempt=${attempt.id}`
+      link.href = `#attempt?quiz=${quizId}&attempt=${attempt.id}${explore ? '&source=explore' : ''}`
       link.append(element('strong', '', attempt.completed ? 'Completed attempt' : 'In progress'),
         element('span', '', attemptDate(attempt.created)),
         element('span', '', `${attempt.answered_count} of ${attempt.question_count} questions answered`))
       item.append(link)
       if (!attempt.completed) {
         const resume = element('a', 'auth-button auth-button-secondary', 'Continue')
-        resume.href = `#play?quiz=${quizId}`
+        resume.href = `#play?quiz=${quizId}${explore ? '&source=explore' : ''}`
         item.append(resume)
       }
       list.append(item)
@@ -272,6 +282,7 @@ export function renderQuizAttempts(app, { requestJson, responseError, setStatus 
 export function renderQuizAttempt(app, { requestJson, responseError, setStatus }) {
   const quizId = quizIdFromHash()
   const attemptId = attemptIdFromHash()
+  const explore = fromExplore()
   const page = app.querySelector('#page')
   page.innerHTML = `
     <main class="quiz-play-page quiz-review-page">
@@ -289,7 +300,7 @@ export function renderQuizAttempt(app, { requestJson, responseError, setStatus }
     setStatus(status, 'Attempt not found.', true)
     return
   }
-  page.querySelector('#review-back').href = `#attempts?quiz=${quizId}`
+  page.querySelector('#review-back').href = `#attempts?quiz=${quizId}${explore ? '&source=explore' : ''}`
   Promise.all([
     requestJson('GET', `/api/quiz/quizzes/${quizId}`),
     requestJson('GET', `/api/quiz/quizzes/${quizId}/attempts/${attemptId}`),
@@ -300,8 +311,7 @@ export function renderQuizAttempt(app, { requestJson, responseError, setStatus }
     page.querySelector('#review-title').textContent = quiz.name
     page.querySelector('#review-date').textContent = `${attempt.completed ? 'Completed' : 'In progress'} · Started ${attemptDate(attempt.created)}`
     const summary = page.querySelector('#review-summary')
-    let graded = 0
-    let correct = 0
+    const score = attempt.score
     let answered = 0
     const revealSolutions = Boolean(attempt.completed && quiz.show_correct_answers)
     for (const [index, question] of (attempt.questions || []).entries()) {
@@ -312,8 +322,7 @@ export function renderQuizAttempt(app, { requestJson, responseError, setStatus }
       if (hasSavedAnswer) {
         answered++
         if (question.template !== 'show_answer') view.restoreAnswer(attempt.answers[question.id])
-        result = view.complete(false)
-        if (result !== null) { graded++; if (result) correct++ }
+        result = view.complete(false, revealSolutions ? question.correct : 'hidden')
       } else {
         view.lock()
         view.card.append(element('p', 'play-feedback', 'No saved answer'))
@@ -343,9 +352,9 @@ export function renderQuizAttempt(app, { requestJson, responseError, setStatus }
     summary.hidden = false
     summary.append(element('h2', '', attempt.completed ? 'Completed attempt' : 'Unfinished attempt'),
       element('p', '', `${answered} of ${attempt.questions.length} questions answered.`))
-    if (graded) summary.append(element('p', '', `${correct} of ${graded} automatically graded answers correct.`))
+    if (score?.graded) summary.append(element('p', '', `${score.correct} of ${score.graded} automatically graded answers correct.`))
     const action = element('a', 'auth-button auth-button-secondary', attempt.completed ? 'Play again' : 'Continue')
-    action.href = `#play?quiz=${quizId}`
+    action.href = `#play?quiz=${quizId}${explore ? '&source=explore' : ''}`
     summary.append(action)
     setStatus(status, '')
   }).catch(() => {
@@ -356,10 +365,11 @@ export function renderQuizAttempt(app, { requestJson, responseError, setStatus }
 export function renderQuizResults(app, { requestJson, responseError, setStatus }) {
   const quizId = quizIdFromHash()
   const attemptId = attemptIdFromHash()
+  const explore = fromExplore()
   const page = app.querySelector('#page')
   page.innerHTML = `
     <main class="quiz-play-page quiz-result-page">
-      <a class="back-button" href="#library">← Library</a>
+      <a class="back-button" href="#${explore ? 'explore' : 'library'}">← ${explore ? 'Explore' : 'Library'}</a>
       <h1 id="result-title" class="section-title">Results</h1>
       <p id="result-status" class="form-status" role="status" aria-live="polite">Loading results…</p>
       <section id="result-summary" class="play-results" hidden></section>
@@ -381,30 +391,21 @@ export function renderQuizResults(app, { requestJson, responseError, setStatus }
       summary.append(element('h2', '', 'Attempt in progress'),
         element('p', '', 'Finish the quiz to see your results.'))
       const continueLink = element('a', 'auth-button auth-button-primary', 'Continue quiz')
-      continueLink.href = `#play?quiz=${quizId}`
+      continueLink.href = `#play?quiz=${quizId}${explore ? '&source=explore' : ''}`
       summary.append(continueLink)
     } else {
-      let graded = 0
-      let correct = 0
-      for (const [index, question] of (attempt.questions || []).entries()) {
-        const view = buildQuestion(question, index)
-        if (Object.prototype.hasOwnProperty.call(attempt.answers ?? {}, question.id)) {
-          view.restoreAnswer(attempt.answers[question.id])
-        }
-        const result = view.complete()
-        if (result !== null) { graded++; if (result) correct++ }
-      }
+      const { graded, correct, ungraded } = attempt.score || { graded: 0, correct: 0, ungraded: 0 }
       summary.append(element('h2', '', 'Results'),
         element('p', '', graded
           ? `${correct} of ${graded} automatically graded questions correct.`
           : 'This quiz has no automatically graded questions.'))
-      if (graded < attempt.questions.length) {
-        summary.append(element('p', '', `${attempt.questions.length - graded} study or open-answer questions were not graded.`))
+      if (ungraded) {
+        summary.append(element('p', '', `${ungraded} study or open-answer questions were not graded.`))
       }
       const review = element('a', 'auth-button auth-button-secondary', 'Review answers')
-      review.href = `#attempt?quiz=${quizId}&attempt=${attemptId}`
+      review.href = `#attempt?quiz=${quizId}&attempt=${attemptId}${explore ? '&source=explore' : ''}`
       const again = element('a', 'auth-button auth-button-secondary', 'Play again')
-      again.href = `#play?quiz=${quizId}`
+      again.href = `#play?quiz=${quizId}${explore ? '&source=explore' : ''}`
       summary.append(review, again)
     }
     summary.hidden = false

@@ -1118,7 +1118,8 @@ paths:
     get:
       tags: [Media]
       operationId: getImage
-      summary: Read a personal or shared image
+      summary: Read a personal, shared, or accessible quiz image
+      description: A signed-in player can read personal images in reached attempt questions. Answer images become available only after an explicit Show answer reveal or a completed review that permits solutions.
       security:
         - sessionCookie: []
       responses:
@@ -1134,7 +1135,7 @@ paths:
         '401':
           description: No active session.
         '404':
-          description: Image does not exist or belongs to another account.
+          description: Image does not exist or is not accessible to this account.
         '500':
           $ref: '#/components/responses/InternalError'
     patch:
@@ -1186,6 +1187,41 @@ paths:
           description: Image does not exist or belongs to another account.
         '409':
           description: Image is used by a current quiz question or a saved attempt.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /quiz/explore:
+    get:
+      tags: [Quizzes]
+      operationId: exploreQuizzes
+      summary: List public quizzes, newest first
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: before
+          in: query
+          description: Return public quizzes with IDs below this cursor.
+          schema: {type: integer, format: int64, minimum: 1}
+      responses:
+        '200':
+          description: Up to 50 public quizzes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [quizzes, next_before]
+                properties:
+                  quizzes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Quiz'
+                  next_before:
+                    type: [integer, 'null']
+                    format: int64
+        '400':
+          description: Invalid cursor.
+        '401':
+          description: No active session.
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -1251,6 +1287,14 @@ paths:
                   type: boolean
                   default: false
                   description: Show solutions in reviews of completed attempts.
+                is_public:
+                  type: boolean
+                  default: false
+                  description: List the quiz in Explore and allow other signed-in users to play it.
+                allow_go_back:
+                  type: boolean
+                  default: true
+                  description: Allow players to return to earlier questions during an attempt.
                 randomize_questions:
                   type: boolean
                   default: false
@@ -1258,6 +1302,11 @@ paths:
                   type: [integer, 'null']
                   minimum: 0
                   maximum: 1000
+                  default: null
+                time_limit_seconds:
+                  type: [integer, 'null']
+                  minimum: 1
+                  maximum: 86400
                   default: null
             example:
               name: Geography
@@ -1382,12 +1431,12 @@ paths:
     get:
       tags: [Quizzes]
       operationId: getQuiz
-      summary: Get a quiz owned by the current account
+      summary: Get an owned or public quiz, or a quiz with a prior attempt
       security:
         - sessionCookie: []
       responses:
         '200':
-          description: Owned quiz.
+          description: Quiz metadata.
           content:
             application/json:
               schema:
@@ -1437,6 +1486,12 @@ paths:
                 show_correct_answers:
                   type: boolean
                   description: Omit to keep the current review setting.
+                is_public:
+                  type: boolean
+                  description: Omit to keep the current visibility setting.
+                allow_go_back:
+                  type: boolean
+                  description: Omit to keep the current navigation setting.
                 randomize_questions:
                   type: boolean
                   description: Omit to keep the current order setting.
@@ -1445,6 +1500,11 @@ paths:
                   minimum: 0
                   maximum: 1000
                   description: Omit to keep the current limit; null selects All.
+                time_limit_seconds:
+                  type: [integer, 'null']
+                  minimum: 1
+                  maximum: 86400
+                  description: Omit to keep the current limit; null removes it.
       responses:
         '200':
           description: Updated quiz.
@@ -1512,7 +1572,7 @@ paths:
     get:
       tags: [Quizzes]
       operationId: listQuizAttempts
-      summary: List attempts for an owned quiz, 100 per page
+      summary: List the current player's attempts for an accessible quiz, 100 per page
       security:
         - sessionCookie: []
       responses:
@@ -1538,7 +1598,8 @@ paths:
     post:
       tags: [Quizzes]
       operationId: startQuizAttempt
-      summary: Start or resume the unfinished attempt for an owned quiz
+      summary: Start or resume your attempt for an owned or public quiz
+      description: An active attempt can be resumed after the quiz becomes private. A completed attempt remains available for review, but a new one cannot be started unless the quiz is public or owned by the player.
       security:
         - sessionCookie: []
       responses:
@@ -1596,8 +1657,8 @@ paths:
     post:
       tags: [Quizzes]
       operationId: nextQuizQuestion
-      summary: Append the next question in a 0 (unlimited) attempt
-      description: Retrying with the same after ID returns the same next appearance.
+      summary: Reveal the next question in an active attempt
+      description: In Until finish mode, creates a new appearance. In fixed modes, reveals the next prepared appearance. Retrying with the same after ID returns the same next appearance.
       security:
         - sessionCookie: []
       requestBody:
@@ -1611,7 +1672,7 @@ paths:
                 after: { type: integer, minimum: 1, description: Current question appearance ID }
       responses:
         '200':
-          description: Updated attempt with the next question appended.
+          description: Updated attempt with the next question visible.
           content:
             application/json:
               schema:
@@ -1623,7 +1684,80 @@ paths:
         '404':
           description: Attempt or question not found.
         '409':
-          description: Attempt is complete or has a fixed question count.
+          description: Attempt is complete, the current question is invalid, or there are no more questions.
+
+  /quiz/quizzes/{quizId}/attempts/{attemptId}/questions/{questionId}/reveal:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: attemptId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: questionId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    post:
+      tags: [Quizzes]
+      operationId: revealQuizAnswer
+      summary: Reveal an active Show answer question and save that it was revealed
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Answer text and optional image ID.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [answer, answer_image_id]
+                properties:
+                  answer: { type: string }
+                  answer_image_id: { type: [integer, 'null'] }
+        '401':
+          description: No active session.
+        '404':
+          description: Attempt or current Show answer question not found.
+        '409':
+          description: Attempt or question timer has expired, or going back is disabled.
+
+  /quiz/quizzes/{quizId}/attempts/{attemptId}/questions/{questionId}/start:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: attemptId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: questionId
+        in: path
+        required: true
+        description: Question appearance ID from the attempt.
+        schema: { type: integer, minimum: 1 }
+    post:
+      tags: [Quizzes]
+      operationId: startAttemptQuestion
+      summary: Start this question's clock once; repeated calls keep the original deadline
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Updated attempt with the question deadline.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizAttempt'
+        '401':
+          description: No active session.
+        '404':
+          description: Attempt or question not found.
+        '409':
+          description: Attempt is complete.
 
   /quiz/quizzes/{quizId}/attempts/{attemptId}/answers/{questionId}:
     parameters:
@@ -1678,7 +1812,7 @@ paths:
         '404':
           description: Attempt or question not found.
         '409':
-          description: Attempt is already complete.
+          description: Attempt is complete or the question's time is up.
 
   /quiz/quizzes/{quizId}/attempts/{attemptId}/complete:
     parameters:
@@ -2007,7 +2141,7 @@ components:
   schemas:
     Quiz:
       type: object
-      required: [id, name, description, play_style, show_correct_answers, randomize_questions, question_limit, created]
+      required: [id, name, description, play_style, show_correct_answers, is_public, allow_go_back, randomize_questions, question_limit, time_limit_seconds, play_count, created]
       properties:
         id:
           type: integer
@@ -2023,6 +2157,12 @@ components:
         show_correct_answers:
           type: boolean
           description: Solutions appear in reviews only after an attempt is completed.
+        is_public:
+          type: boolean
+          description: Whether signed-in users can find and start this quiz in Explore.
+        allow_go_back:
+          type: boolean
+          description: Whether players can return to previous questions and change earlier answers.
         randomize_questions:
           type: boolean
           description: Select question order randomly when an attempt starts.
@@ -2031,6 +2171,16 @@ components:
           minimum: 0
           maximum: 1000
           description: "null means All questions once; 0 continues until Finish; a positive number asks that many. Numeric modes cycle in order or draw randomly with repeats, but random draws do not repeat the previous question unless the bank has only one question."
+        time_limit_seconds:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 86400
+          description: Whole quiz limit; null means no limit. An attempt's clock starts when it is created.
+        play_count:
+          type: integer
+          minimum: 0
+          readOnly: true
+          description: Number of attempts started for this quiz, including the current unfinished attempt.
         created:
           type: string
           description: PostgreSQL timestamp without timezone, formatted as YYYY-MM-DD HH:MM:SS.
@@ -2058,6 +2208,12 @@ components:
         show_correct_answers:
           type: boolean
           default: false
+        is_public:
+          type: boolean
+          default: false
+        allow_go_back:
+          type: boolean
+          default: true
         randomize_questions:
           type: boolean
           default: false
@@ -2065,6 +2221,11 @@ components:
           type: [integer, 'null']
           minimum: 0
           maximum: 1000
+          default: null
+        time_limit_seconds:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 86400
           default: null
         questions:
           type: array
@@ -2090,11 +2251,12 @@ components:
                 contentEncoding: base64
     QuizAttemptSummary:
       type: object
-      required: [id, quiz_id, play_style, randomize_questions, question_limit, created, completed]
+      required: [id, quiz_id, play_style, allow_go_back, randomize_questions, question_limit, created, completed]
       properties:
         id: { type: integer, format: int64 }
         quiz_id: { type: integer, format: int64 }
         play_style: { type: string, enum: [basic, game_show] }
+        allow_go_back: { type: boolean }
         randomize_questions: { type: boolean }
         question_limit: { type: [integer, 'null'], minimum: 0, maximum: 1000 }
         created: { type: string }
@@ -2105,20 +2267,37 @@ components:
       allOf:
         - $ref: '#/components/schemas/QuizAttemptSummary'
         - type: object
-          required: [questions, answers]
+          required: [questions, answers, question_count, score, furthest_position, time_limit_seconds, deadline_ms, server_time_ms]
           properties:
+            furthest_position: { type: integer, minimum: 0, description: Highest question position opened in this attempt. }
+            time_limit_seconds: { type: [integer, 'null'], minimum: 1, maximum: 86400 }
+            deadline_ms: { type: [integer, 'null'], description: Unix milliseconds when the whole quiz expires. }
+            server_time_ms: { type: integer, description: Server Unix milliseconds for client countdown alignment. }
+            question_count: { type: integer, minimum: 1, description: Total prepared appearances in a fixed attempt, or appearances created so far in Until finish mode. }
+            score:
+              type: [object, 'null']
+              description: Server-calculated score, available only after completion. Ungraded includes open, Show answer, and No answer questions.
+              properties:
+                graded: { type: integer, minimum: 0 }
+                correct: { type: integer, minimum: 0 }
+                ungraded: { type: integer, minimum: 0 }
             questions:
               type: array
-              description: Question appearances in play order. Each has a unique ID, even when a source question repeats.
+              description: Only reached question appearances are returned while an attempt is active. Completed attempts return all appearances. Each has a unique ID, even when a source question repeats.
               items:
                 type: object
-                required: [id, source_question_id, template, prompt, config]
+                required: [id, source_question_id, template, prompt, config, started, time_limit_seconds, deadline_ms]
                 properties:
                   id: { type: integer, format: int64 }
                   source_question_id: { type: integer, format: int64 }
                   template: { type: string }
                   prompt: { type: string }
-                  config: { type: object }
+                  config: { type: object, description: Play presentation without answer keys. Match definitions, ordering items, blank image choices, and category items are shuffled independently of their solutions. }
+                  solution: { type: object, description: Full source configuration, present only after completion when show_correct_answers is enabled. }
+                  correct: { type: [boolean, 'null'], description: Server result for this question, present only with solution. Null means it is not automatically graded. }
+                  started: { type: boolean, description: Whether this question's clock or navigation position has started. }
+                  time_limit_seconds: { type: [integer, 'null'], minimum: 1, maximum: 86400 }
+                  deadline_ms: { type: [integer, 'null'], description: Unix milliseconds when this question expires, set on first opening. }
             answers:
               type: object
               description: Map from question appearance ID to saved answer object.
@@ -2194,6 +2373,11 @@ components:
           maxLength: 500
         config:
           type: object
+        time_limit_seconds:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 86400
+          description: Limit for this question; null means no limit. The clock starts when this question is first opened in an attempt.
       example:
         template: multiple_choice
         prompt: Select the prime numbers

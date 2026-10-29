@@ -795,6 +795,9 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
         </label>
         <div data-question-image></div>
       </div>
+      <label class="field question-time-setting"><span>Time limit (seconds, optional)</span>
+        <input data-time-limit type="number" min="1" max="86400" step="1" placeholder="No limit" />
+      </label>
       <div class="question-config-fields" data-config-fields></div>
       <div data-answer-image></div>
       <p class="form-status" data-card-status role="status" aria-live="polite"></p>
@@ -837,6 +840,7 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
       card.dataset.questionId = question ? String(question.id) : ''
       templateSelect.value = question?.template ?? initialTemplate
       promptInput.value = question?.prompt ?? ''
+      form.querySelector('[data-time-limit]').value = question?.time_limit_seconds ?? ''
       form.querySelector('[data-question-image]').replaceChildren(
         imageLibrary.createPicker('Question image', question?.config?.image_id))
       form.querySelector('[data-answer-image]').replaceChildren(
@@ -896,7 +900,8 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
         setStatus(status, 'Choose at least one correct answer.', true)
         return null
       }
-      return { template, prompt, config }
+      const timeLimit = form.querySelector('[data-time-limit]').value
+      return { template, prompt, config, time_limit_seconds: timeLimit === '' ? null : Number(timeLimit) }
     }
 
     async function saveQuestion() {
@@ -904,7 +909,7 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
       if (saving || reordering) return false
       const questionFields = currentQuestion()
       if (questionFields === null) return false
-      const { template, prompt, config } = questionFields
+      const { template, prompt, config, time_limit_seconds } = questionFields
 
       saving = true
       saveButton.disabled = true
@@ -918,8 +923,8 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
       try {
         const path = `/api/quiz/quizzes/${quizId}/questions`
         const [response, question] = savedQuestion === null
-          ? await requestJson('POST', path, { template, prompt, config })
-          : await requestJson('PATCH', `${path}/${savedQuestion.id}`, { template, prompt, config })
+          ? await requestJson('POST', path, { template, prompt, config, time_limit_seconds })
+          : await requestJson('PATCH', `${path}/${savedQuestion.id}`, { template, prompt, config, time_limit_seconds })
         if (!app.contains(card)) return false
         if (!response.ok) {
           setStatus(status, responseError(response, question), true)

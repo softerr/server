@@ -31,11 +31,17 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
             <label class="field"><span>Questions to ask</span><select name="question_limit_mode"><option value="all">All</option><option value="until_finish">Until finish</option><option value="number">Set number</option></select></label>
             <label class="field" id="question-limit-field" hidden><span>Number of questions</span><input name="question_limit" type="number" min="1" max="1000" step="1" value="1" required disabled /></label>
             <label class="quiz-setting-toggle"><input name="randomize_questions" type="checkbox" /><span>Randomize question order</span></label>
+            <label class="quiz-setting-toggle"><input name="allow_go_back" type="checkbox" checked /><span>Allow going back to previous questions</span></label>
           </div>
+          <label class="field quiz-time-setting"><span>Whole quiz time limit (seconds, optional)</span><input name="time_limit_seconds" type="number" min="1" max="86400" step="1" placeholder="No limit" /></label>
         </section>
         <section class="quiz-settings-group" aria-labelledby="quiz-review-settings-title">
           <h2 id="quiz-review-settings-title">Review settings</h2>
           <label class="quiz-setting-toggle"><input name="show_correct_answers" type="checkbox" /><span>Show correct answers in completed attempt reviews</span></label>
+        </section>
+        <section class="quiz-settings-group" aria-labelledby="quiz-visibility-settings-title">
+          <h2 id="quiz-visibility-settings-title">Visibility</h2>
+          <label class="quiz-setting-toggle"><input name="is_public" type="checkbox" /><span>Public — show this quiz in Explore so other members can play it</span></label>
         </section>
         <div class="quiz-editor-actions">
           <button class="auth-button auth-button-primary" type="submit" disabled>Saved</button>
@@ -61,8 +67,12 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
   const styleInputs = form.elements.namedItem('play_style')
   const showCorrectAnswersInput = form.elements.namedItem('show_correct_answers')
   const randomizeInput = form.elements.namedItem('randomize_questions')
+  const allowGoBackInput = form.elements.namedItem('allow_go_back')
+  const publicInput = form.elements.namedItem('is_public')
   const limitMode = form.elements.namedItem('question_limit_mode')
   const limitInput = form.elements.namedItem('question_limit')
+  const timeLimitInput = form.elements.namedItem('time_limit_seconds')
+  const selectedTimeLimit = () => timeLimitInput.value === '' ? null : Number(timeLimitInput.value)
   const limitField = page.querySelector('#question-limit-field')
   const modeForLimit = (limit) => limit === null ? 'all' : limit === 0 ? 'until_finish' : 'number'
   const selectedLimit = () => limitMode.value === 'all' ? null
@@ -94,7 +104,10 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
       || selectedStyle() !== savedValues.play_style
       || showCorrectAnswersInput.checked !== savedValues.show_correct_answers
       || randomizeInput.checked !== savedValues.randomize_questions
-      || selectedLimit() !== savedValues.question_limit)
+      || allowGoBackInput.checked !== savedValues.allow_go_back
+      || publicInput.checked !== savedValues.is_public
+      || selectedLimit() !== savedValues.question_limit
+      || selectedTimeLimit() !== savedValues.time_limit_seconds)
   }
 
   function updateSaveAllButton() {
@@ -133,12 +146,18 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
     for (const input of styleInputs) input.checked = input.value === quiz.play_style
     showCorrectAnswersInput.checked = quiz.show_correct_answers
     randomizeInput.checked = quiz.randomize_questions
+    allowGoBackInput.checked = quiz.allow_go_back
+    publicInput.checked = quiz.is_public
     limitMode.value = modeForLimit(quiz.question_limit)
     limitInput.value = String(quiz.question_limit || 1)
+    timeLimitInput.value = quiz.time_limit_seconds === null ? '' : String(quiz.time_limit_seconds)
     syncLimitField()
     savedValues = { name: quiz.name, description: quiz.description, play_style: quiz.play_style,
       show_correct_answers: quiz.show_correct_answers,
-      randomize_questions: quiz.randomize_questions, question_limit: quiz.question_limit }
+      randomize_questions: quiz.randomize_questions, question_limit: quiz.question_limit,
+      allow_go_back: quiz.allow_go_back,
+      is_public: quiz.is_public,
+      time_limit_seconds: quiz.time_limit_seconds }
     updateSaveButton()
     form.hidden = false
     const questions = page.querySelector('#question-editor-section')
@@ -191,6 +210,9 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
       const [response, quiz] = await requestJson('PATCH', `/api/quiz/quizzes/${quizId}`, {
         name, description, play_style: selectedStyle(), show_correct_answers: showCorrectAnswersInput.checked,
         randomize_questions: randomizeInput.checked, question_limit: selectedLimit(),
+        allow_go_back: allowGoBackInput.checked,
+        is_public: publicInput.checked,
+        time_limit_seconds: selectedTimeLimit(),
       })
       if (!app.contains(form)) return false
       if (!response.ok) {
@@ -202,11 +224,17 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
       for (const input of styleInputs) input.checked = input.value === quiz.play_style
       showCorrectAnswersInput.checked = quiz.show_correct_answers
       randomizeInput.checked = quiz.randomize_questions
+      allowGoBackInput.checked = quiz.allow_go_back
+      publicInput.checked = quiz.is_public
       limitMode.value = modeForLimit(quiz.question_limit)
       limitInput.value = String(quiz.question_limit || 1)
+      timeLimitInput.value = quiz.time_limit_seconds === null ? '' : String(quiz.time_limit_seconds)
       savedValues = { name: quiz.name, description: quiz.description, play_style: quiz.play_style,
         show_correct_answers: quiz.show_correct_answers,
-        randomize_questions: quiz.randomize_questions, question_limit: quiz.question_limit }
+        randomize_questions: quiz.randomize_questions, question_limit: quiz.question_limit,
+        allow_go_back: quiz.allow_go_back,
+        is_public: quiz.is_public,
+        time_limit_seconds: quiz.time_limit_seconds }
       setStatus(status, '')
       return true
     } catch {
@@ -247,6 +275,7 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
 
   previewButton.addEventListener('click', () => {
     if (previewButton.disabled || !questionEditor) return
+    if (!form.reportValidity()) return
     setStatus(saveAllStatus, '')
     const questions = questionEditor.previewQuestions()
     if (questions === null) {
@@ -262,7 +291,9 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
       description: descriptionInput.value.trim(),
       play_style: selectedStyle(),
       randomize_questions: randomizeInput.checked,
+      allow_go_back: allowGoBackInput.checked,
       question_limit: selectedLimit(),
+      time_limit_seconds: selectedTimeLimit(),
     }, questions)
   })
 
@@ -325,9 +356,12 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
         play_style: quiz.play_style,
         show_correct_answers: quiz.show_correct_answers,
         randomize_questions: quiz.randomize_questions,
+        allow_go_back: quiz.allow_go_back,
+        is_public: quiz.is_public,
         question_limit: quiz.question_limit,
-        questions: questionsPayload.questions.map(({ template, prompt, config }) => ({
-          template, prompt, config,
+        time_limit_seconds: quiz.time_limit_seconds,
+        questions: questionsPayload.questions.map(({ template, prompt, config, time_limit_seconds }) => ({
+          template, prompt, config, time_limit_seconds,
         })),
         images,
       }

@@ -4,15 +4,16 @@ test_shared_media_across_users_and_quizzes() (
   set -e
   # Earlier login cases may have exhausted the per-IP Nginx bucket.
   sudo -n systemctl restart nginx
-  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file direct_file folder_file response status shared_id private_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id archive manifest count
+  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file answer_file direct_file folder_file response status shared_id private_id answer_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id public_attempt_id archive manifest count
   admin_cookie="$(mktemp)"
   user_cookie="$(mktemp)"
   png_file="$(mktemp)"
   private_file="$(mktemp)"
+  answer_file="$(mktemp)"
   direct_file="$(mktemp)"
   folder_file="$(mktemp)"
   archive="$(mktemp)"
-  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$private_file" "$direct_file" "$folder_file" "$archive"' EXIT
+  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$private_file" "$answer_file" "$direct_file" "$folder_file" "$archive"' EXIT
 
   create_test_identity
   admin_email="$TEST_EMAIL"
@@ -49,6 +50,8 @@ test_shared_media_across_users_and_quizzes() (
   printf '%s' "${API_TEST_RUN_ID}" >> "$png_file"
   cp "$png_file" "$private_file"
   printf 'personal' >> "$private_file"
+  cp "$private_file" "$answer_file"
+  printf 'solution' >> "$answer_file"
   cp "$png_file" "$direct_file"
   printf 'direct-shared' >> "$direct_file"
   cp "$png_file" "$folder_file"
@@ -130,6 +133,11 @@ test_shared_media_across_users_and_quizzes() (
     -H 'X-Image-Name: private.png' "${API_TEST_BASE_URL%/}/api/media/images")"
   private_id="$(jq -r '.id // empty' <<<"$response")"
   [[ "$private_id" =~ ^[0-9]+$ ]] || { fail_test "personal upload failed: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X POST --data-binary @"$answer_file" \
+    -H 'X-Image-Name: answer.png' "${API_TEST_BASE_URL%/}/api/media/images")"
+  answer_id="$(jq -r '.id // empty' <<<"$response")"
+  [[ "$answer_id" =~ ^[0-9]+$ && "$answer_id" != "$private_id" ]] \
+    || { fail_test "answer image upload failed: ${response}"; return 1; }
   response="$(curl -sS -b "$admin_cookie" -X PATCH -H 'Content-Type: application/json' \
     --data '{"name":"../invalid.png"}' -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"
@@ -243,6 +251,74 @@ test_shared_media_across_users_and_quizzes() (
     "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}/questions")"
   history_question_id="$(jq -r '.id // empty' <<<"$response")"
   [[ "$history_question_id" =~ ^[0-9]+$ ]] || { fail_test "history question creation failed: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --argjson id "$answer_id" '{template:"number",prompt:"The secret number",config:{answer:"42",answer_image_id:$id}}')" \
+    -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}/questions")"
+  [[ "${response##*$'\n'}" == 201 ]] || { fail_test "answer image question creation failed: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}")"
+  [[ "${response##*$'\n'}" == 404 ]] || { fail_test "private quiz was visible to another user: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" "${API_TEST_BASE_URL%/}/api/quiz/explore")"
+  jq -e --argjson id "$history_quiz_id" '.quizzes | any(.id == $id) | not' <<<"$response" >/dev/null \
+    || { fail_test "private quiz appeared in Explore: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"Image attempt history","is_public":true}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] && jq -e '.is_public == true' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "quiz could not be published: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" "${API_TEST_BASE_URL%/}/api/quiz/explore")"
+  jq -e --argjson id "$history_quiz_id" '.quizzes | any(.id == $id and .is_public == true)' <<<"$response" >/dev/null \
+    || { fail_test "published quiz missing from Explore: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -o /dev/null -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"
+  [[ "$response" == 404 ]] || { fail_test "player could load a quiz image before starting: HTTP ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -o /dev/null -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${answer_id}")"
+  [[ "$response" == 404 ]] || { fail_test "player could load an answer image before starting: HTTP ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"Hijacked"}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}")"
+  [[ "${response##*$'\n'}" == 404 ]] || { fail_test "player could edit a public quiz: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -X POST -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}/attempts")"
+  public_attempt_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  [[ "${response##*$'\n'}" == 200 && "$public_attempt_id" =~ ^[0-9]+$ ]] \
+    || { fail_test "player could not start a public quiz: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -o /dev/null -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"
+  [[ "$response" == 200 ]] || { fail_test "player could not load an image in a reached question: HTTP ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -o /dev/null -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${answer_id}")"
+  [[ "$response" == 404 ]] || { fail_test "player could load an answer image during play: HTTP ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}")"
+  jq -e '.play_count == 1' <<<"$response" >/dev/null \
+    || { fail_test "player attempt did not count as a play: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"Image attempt history","is_public":false}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "quiz could not be made private: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" "${API_TEST_BASE_URL%/}/api/quiz/explore")"
+  jq -e --argjson id "$history_quiz_id" '.quizzes | any(.id == $id) | not' <<<"$response" >/dev/null \
+    || { fail_test "unpublished quiz remained in Explore: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}/attempts/${public_attempt_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "player lost an existing attempt: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -X POST -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}/attempts/${public_attempt_id}/complete")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "player could not finish an existing attempt: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -o /dev/null -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${answer_id}")"
+  [[ "$response" == 404 ]] || { fail_test "hidden answer image was readable after completion: HTTP ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"Image attempt history","show_correct_answers":true}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "could not enable answer review: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -o /dev/null -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${answer_id}")"
+  [[ "$response" == 200 ]] || { fail_test "permitted answer image was not readable: HTTP ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -X POST -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}/attempts")"
+  [[ "${response##*$'\n'}" == 404 ]] || { fail_test "player started a new attempt on a private quiz: ${response}"; return 1; }
   response="$(curl -sS -b "$admin_cookie" -X POST -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}/attempts")"
   [[ "${response##*$'\n'}" == 200 ]] || { fail_test "image attempt creation failed: ${response}"; return 1; }
@@ -258,6 +334,9 @@ test_shared_media_across_users_and_quizzes() (
   response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"
   [[ "${response##*$'\n'}" == 204 ]] || { fail_test "personal image deletion failed: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${answer_id}")"
+  [[ "${response##*$'\n'}" == 204 ]] || { fail_test "answer image deletion failed: ${response}"; return 1; }
   response="$(curl -sS -b "$user_cookie" -H 'Content-Type: application/json' \
     --data "$(jq -nc --argjson id "$shared_id" '{template:"no_answer",prompt:"Shared?",config:{image_id:$id}}')" \
     -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}/questions")"

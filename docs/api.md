@@ -24,13 +24,23 @@ table, whose `auth_user_id` maps to the shared account. Each quiz has a foreign
 key to its local user. The API creates the local user on the first quiz create.
 
 - `GET /api/quiz/quizzes` returns `{ "quizzes": [...] }`, newest first. Each quiz has
-  `id`, `name`, `description`, and `created` fields.
-- `GET /api/quiz/quizzes/{quizId}` returns one owned quiz. A missing or other
-  account's quiz returns `404`.
+  `id`, `name`, `description`, `created`, `is_public`, and `play_count` fields. `play_count`
+  counts attempts started, including an unfinished attempt; resuming it does
+  not add another play. Plays by all users count.
+- `GET /api/quiz/explore` returns up to 50 public quizzes, newest first, with
+  `next_before` for the next page. Pass `?before=<id>` to continue.
+- `GET /api/quiz/quizzes/{quizId}` returns an owned or public quiz. Players can
+  also load a quiz they attempted before it became private. Inaccessible quizzes return `404`.
 - `POST /api/quiz/quizzes` with `{ "name": "Geography" }` creates a quiz and returns
   the quiz with HTTP `201`. The name is trimmed and must be 1–100 bytes. Optional
   `description` is trimmed and limited to 1000 bytes. The request body must be
   at most 4096 bytes. An account may have 100 quizzes; further creation returns `409`.
+  Optional `time_limit_seconds` sets a whole quiz limit from 1 to 86400 seconds;
+  `null` means no limit. The clock starts when the attempt is created.
+  `allow_go_back` defaults to `true`; set it to `false` to prevent returning to
+  earlier questions during an attempt. The setting is copied into each attempt.
+  `is_public` defaults to `false`. Set it to `true` to show the quiz in Explore
+  and let other signed-in users play it.
 - `POST /api/quiz/quizzes/import` accepts version 1 quiz JSON or ZIP and creates
   a new quiz with its questions in order. The request is limited to 48 MiB and
   100 questions. Send JSON as `application/json` or ZIP bytes as
@@ -41,7 +51,7 @@ key to its local user. The API creates the local user on the first quiz create.
   The archive contains `quiz.json` and used images under `images/{imageId}/`
   with their original filenames.
 - `PATCH /api/quiz/quizzes/{quizId}` updates an owned quiz and returns it. `name`
-  is required; an omitted `description` retains its value. A
+  is required; omitted optional fields, including `is_public`, retain their values. A
   missing or other account's quiz returns `404`.
 - `DELETE /api/quiz/quizzes/{quizId}` deletes an owned quiz and returns `204` with
   no body. Its questions are deleted too. A missing or other account's quiz returns `404`.
@@ -51,6 +61,28 @@ key to its local user. The API creates the local user on the first quiz create.
   HTTP `201`. Each quiz may have 100 questions; further creation returns `409`.
 - `PATCH /api/quiz/quizzes/{quizId}/questions/{questionId}` replaces a question's
   prompt, template, and config and returns the updated question.
+  Optional `time_limit_seconds` sets a question limit from 1 to 86400 seconds;
+  `null` removes it. The clock starts on first opening and keeps running after a reload.
+- `POST /api/quiz/quizzes/{quizId}/attempts/{attemptId}/questions/{questionId}/start`
+  starts that appearance's question clock once and returns the attempt with its
+  deadline. A second call keeps the same deadline. Late answer writes return `409`.
+  The attempt's `deadline_ms` and each question's `deadline_ms` are Unix milliseconds;
+  `server_time_ms` helps clients display accurate countdowns. A whole quiz timeout
+  completes the attempt and preserves answers already saved.
+  When `allow_go_back` is false, start each question before saving its answer.
+  Reopening an earlier question or replacing its answer after moving forward returns `409`.
+- `POST /api/quiz/quizzes/{quizId}/attempts` starts or resumes an attempt. Active
+  responses include only reached questions. `question_count` gives the fixed
+  total, and `score` is `null` until completion. Question `config` contains
+  only play data, with answer keys removed and match, ordering, and category
+  items shuffled by the server. A completed attempt includes a server-calculated
+  `score`. Full answer configurations appear as `solution` only if the quiz's
+  `show_correct_answers` setting allows them.
+- `POST /api/quiz/quizzes/{quizId}/attempts/{attemptId}/next` with
+  `{ "after": questionId }` reveals the next question. In Until finish mode it
+  also creates the next appearance. Retrying the same request is safe.
+- `POST /api/quiz/quizzes/{quizId}/attempts/{attemptId}/questions/{questionId}/reveal`
+  returns the answer for a reached Show answer question and records the reveal.
 - `PUT /api/quiz/quizzes/{quizId}/questions/order` accepts
   `{ "question_ids": [3, 2, 1] }` and returns the same object. Include every
   question ID exactly once. Unknown, missing, or stale IDs return `409`.
@@ -161,8 +193,8 @@ are limited to 150 bytes each and require text or an image. Ordering items
 and blank answers are also limited to 150 bytes;
 category names are limited to 100 bytes and category items to 150 bytes. The
 order of choice options, match pairs, and ordering items follows their array
-order in `config`. The answer configs are stored with the question; the current
-editor creates and edits questions, while quiz-taking behavior is not yet available.
+order in editor `config`. The play API uses a separate presentation that hides
+answers until completion and permitted review.
 
 Run **Setup PostgreSQL On Server** so the media image tables and grants exist,
 then **Setup Nginx On Server** to install PHP ZIP support. Run **Deploy Apps On

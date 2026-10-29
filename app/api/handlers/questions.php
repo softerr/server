@@ -11,6 +11,7 @@ function publicQuestion(array $row): array
         'template' => $row['template'],
         'prompt' => $row['prompt'],
         'config' => (object) json_decode($row['config'], true),
+        'time_limit_seconds' => $row['time_limit_seconds'] === null ? null : (int) $row['time_limit_seconds'],
         'created' => $row['created'],
     ];
 }
@@ -69,6 +70,11 @@ function readQuestionFields(?array $payload): array
         respond(400, ['error' => 'Invalid question']);
     }
     $prompt = questionText($payload['prompt'] ?? null, 500, 'question prompt');
+    $timeLimitProvided = array_key_exists('time_limit_seconds', $payload);
+    $timeLimit = $payload['time_limit_seconds'] ?? null;
+    if ($timeLimit !== null && (!is_int($timeLimit) || $timeLimit < 1 || $timeLimit > 86400)) {
+        respond(400, ['error' => 'Time limit must be 1 to 86400 seconds']);
+    }
     $template = $payload['template'] ?? null;
     $config = $payload['config'] ?? null;
     if (!is_string($template) || !in_array($template, [
@@ -208,7 +214,7 @@ function readQuestionFields(?array $payload): array
         respond(400, ['error' => 'This question has no answer']);
     }
     if ($answerImageId !== null) $normalized['answer_image_id'] = $answerImageId;
-    return [$template, $prompt, json_encode((object) $normalized, JSON_THROW_ON_ERROR)];
+    return [$template, $prompt, json_encode((object) $normalized, JSON_THROW_ON_ERROR), $timeLimit, $timeLimitProvided];
 }
 
 function handleListQuestions(int $quizId): never
@@ -229,7 +235,7 @@ function handleListQuestions(int $quizId): never
     }
     $result = @pg_query_params(
         $db,
-        'SELECT id, quiz_id, template, prompt, config, created
+        'SELECT id, quiz_id, template, prompt, config, time_limit_seconds, created
          FROM public.question WHERE quiz_id = $1 ORDER BY position, id',
         [$quizId]
     );
@@ -246,7 +252,7 @@ function handleListQuestions(int $quizId): never
 function handleCreateQuestion(int $quizId): never
 {
     $user = currentSessionUser();
-    [$template, $prompt, $config] = readQuestionFields(readJsonBody(QUESTION_BODY_MAX_BYTES));
+    [$template, $prompt, $config, $timeLimit] = readQuestionFields(readJsonBody(QUESTION_BODY_MAX_BYTES));
     $db = connectQuizDb();
     if (@pg_query($db, 'BEGIN') === false) {
         respond(500, ['error' => 'Failed to create question']);
@@ -280,11 +286,11 @@ function handleCreateQuestion(int $quizId): never
     }
     $result = @pg_query_params(
         $db,
-        'INSERT INTO public.question (quiz_id, template, prompt, config, position)
+        'INSERT INTO public.question (quiz_id, template, prompt, config, position, time_limit_seconds)
          VALUES ($1, $2, $3, $4::jsonb,
-           (SELECT COALESCE(MAX(position), 0) + 1 FROM public.question WHERE quiz_id = $1))
-         RETURNING id, quiz_id, template, prompt, config, created',
-        [$quizId, $template, $prompt, $config]
+           (SELECT COALESCE(MAX(position), 0) + 1 FROM public.question WHERE quiz_id = $1), $5)
+         RETURNING id, quiz_id, template, prompt, config, time_limit_seconds, created',
+        [$quizId, $template, $prompt, $config, $timeLimit]
     );
     if ($result === false) {
         @pg_query($db, 'ROLLBACK');
@@ -368,7 +374,7 @@ function handleReorderQuestions(int $quizId): never
 function handleUpdateQuestion(int $quizId, int $questionId): never
 {
     $user = currentSessionUser();
-    [$template, $prompt, $config] = readQuestionFields(readJsonBody(QUESTION_BODY_MAX_BYTES));
+    [$template, $prompt, $config, $timeLimit, $timeLimitProvided] = readQuestionFields(readJsonBody(QUESTION_BODY_MAX_BYTES));
     $db = connectQuizDb();
     if (@pg_query($db, 'BEGIN') === false
         || @pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
@@ -377,12 +383,13 @@ function handleUpdateQuestion(int $quizId, int $questionId): never
     verifyQuestionImages((int) $user['id'], $config);
     $result = @pg_query_params(
         $db,
-        'UPDATE public.question t SET template = $1, prompt = $2, config = $3::jsonb
+        'UPDATE public.question t SET template = $1, prompt = $2, config = $3::jsonb,
+            time_limit_seconds = CASE WHEN $7::boolean THEN $8::integer ELSE t.time_limit_seconds END
          FROM public.quiz q, public."user" u
          WHERE t.id = $4 AND t.quiz_id = q.id AND q.id = $5
            AND q.user_id = u.id AND u.auth_user_id = $6
-         RETURNING t.id, t.quiz_id, t.template, t.prompt, t.config, t.created',
-        [$template, $prompt, $config, $questionId, $quizId, $user['id']]
+         RETURNING t.id, t.quiz_id, t.template, t.prompt, t.config, t.time_limit_seconds, t.created',
+        [$template, $prompt, $config, $questionId, $quizId, $user['id'], $timeLimitProvided ? 't' : 'f', $timeLimit]
     );
     if ($result === false) {
         respond(500, ['error' => 'Failed to update question']);

@@ -6,6 +6,9 @@ const MEDIA_PERSONAL_MAX_BYTES = 33554432;
 const MEDIA_PERSONAL_MAX_COUNT = 256;
 const QUIZ_IMPORT_MAX_BYTES = 50331648;
 const QUIZ_IMPORT_MAX_IMAGES = 4096;
+const QUIZ_IMAGE_REFERENCE_PATH = '$.** ? (@.image_id == $id || @.answer_image_id == $id || @.keyword_image_id == $id || @.definition_image_id == $id || @.name_image_id == $id)';
+const QUIZ_VISIBLE_IMAGE_REFERENCE_PATH = '$.** ? (@.image_id == $id || @.keyword_image_id == $id || @.definition_image_id == $id || @.name_image_id == $id)';
+const QUIZ_ANSWER_IMAGE_REFERENCE_PATH = '$.** ? (@.answer_image_id == $id)';
 
 function imageIdsFromConfig(array $config): array
 {
@@ -293,6 +296,28 @@ function handlePublishImage(int $imageId): never
     respond(200, publicMediaImage($row));
 }
 
+function imageUsedByAccessibleQuiz(int $imageId, int $authUserId): bool
+{
+    $quizDb = connectQuizDb();
+    $result = @pg_query_params($quizDb,
+        'SELECT EXISTS (
+            SELECT 1 FROM public.quiz_attempt_question s
+            JOIN public.quiz_attempt a ON a.id = s.attempt_id
+            JOIN public.quiz_attempt_source b ON b.attempt_id = s.attempt_id AND b.question_id = s.source_question_id
+            JOIN public."user" u ON u.id = a.user_id
+            JOIN public.quiz q ON q.id = a.quiz_id
+            LEFT JOIN public.quiz_answer r ON r.attempt_id = s.attempt_id AND r.question_id = s.id
+            WHERE u.auth_user_id = $4 AND (a.completed IS NOT NULL OR s.position <= GREATEST(1, a.furthest_position))
+              AND (jsonb_path_exists(b.config, $1::jsonpath, jsonb_build_object(\'id\', $3::bigint))
+                OR ((a.completed IS NOT NULL AND q.show_correct_answers = TRUE
+                    OR b.template = \'show_answer\' AND r.answer->>\'revealed\' = \'true\')
+                  AND jsonb_path_exists(b.config, $2::jsonpath, jsonb_build_object(\'id\', $3::bigint))))
+         ) AS visible',
+        [QUIZ_VISIBLE_IMAGE_REFERENCE_PATH, QUIZ_ANSWER_IMAGE_REFERENCE_PATH, $imageId, $authUserId]);
+    if ($result === false) respond(500, ['error' => 'Failed to check quiz image']);
+    return pg_fetch_result($result, 0, 'visible') === 't';
+}
+
 function handleGetImage(int $imageId): never
 {
     $user = currentSessionUser();
@@ -304,7 +329,18 @@ function handleGetImage(int $imageId): never
         [$imageId, $user['id']]);
     if ($result === false) respond(500, ['error' => 'Failed to load image']);
     $row = pg_fetch_assoc($result);
-    if ($row === false) respond(404, ['error' => 'Image not found']);
+    if ($row === false) {
+        if (!imageUsedByAccessibleQuiz($imageId, (int) $user['id'])) {
+            respond(404, ['error' => 'Image not found']);
+        }
+        $result = @pg_query_params($db,
+            'SELECT i.original_name, b.mime_type, b.content
+             FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id WHERE i.id = $1',
+            [$imageId]);
+        if ($result === false) respond(500, ['error' => 'Failed to load image']);
+        $row = pg_fetch_assoc($result);
+        if ($row === false) respond(404, ['error' => 'Image not found']);
+    }
     header('Content-Type: ' . $row['mime_type']);
     header("Content-Disposition: inline; filename*=UTF-8''" . rawurlencode($row['original_name']));
     header('X-Content-Type-Options: nosniff');
@@ -357,12 +393,13 @@ function handleDeleteImage(int $imageId): never
          ) OR EXISTS (
             SELECT 1 FROM public.quiz_attempt_source s
             JOIN public.quiz_attempt a ON a.id = s.attempt_id
-            JOIN public."user" u ON u.id = a.user_id
+            JOIN public.quiz q ON q.id = a.quiz_id
+            JOIN public."user" u ON u.id = q.user_id
             WHERE u.auth_user_id = $1 AND jsonb_path_exists(s.config, $2::jsonpath,
               jsonb_build_object(\'id\', $3::bigint))
          ) AS used',
         [$user['id'],
-         '$.** ? (@.image_id == $id || @.answer_image_id == $id || @.keyword_image_id == $id || @.definition_image_id == $id || @.name_image_id == $id)',
+         QUIZ_IMAGE_REFERENCE_PATH,
          $imageId]);
     if ($used === false) respond(500, ['error' => 'Failed to delete image']);
     if (pg_fetch_result($used, 0, 'used') === 't') {

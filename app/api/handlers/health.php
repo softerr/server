@@ -29,11 +29,11 @@ function handleReadiness(): never
     if ($quizDb === false) {
         respond(503, ['status' => 'unavailable', 'error' => $quizError]);
     }
-    $quizSchema = @pg_query($quizDb, 'SELECT q.id, q.user_id, q.name, q.description, q.play_style, q.show_correct_answers, q.randomize_questions, q.question_limit,
-            u.auth_user_id, t.id, t.quiz_id, t.template, t.prompt, t.config,
-            a.id, a.quiz_id, a.user_id, a.completed, a.randomize_questions, a.question_limit,
-            b.attempt_id, b.question_id, b.position, b.template, b.prompt, b.config,
-            s.id, s.attempt_id, s.source_question_id, s.position, r.attempt_id, r.question_id, r.answer
+    $quizSchema = @pg_query($quizDb, 'SELECT q.id, q.user_id, q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.question_limit, q.time_limit_seconds,
+            u.auth_user_id, t.id, t.quiz_id, t.template, t.prompt, t.config, t.time_limit_seconds,
+            a.id, a.quiz_id, a.user_id, a.completed, a.allow_go_back, a.furthest_position, a.randomize_questions, a.question_limit, a.time_limit_seconds, a.deadline_at,
+            b.attempt_id, b.question_id, b.position, b.template, b.prompt, b.config, b.time_limit_seconds,
+            s.id, s.attempt_id, s.source_question_id, s.position, s.started_at, r.attempt_id, r.question_id, r.answer
         FROM public.quiz q, public."user" u, public.question t,
              public.quiz_attempt a, public.quiz_attempt_source b,
              public.quiz_attempt_question s, public.quiz_answer r LIMIT 0');

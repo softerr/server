@@ -87,6 +87,31 @@
   gap: 4px;
 }
 
+.library-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.library-item-footer .library-item-actions { margin-left: auto; }
+
+.library-item-plays {
+  color: var(--text-grey);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.explore-item .library-item-open {
+  display: flex;
+  flex-direction: column;
+}
+
+.explore-item .library-item-plays { margin-top: auto; padding-top: 24px; }
+
+#explore-more { margin-top: 20px; }
+
 .icon-action {
   display: grid;
   place-items: center;
@@ -935,6 +960,24 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.play-timers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.play-timers[hidden], .play-timers span[hidden] { display: none; }
+.play-timers span {
+  padding: 5px 9px;
+  color: var(--text-color);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
 }
 
 .play-question,

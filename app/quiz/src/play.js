@@ -252,7 +252,17 @@ export function buildQuestion(question, index) {
     reveal.append(answerRow(config.answer, config.answer_image_id))
     const button = element('button', 'auth-button auth-button-secondary', 'Show answer')
     button.type = 'button'
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
+      if (question.reveal) {
+        button.disabled = true
+        try {
+          const revealed = await question.reveal()
+          reveal.replaceChildren(answerRow(revealed.answer, revealed.answer_image_id))
+        } catch {
+          button.disabled = false
+          return
+        }
+      }
       reveal.hidden = false
       button.hidden = true
       card.dispatchEvent(new Event('change', { bubbles: true }))
@@ -268,9 +278,10 @@ export function buildQuestion(question, index) {
     answer.append(element('p', 'play-instruction', 'Read the question, then continue.'))
   } else if (question.template === 'match') {
     const pairs = config.pairs || []
+    const definitions = config.definitions || pairs
     const activity = dragAssignment(answer,
       shuffledIndexes(pairs.length).map((pairIndex) => ({
-        text: pairs[pairIndex].definition, imageId: pairs[pairIndex].definition_image_id,
+        text: definitions[pairIndex].definition, imageId: definitions[pairIndex].definition_image_id,
         target: pairIndex, source: pairIndex,
       })),
       pairs.map((pair) => ({ text: pair.keyword, imageId: pair.keyword_image_id })), 1)
@@ -361,8 +372,10 @@ export function buildQuestion(question, index) {
     const answers = config.answers || []
     const line = element('div', 'play-fill-line')
     const inputs = []
-    const imageOnly = answers.map((item, answerIndex) => ({ ...item, answerIndex }))
-      .filter((item) => !item.text && item.image_id)
+    const imageOnly = config.image_choices
+      ? config.image_choices.map((item, choiceIndex) => ({ ...item, choiceIndex }))
+      : answers.map((item, answerIndex) => ({ ...item, choiceIndex: answerIndex }))
+        .filter((item) => !item.text && item.image_id)
     for (const part of question.prompt.split(/(\{\{[1-9][0-9]*\}\})/g)) {
       const match = /^\{\{([1-9][0-9]*)\}\}$/.exec(part)
       if (!match) { line.append(document.createTextNode(part)); continue }
@@ -381,7 +394,7 @@ export function buildQuestion(question, index) {
         select.setAttribute('aria-label', `Image for blank ${answerIndex + 1}`)
         select.dataset.answerIndex = String(answerIndex)
         select.append(new Option('Choose image', ''))
-        imageOnly.forEach((item, position) => select.append(new Option(`Image ${position + 1}`, String(item.answerIndex))))
+        imageOnly.forEach((item, position) => select.append(new Option(`Image ${position + 1}`, String(item.choiceIndex))))
         inputs[answerIndex] = select
         line.append(select)
       }
@@ -409,8 +422,10 @@ export function buildQuestion(question, index) {
     restoreAnswer = (saved) => { inputs.forEach((input, i) => { if (input) input.value = saved?.values?.[i] ?? '' }) }
   } else if (question.template === 'categorize') {
     const categories = config.categories || []
-    const items = categories.flatMap((category, categoryIndex) =>
-      (category.items || []).map((item) => ({ text: item.text, imageId: item.image_id, target: categoryIndex })))
+    const items = config.items
+      ? config.items.map((item) => ({ text: item.text, imageId: item.image_id }))
+      : categories.flatMap((category, categoryIndex) =>
+        (category.items || []).map((item) => ({ text: item.text, imageId: item.image_id, target: categoryIndex })))
     items.forEach((item, source) => { item.source = source })
     const activity = dragAssignment(answer, shuffledIndexes(items.length).map((i) => items[i]),
       categories.map((category) => ({ text: category.name, imageId: category.name_image_id })), Infinity)
@@ -433,13 +448,14 @@ export function buildQuestion(question, index) {
     getAnswer,
     restoreAnswer,
     lock() {
+      card.inert = true
       card.querySelectorAll('input, textarea, select, button').forEach((control) => { control.disabled = true })
       card.querySelectorAll('[draggable]').forEach((control) => { control.draggable = false })
     },
-    complete(revealSolutions = true) {
-      const correct = grade()
+    complete(revealSolutions = true, serverCorrect = undefined) {
+      const correct = serverCorrect === 'hidden' ? undefined : serverCorrect === undefined ? grade() : serverCorrect
       if (revealSolutions) finish()
-      feedback.textContent = correct === null ? 'Not automatically graded' : correct ? 'Correct' : 'Incorrect'
+      feedback.textContent = correct === undefined ? 'Answer saved' : correct === null ? 'Not automatically graded' : correct ? 'Correct' : 'Incorrect'
       feedback.classList.toggle('is-correct', correct === true)
       feedback.classList.toggle('is-incorrect', correct === false)
       feedback.hidden = false
@@ -451,15 +467,20 @@ export function buildQuestion(question, index) {
 }
 
 export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
-  const quizId = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('quiz')
+  const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
+  const quizId = params.get('quiz')
+  const fromExplore = params.get('source') === 'explore'
   const page = app.querySelector('#page')
   page.innerHTML = `
     <main class="quiz-play-page">
-      <a class="back-button" href="#library">← Library</a>
+      <a class="back-button" href="#${fromExplore ? 'explore' : 'library'}">← ${fromExplore ? 'Explore' : 'Library'}</a>
       <h1 id="play-title" class="section-title">Play quiz</h1>
       <p id="play-description" class="play-description" hidden></p>
       <p id="play-status" class="form-status" role="status" aria-live="polite">Loading quiz…</p>
       <div id="play-progress" class="play-progress" hidden></div>
+      <div id="play-timers" class="play-timers" hidden>
+        <span id="play-quiz-timer" hidden></span><span id="play-question-timer" hidden></span>
+      </div>
       <div id="play-questions"></div>
       <div id="play-controls" class="play-controls" hidden>
         <button id="play-previous" class="auth-button auth-button-secondary" type="button">Previous</button>
@@ -472,12 +493,17 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
   const title = page.querySelector('#play-title')
   const description = page.querySelector('#play-description')
   const progress = page.querySelector('#play-progress')
+  const timerArea = page.querySelector('#play-timers')
+  const quizTimer = page.querySelector('#play-quiz-timer')
+  const questionTimer = page.querySelector('#play-question-timer')
   const questionArea = page.querySelector('#play-questions')
   const controls = page.querySelector('#play-controls')
   const previous = page.querySelector('#play-previous')
   const next = page.querySelector('#play-next')
   const finish = page.querySelector('#play-finish')
   let unlimited = false
+  let questionCount = 0
+  let allowGoBack = true
   let questions = []
   let position = 0
   let finished = false
@@ -486,6 +512,74 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
   const dirtyQuestions = new Set()
   let saveTimer = null
   let saveQueue = Promise.resolve()
+  let quizDeadline = null
+  let serverOffset = 0
+  let tickTimer = null
+  const startingQuestions = new Map()
+  const expiredQuestions = new Set()
+  const remaining = (deadline) => Math.max(0, Math.ceil((deadline - (Date.now() + serverOffset)) / 1000))
+  const clockText = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+  function syncAttemptClock(attempt) {
+    quizDeadline = attempt.deadline_ms
+    if (typeof attempt.server_time_ms === 'number') serverOffset = attempt.server_time_ms - Date.now()
+  }
+  function goToResults() {
+    finished = true
+    clearInterval(tickTimer)
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#results?quiz=${quizId}&attempt=${attemptId}${fromExplore ? '&source=explore' : ''}`)
+    window.dispatchEvent(new Event('hashchange'))
+  }
+  async function startCurrentQuestion() {
+    const question = questions[position]
+    if (!question || finished) return false
+    if (question.started || (allowGoBack && question.timeLimit === null)) return true
+    if (startingQuestions.has(question.id)) return startingQuestions.get(question.id)
+    const request = (async () => {
+      try {
+        const [response, payload] = await requestJson('POST',
+          `/api/quiz/quizzes/${quizId}/attempts/${attemptId}/questions/${question.id}/start`)
+        if (!app.contains(questionArea)) return false
+        if (!response.ok) {
+          if (response.status === 409 && payload?.error === 'Attempt is complete') { goToResults(); return false }
+          throw new Error(responseError(response, payload))
+        }
+        syncAttemptClock(payload)
+        const started = payload.questions.find((item) => item.id === question.id)
+        question.deadline = started?.deadline_ms ?? null
+        question.started = Boolean(started?.started)
+        tick()
+        return true
+      } catch (error) {
+        setStatus(status, error.message || 'Could not start question.', true)
+        return false
+      } finally {
+        startingQuestions.delete(question.id)
+      }
+    })()
+    startingQuestions.set(question.id, request)
+    return request
+  }
+  function tick() {
+    if (finished || !app.contains(questionArea) || attemptId === null) { clearInterval(tickTimer); return }
+    quizTimer.hidden = quizDeadline === null
+    if (quizDeadline !== null) quizTimer.textContent = `Quiz ${clockText(remaining(quizDeadline))}`
+    const question = questions[position]
+    questionTimer.hidden = !question || question.timeLimit === null
+    if (question?.deadline !== null && question?.deadline !== undefined) {
+      questionTimer.textContent = `Question ${clockText(remaining(question.deadline))}`
+    } else if (!questionTimer.hidden) questionTimer.textContent = 'Question timer starting…'
+    timerArea.hidden = quizTimer.hidden && questionTimer.hidden
+    if (quizDeadline !== null && remaining(quizDeadline) === 0) { void completeAttempt(true); return }
+    if (question?.deadline !== null && question?.deadline !== undefined && remaining(question.deadline) === 0
+        && !navigating && !expiredQuestions.has(question.id)) {
+      expiredQuestions.add(question.id)
+      question.lock()
+      dirtyQuestions.delete(position)
+      if (unlimited) setStatus(status, 'Question time is up. Select Next to continue.')
+      else if (position === questionCount - 1) void completeAttempt(true)
+      else void advanceQuestion(true)
+    }
+  }
 
   function markDirty(index) {
     if (finished || attemptId === null) return
@@ -498,6 +592,7 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
   function flushAnswers() {
     clearTimeout(saveTimer)
     saveQueue = saveQueue.catch(() => {}).then(async () => {
+      if (!await startCurrentQuestion()) throw new Error('Could not start question.')
       while (dirtyQuestions.size) {
         const index = dirtyQuestions.values().next().value
         dirtyQuestions.delete(index)
@@ -506,6 +601,11 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
           const [response, payload] = await requestJson('PUT',
             `/api/quiz/quizzes/${quizId}/attempts/${attemptId}/answers/${question.id}`,
             { answer: question.getAnswer() })
+          if (response.status === 409) {
+            question.lock()
+            if (payload?.error === 'Attempt is complete') { goToResults(); return }
+            continue
+          }
           if (!response.ok) throw new Error(responseError(response, payload))
         } catch (error) {
           dirtyQuestions.add(index)
@@ -519,35 +619,36 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
 
   function showPosition() {
     questions.forEach(({ card }, index) => { card.hidden = position !== index })
-    progress.textContent = unlimited ? `Question ${position + 1} · Until you finish` : `Question ${position + 1} of ${questions.length}`
-    if (!unlimited) progress.style.setProperty('--progress', `${(position / questions.length) * 100}%`)
-    previous.hidden = position === 0
-    next.textContent = !unlimited && position === questions.length - 1 ? 'Finish quiz' : 'Next'
+    progress.textContent = unlimited ? `Question ${position + 1} · Until you finish` : `Question ${position + 1} of ${questionCount}`
+    if (!unlimited) progress.style.setProperty('--progress', `${(position / questionCount) * 100}%`)
+    previous.hidden = !allowGoBack || position === 0
+    next.textContent = !unlimited && position === questionCount - 1 ? 'Finish quiz' : 'Next'
     page.querySelector('.quiz-play-page').scrollIntoView({ block: 'start' })
+    void startCurrentQuestion()
+    tick()
   }
 
   previous.addEventListener('click', async () => {
-    if (position <= 0 || navigating) return
+    if (!allowGoBack || position <= 0 || navigating) return
     navigating = true
     previous.disabled = true
     markDirty(position)
     try { await flushAnswers(); position--; showPosition() } catch { /* status is shown by flushAnswers */ }
     finally { previous.disabled = false; navigating = false }
   })
-  async function completeAttempt() {
+  async function completeAttempt(expired = false) {
     if (navigating || attemptId === null) return
     navigating = true
     next.disabled = true
     finish.disabled = true
-    markDirty(position)
+    if (!expired) markDirty(position)
+    else dirtyQuestions.clear()
     try {
-      await flushAnswers()
+      if (!expired) await flushAnswers()
       const [response, payload] = await requestJson('POST',
         `/api/quiz/quizzes/${quizId}/attempts/${attemptId}/complete`)
       if (!response.ok) throw new Error(responseError(response, payload))
-      finished = true
-      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#results?quiz=${quizId}&attempt=${attemptId}`)
-      window.dispatchEvent(new Event('hashchange'))
+      goToResults()
     } catch (error) {
       setStatus(status, error.message || 'Could not finish quiz. Please try again.', true)
     } finally {
@@ -557,21 +658,22 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     }
   }
   finish.addEventListener('click', () => { void completeAttempt() })
-  next.addEventListener('click', async () => {
+  async function advanceQuestion(expired = false) {
     if (navigating || attemptId === null) return
-    if (!unlimited && position === questions.length - 1) { await completeAttempt(); return }
+    if (!unlimited && position === questionCount - 1) { await completeAttempt(expired); return }
     navigating = true
     next.disabled = true
-    markDirty(position)
+    if (!expired) markDirty(position)
     try {
-      await flushAnswers()
-      if (unlimited && position === questions.length - 1) {
+      if (!expired) await flushAnswers()
+      if (position === questions.length - 1) {
         const [response, payload] = await requestJson('POST',
           `/api/quiz/quizzes/${quizId}/attempts/${attemptId}/next`, { after: questions[position].id })
         if (!response.ok) throw new Error(responseError(response, payload))
         const newQuestion = payload.questions?.[questions.length]
         if (!newQuestion) throw new Error('Could not load next question.')
         appendQuestion(newQuestion, questions.length, payload.answers)
+        questionCount = payload.question_count
       }
       position++
       showPosition()
@@ -581,10 +683,21 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
       next.disabled = false
       navigating = false
     }
-  })
+  }
+  next.addEventListener('click', () => { void advanceQuestion() })
 
   function appendQuestion(question, index, answers) {
-    const view = { id: question.id, ...buildQuestion(question, index) }
+    if (question.template === 'show_answer' && !question.config?.answer) {
+      question.reveal = async () => {
+        if (!await startCurrentQuestion()) throw new Error('Could not start question.')
+        const [response, payload] = await requestJson('POST',
+          `/api/quiz/quizzes/${quizId}/attempts/${attemptId}/questions/${question.id}/reveal`)
+        if (!response.ok) { setStatus(status, responseError(response, payload), true); throw new Error('Could not reveal answer.') }
+        return payload
+      }
+    }
+    const view = { id: question.id, timeLimit: question.time_limit_seconds, started: question.started,
+      deadline: question.deadline_ms, ...buildQuestion(question, index) }
     questions.push(view)
     if (answers?.[question.id]) view.restoreAnswer(answers[question.id])
     view.card.addEventListener('input', () => markDirty(index))
@@ -605,24 +718,30 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     const [attemptResponse, attempt] = await requestJson('POST', `/api/quiz/quizzes/${quizId}/attempts`)
     if (!app.contains(questionArea)) return
     if (!attemptResponse.ok) { setStatus(status, responseError(attemptResponse, attempt), true); return }
+    attemptId = attempt.id
+    if (attempt.completed !== null) { goToResults(); return }
+    syncAttemptClock(attempt)
+    allowGoBack = attempt.allow_go_back
     page.querySelector('.quiz-play-page').classList.add(attempt.play_style === 'game_show' ? 'is-game-show' : 'is-basic')
     if (!Array.isArray(attempt.questions) || !attempt.questions.length) {
       setStatus(status, 'This quiz has no questions yet.')
       return
     }
-    attemptId = attempt.id
     unlimited = attempt.question_limit === 0
+    questionCount = attempt.question_count
     finish.hidden = !unlimited
     if (unlimited) progress.classList.add('is-unlimited')
     attempt.questions.forEach((question, index) => appendQuestion(question, index, attempt.answers))
     const firstUnanswered = questions.findIndex((question) =>
       !Object.prototype.hasOwnProperty.call(attempt.answers ?? {}, question.id))
-    if (firstUnanswered > 0) position = firstUnanswered
+    if (!allowGoBack) position = Math.max(0, Math.min(questions.length - 1, attempt.furthest_position - 1))
+    else if (firstUnanswered > 0) position = firstUnanswered
     else if (firstUnanswered === -1) position = questions.length - 1
     progress.hidden = false
     controls.hidden = false
     setStatus(status, '')
     showPosition()
+    tickTimer = setInterval(tick, 250)
   }).catch(() => {
     if (app.contains(questionArea)) setStatus(status, 'Could not load this quiz. Please try again.', true)
   })
