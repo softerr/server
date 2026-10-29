@@ -10,7 +10,7 @@ function normalizeTimezoneName(?string $candidate): ?string
     try {
         new DateTimeZone($value);
         return $value;
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         return null;
     }
 }

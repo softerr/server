@@ -4,7 +4,8 @@ test_auth_signup_success() {
   create_test_identity
 
   local request_body
-  request_body="$(jq -nc --arg username "${TEST_USERNAME}" --arg password "test_password_123" --arg email "${TEST_EMAIL}" '{username:$username,password:$password,email:$email,role:"admin"}')"
+  # A malformed optional timezone must not turn an otherwise valid signup into HTTP 500.
+  request_body="$(jq -nc --arg username "${TEST_USERNAME}" --arg password "test_password_123" --arg email "${TEST_EMAIL}" '{username:$username,password:$password,email:$email,role:"admin",timezone:"UTC\u0000"}')"
 
   api_request "POST" "/api/auth/signup" "${request_body}"
 

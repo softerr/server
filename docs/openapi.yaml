@@ -1813,6 +1813,8 @@ paths:
           description: No active session.
         '404':
           description: Attempt or reached question not found.
+        '413':
+          description: Request body exceeds 256 bytes.
 
   /quiz/quizzes/{quizId}/attempts/{attemptId}/answers/{questionId}:
     parameters:
