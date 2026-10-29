@@ -35,11 +35,13 @@ if [[ ! -f "${CONFIG_TEMPLATE}" || ! -f "${ROUTES_TEMPLATE}" ]]; then
   exit 1
 fi
 
-wait_for_apt_locks
-echo "Installing nginx..."
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y nginx
+if ! command -v nginx >/dev/null 2>&1; then
+  wait_for_apt_locks
+  echo "Installing nginx..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y nginx
+fi
 
 echo "Creating web directories..."
 mkdir -p /var/www/home /var/www/quiz /var/www/api

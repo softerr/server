@@ -4,8 +4,25 @@ CREATE TABLE IF NOT EXISTS public.image_blob (
     mime_type VARCHAR(16) NOT NULL CHECK (mime_type IN ('image/png', 'image/jpeg', 'image/webp')),
     width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 4096),
     height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 4096),
-    content BYTEA NOT NULL CHECK (octet_length(content) BETWEEN 1 AND 2097152)
+    content BYTEA NOT NULL CONSTRAINT image_blob_content_size_check
+        CHECK (octet_length(content) BETWEEN 1 AND 6291456)
 );
+
+-- Existing databases have the original automatically named 2 MiB check.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint
+               WHERE conrelid = 'public.image_blob'::regclass
+                 AND conname = 'image_blob_content_check') THEN
+        ALTER TABLE public.image_blob DROP CONSTRAINT image_blob_content_check;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'public.image_blob'::regclass
+                     AND conname = 'image_blob_content_size_check') THEN
+        ALTER TABLE public.image_blob ADD CONSTRAINT image_blob_content_size_check
+            CHECK (octet_length(content) BETWEEN 1 AND 6291456);
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.media_group (
     id BIGSERIAL PRIMARY KEY,

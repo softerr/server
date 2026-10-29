@@ -130,7 +130,7 @@ key to its local user. The API creates the local user on the first quiz create.
   `{ "group_id": 12 }`. Send `null` to ungroup it. Image IDs and quiz references
   do not change when images move.
 - `POST /api/media/images` accepts raw PNG, JPEG, or WebP bytes and returns image
-  metadata with HTTP `201`. Each image is limited to 2 MiB and 4096 pixels per
+  metadata with HTTP `201`. Each image is limited to 6 MiB and 4096 pixels per
   side. Send the original filename in the required `X-Image-Name` header, encoded
   with `encodeURIComponent` or equivalent. Names may be up to 255 UTF-8 bytes and
   cannot contain path separators or control characters. Personal storage is limited

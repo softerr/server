@@ -500,6 +500,9 @@ apply_component_vm() {
   fi
 
   local PROVISION_COMPONENTS="${component}"
+  if [[ "${component}" == api ]]; then
+    PROVISION_COMPONENTS="nginx,api"
+  fi
 
   if ! qemu_running; then
     echo "VM is not running. Start it first: bash scripts/qemu.sh start"

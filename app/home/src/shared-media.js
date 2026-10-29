@@ -1,5 +1,6 @@
 import { formatImageDetails, mediaImageIcon } from './media-format.js'
 import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
+import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
 
 const imageUrl = (id) => `/api/media/images/${id}`
 export const renameIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4.5-1 11-11a2.12 2.12 0 0 0-3-3l-11 11L4 20Z" /></svg>'
@@ -286,8 +287,8 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
       for (const [index, file] of files.entries()) {
         if (!section.isConnected) return
         notify(`Uploading ${index + 1} of ${files.length} to ${target}: ${file.name}…`, 'info')
-        if (file.size > 2097152) {
-          failures.push(`${file.name}: image must be at most 2 MiB`)
+        if (file.size > MAX_IMAGE_BYTES) {
+          failures.push(`${file.name}: image must be at most ${MAX_IMAGE_SIZE_LABEL}`)
           continue
         }
         try {

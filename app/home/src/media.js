@@ -2,6 +2,7 @@ const imageUrl = (id) => `/api/media/images/${id}`
 import { renderSharedMedia, renameIcon } from './shared-media.js'
 import { formatBytes, formatImageDetails, mediaImageIcon } from './media-format.js'
 import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
+import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
 import { createPageNotice } from '../../shared/page-notice.js'
 
 const viewOptions = [
@@ -257,8 +258,8 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
       for (const [index, file] of files.entries()) {
         if (!page.isConnected) return
         notice.show(`Uploading ${index + 1} of ${files.length}: ${file.name}…`, 'info')
-        if (file.size > 2097152) {
-          failures.push(`${file.name}: image must be at most 2 MiB`)
+        if (file.size > MAX_IMAGE_BYTES) {
+          failures.push(`${file.name}: image must be at most ${MAX_IMAGE_SIZE_LABEL}`)
           continue
         }
         try {

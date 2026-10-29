@@ -72,7 +72,7 @@ location /api/quiz/ {
 
 location /api/media/ {
     root /var/www;
-    client_max_body_size 2m;
+    client_max_body_size 6m;
     try_files $uri /api/media.php?$query_string;
 }
 
@@ -94,6 +94,7 @@ location = /api/quiz.php {
 location = /api/media.php {
     root /var/www;
     internal;
+    client_max_body_size 6m;
     include snippets/fastcgi-php.conf;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
     fastcgi_pass unix:__PHP_FPM_SOCK__;

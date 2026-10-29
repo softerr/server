@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const MEDIA_IMAGE_MAX_BYTES = 2097152;
+const MEDIA_IMAGE_MAX_BYTES = 6291456;
 const MEDIA_PERSONAL_MAX_BYTES = 33554432;
 const MEDIA_PERSONAL_MAX_COUNT = 256;
 const QUIZ_IMPORT_MAX_BYTES = 50331648;
@@ -42,7 +42,7 @@ function verifyQuestionImages(int $authUserId, string $config): void
 function validQuizImage(string $bytes): array
 {
     if ($bytes === '' || strlen($bytes) > MEDIA_IMAGE_MAX_BYTES) {
-        respond(413, ['error' => 'Image must be at most 2 MiB']);
+        respond(413, ['error' => 'Image must be at most 6 MiB']);
     }
     $info = @getimagesizefromstring($bytes);
     $mime = $info['mime'] ?? null;

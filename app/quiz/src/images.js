@@ -1,4 +1,5 @@
 import { imageIcon, noImageIcon, removeIcon, uploadImageIcon } from './icons.js'
+import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
 
 const imageUrl = (id) => `/api/media/images/${id}`
 
@@ -287,8 +288,8 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     try {
       for (const [index, file] of files.entries()) {
         setStatus(status, `Uploading ${index + 1} of ${files.length}…`)
-        if (file.size > 2097152) {
-          failures.push(`${file.name}: image must be at most 2 MiB`)
+        if (file.size > MAX_IMAGE_BYTES) {
+          failures.push(`${file.name}: image must be at most ${MAX_IMAGE_SIZE_LABEL}`)
           continue
         }
         try {

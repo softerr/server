@@ -4,7 +4,7 @@ test_shared_media_across_users_and_quizzes() (
   set -e
   # Earlier login cases may have exhausted the per-IP Nginx bucket.
   sudo -n systemctl restart nginx
-  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file answer_file direct_file folder_file response status shared_id private_id answer_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id public_attempt_id archive manifest count
+  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file answer_file direct_file folder_file large_file response status shared_id private_id answer_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id public_attempt_id archive manifest count
   admin_cookie="$(mktemp)"
   user_cookie="$(mktemp)"
   png_file="$(mktemp)"
@@ -12,8 +12,9 @@ test_shared_media_across_users_and_quizzes() (
   answer_file="$(mktemp)"
   direct_file="$(mktemp)"
   folder_file="$(mktemp)"
+  large_file="$(mktemp)"
   archive="$(mktemp)"
-  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$private_file" "$answer_file" "$direct_file" "$folder_file" "$archive"' EXIT
+  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$private_file" "$answer_file" "$direct_file" "$folder_file" "$large_file" "$archive"' EXIT
 
   create_test_identity
   admin_email="$TEST_EMAIL"
@@ -354,6 +355,26 @@ test_shared_media_across_users_and_quizzes() (
   [[ "${response##*$'\n'}" == 201 ]] || { fail_test "ZIP import failed: ${response}"; return 1; }
   count="$(test_psql media "SELECT count(*) FROM public.image WHERE owner_auth_user_id = ${user_id};")"
   [[ "$count" == 0 ]] || { fail_test "shared ZIP import charged user storage: ${count}"; return 1; }
+
+  cp "$png_file" "$large_file"
+  truncate -s 6291456 "$large_file"
+  response="$(curl -sS -b "$admin_cookie" --data-binary @"$large_file" \
+    -H "X-Image-Name: api_test_${API_TEST_RUN_ID}_large.png" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images")"
+  local large_id
+  large_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  [[ "${response##*$'\n'}" == 201 && "$large_id" =~ ^[1-9][0-9]*$ ]] \
+    || { fail_test "6 MiB image upload failed: ${response}"; return 1; }
+  jq -e '.size_bytes == 6291456' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "6 MiB image size was not stored: ${response}"; return 1; }
+  truncate -s 6291457 "$large_file"
+  status="$(curl -sS -b "$admin_cookie" -o /dev/null -w '%{http_code}' --data-binary @"$large_file" \
+    -H "X-Image-Name: api_test_${API_TEST_RUN_ID}_too-large.png" \
+    "${API_TEST_BASE_URL%/}/api/media/images")"
+  [[ "$status" == 413 ]] || { fail_test "image above 6 MiB returned HTTP ${status}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${large_id}")"
+  [[ "${response##*$'\n'}" == 204 ]] || { fail_test "large image cleanup failed: ${response}"; return 1; }
 )
 
 register_test_case test_shared_media_across_users_and_quizzes

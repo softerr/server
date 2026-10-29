@@ -143,6 +143,7 @@ jobs:
           assert 'location ~ ^/api/quiz/quizzes/import/*$ {' in routes
           assert 'client_max_body_size 48m;' in routes
           assert 'client_max_body_size 2m;' in routes
+          assert routes.count('client_max_body_size 6m;') == 2
           assert 'location ~ ^/api/.*\\.php$' in routes
           assert 'location ~ ^/api/auth/signup/*$' in routes
           assert 'client_max_body_size 4k;' in routes

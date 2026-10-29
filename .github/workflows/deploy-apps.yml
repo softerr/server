@@ -92,7 +92,11 @@ jobs:
         run: |
           set -euo pipefail
           APP_LIST="${APP_LIST:-all}"
-          PROVISION_COMPONENTS=apps
+          if [[ "${APP_LIST}" == all || "${APP_LIST}" == api ]]; then
+            PROVISION_COMPONENTS=nginx,apps
+          else
+            PROVISION_COMPONENTS=apps
+          fi
           export APP_LIST PROVISION_COMPONENTS
           REQUIRED_ENV_VARS="PROVISION_COMPONENTS,APP_LIST,API_APP_BASE_URL" \
             bash scripts/ci/run_remote_setup.sh provision.sh
