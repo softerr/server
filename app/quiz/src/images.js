@@ -72,6 +72,46 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   let selectionAnchor = null
   const selectedIds = new Set()
   const pickers = new Set()
+  const imageLoads = new Map()
+  const visiblePreviews = new Map()
+  let loadTimer = null
+  const imageObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue
+      imageObserver.unobserve(entry.target)
+      const id = Number(entry.target.dataset.libraryPreviewId)
+      if (!imageLoads.has(id)) loadPreview(id)
+    }
+  }, { root: dialog, rootMargin: '80px' })
+
+  async function loadPreview(id) {
+    const load = { controller: new AbortController(), url: null }
+    imageLoads.set(id, load)
+    try {
+      const response = await fetch(imageUrl(id), { signal: load.controller.signal })
+      if (!response.ok) return
+      const blob = await response.blob()
+      if (load.controller.signal.aborted || imageLoads.get(id) !== load) return
+      load.url = URL.createObjectURL(blob)
+      const preview = visiblePreviews.get(id)
+      if (preview) preview.src = load.url
+    } catch {
+      // Searches and dialog closure cancel image requests in progress.
+    } finally {
+      if (imageLoads.get(id) === load && !load.url) imageLoads.delete(id)
+    }
+  }
+
+  function stopImageLoads() {
+    clearTimeout(loadTimer)
+    imageObserver.disconnect()
+    for (const load of imageLoads.values()) {
+      load.controller.abort()
+      if (load.url) URL.revokeObjectURL(load.url)
+    }
+    imageLoads.clear()
+    visiblePreviews.clear()
+  }
 
   function updateMultiSelection() {
     addSelected.disabled = selectedIds.size === 0
@@ -157,6 +197,16 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     const visibleImages = query
       ? images.filter((image) => image.name.toLocaleLowerCase().includes(query))
       : images
+    const visibleIds = new Set(visibleImages.map((image) => image.id))
+    clearTimeout(loadTimer)
+    imageObserver.disconnect()
+    visiblePreviews.clear()
+    for (const [id, load] of imageLoads) {
+      if (visibleIds.has(id)) continue
+      load.controller.abort()
+      if (load.url) URL.revokeObjectURL(load.url)
+      imageLoads.delete(id)
+    }
     const emptyTile = document.createElement('div')
     emptyTile.className = 'image-library-item'
     const emptyChoice = document.createElement('button')
@@ -192,9 +242,11 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       choose.title = image.name
       choose.dataset.libraryImageId = String(image.id)
       const preview = document.createElement('img')
-      preview.src = imageUrl(image.id)
       preview.alt = ''
-      preview.loading = 'lazy'
+      preview.dataset.libraryPreviewId = String(image.id)
+      const loaded = imageLoads.get(image.id)
+      if (loaded?.url) preview.src = loaded.url
+      visiblePreviews.set(image.id, preview)
       choose.append(preview)
       choose.addEventListener('click', (event) => {
         if (onChooseMany) {
@@ -257,6 +309,13 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       grid.append(noResults)
     }
     updateMultiSelection()
+    if (dialog.open) {
+      loadTimer = setTimeout(() => {
+        for (const [id, preview] of visiblePreviews) {
+          if (!imageLoads.has(id)) imageObserver.observe(preview)
+        }
+      }, 200)
+    }
   }
 
   async function refresh() {
@@ -349,6 +408,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     callback(ids)
   })
   dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close())
+  dialog.addEventListener('close', stopImageLoads)
   render()
   return { createPicker, setImage, chooseMany }
 }
