@@ -7,6 +7,7 @@ require_once __DIR__ . '/lib/http.php';
 require_once __DIR__ . '/lib/url.php';
 require_once __DIR__ . '/lib/session.php';
 require_once __DIR__ . '/handlers/images.php';
+require_once __DIR__ . '/handlers/online_images.php';
 require_once __DIR__ . '/handlers/media_groups.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -15,6 +16,16 @@ $path = apiRequestPath('/api/media');
 if ($path === '/images') {
     if ($method === 'GET') handleListImages();
     if ($method === 'POST') handleUploadImage();
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if ($path === '/online-search') {
+    if ($method === 'GET') handleSearchOnlineImages();
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if ($path === '/images/import') {
+    if ($method === 'POST') handleImportOnlineImage();
     respond(405, ['error' => 'Method not allowed']);
 }
 

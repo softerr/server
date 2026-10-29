@@ -46,6 +46,16 @@ test_shared_media_across_users_and_quizzes() (
     -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/auth/login")"
   [[ "${response##*$'\n'}" == 200 ]] || { fail_test "user login failed: ${response}"; return 1; }
 
+  response="$(curl -sS -b "$user_cookie" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/online-search?q=x")"
+  [[ "${response##*$'\n'}" == 400 ]] \
+    || { fail_test "short online image query was accepted: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -H 'Content-Type: application/json' \
+    --data '{"id":"https://example.test/image.png"}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/import")"
+  [[ "${response##*$'\n'}" == 400 ]] \
+    || { fail_test "online image import accepted an arbitrary URL: ${response}"; return 1; }
+
   # A valid 1x1 PNG. Adding trailing bytes creates another valid image hash.
   printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=' | base64 -d > "$png_file"
   printf '%s' "${API_TEST_RUN_ID}" >> "$png_file"
@@ -86,10 +96,16 @@ test_shared_media_across_users_and_quizzes() (
   shared_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
   [[ "$status" == 201 && "$shared_id" =~ ^[0-9]+$ ]] \
     || { fail_test "admin personal upload failed: ${response}"; return 1; }
+  test_psql media "INSERT INTO public.image_source
+      (image_id, source_page, creator, license_name, license_url, attribution)
+      VALUES (${shared_id}, 'https://commons.wikimedia.org/wiki/File:Fixture',
+        'Fixture creator', 'CC BY 4.0', 'https://creativecommons.org/licenses/by/4.0/',
+        'Fixture creator / CC BY 4.0');" >/dev/null
   response="$(curl -sS -b "$admin_cookie" "${API_TEST_BASE_URL%/}/api/media/my-images")"
   jq -e --argjson id "$shared_id" --argjson bytes "$(wc -c < "$png_file")" \
     '.usage.count == 1 and any(.images[]; .id == $id and .scope == "personal"
-      and .width == 1 and .height == 1 and .size_bytes == $bytes)' <<<"$response" >/dev/null \
+      and .width == 1 and .height == 1 and .size_bytes == $bytes
+      and .source.creator == "Fixture creator" and .source.license == "CC BY 4.0")' <<<"$response" >/dev/null \
     || { fail_test "admin personal upload missing from media list: ${response}"; return 1; }
 
   response="$(curl -sS -b "$user_cookie" -X POST -w $'\n%{http_code}' \
@@ -347,7 +363,7 @@ test_shared_media_across_users_and_quizzes() (
     "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}/export.zip")"
   [[ "$status" == 200 ]] || { fail_test "ZIP export failed: HTTP ${status}"; return 1; }
   manifest="$(php -r '$zip = new ZipArchive(); if ($zip->open($argv[1]) !== true) exit(1); echo $zip->getFromName("quiz.json");' "$archive")"
-  jq -e --argjson id "$shared_id" '.images | any(.id == $id)' <<<"$manifest" >/dev/null \
+  jq -e --argjson id "$shared_id" '.images | any(.id == $id and .source.license == "CC BY 4.0")' <<<"$manifest" >/dev/null \
     || { fail_test 'shared image missing from portable ZIP'; return 1; }
   response="$(curl -sS -b "$user_cookie" -H 'Content-Type: application/zip' \
     --data-binary @"$archive" -w $'\n%{http_code}' \

@@ -373,7 +373,8 @@ function handleImportQuiz(): never
         $totalImageBytes += strlen($bytes);
         if ($totalImageBytes > QUIZ_IMPORT_MAX_BYTES) respond(413, ['error' => 'Quiz images are too large']);
         [$mime, $width, $height] = validQuizImage($bytes);
-        $decodedImages[$image['id']] = [$imageName, $bytes, $mime, $width, $height];
+        $decodedImages[$image['id']] = [$imageName, $bytes, $mime, $width, $height,
+            validatedMediaSource($image['source'] ?? null)];
     }
     $referencedIds = [];
     foreach ($questions as [, , $config]) {
@@ -399,10 +400,13 @@ function handleImportQuiz(): never
     ensureMediaAccountActive((int) $user['id']);
     $imageIds = [];
     $createdImageIds = [];
-    foreach ($decodedImages as $oldId => [$imageName, $bytes, $mime, $width, $height]) {
+    foreach ($decodedImages as $oldId => [$imageName, $bytes, $mime, $width, $height, $source]) {
         $stored = saveMediaImage($mediaDb, (int) $user['id'], $imageName, $bytes, $mime, $width, $height,
             $createdImageIds);
         $imageIds[$oldId] = $stored['id'];
+        if ($source !== null && $stored['scope'] === 'personal') {
+            saveMediaSource($mediaDb, $stored['id'], $source);
+        }
     }
     $quiz = insertQuizRow($db, $localUserId, $name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $timeLimit, $allowGoBack, $isPublic, $randomizeAnswers, $error);
     foreach ($questions as $position => [$template, $prompt, $config, $questionTimeLimit]) {
@@ -500,8 +504,10 @@ function handleExportQuizZip(int $quizId): never
     $mediaDb = connectMediaDb();
     foreach ($imageIds as $id) {
         $imageResult = @pg_query_params($mediaDb,
-            'SELECT i.original_name, b.mime_type, b.content
+            'SELECT i.original_name, b.mime_type, b.content,
+                    s.source_page, s.creator, s.license_name, s.license_url, s.attribution
              FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
+             LEFT JOIN public.image_source s ON s.image_id = i.id
              WHERE i.id = $1 AND (i.owner_auth_user_id = $2 OR i.shared = TRUE)',
             [$id, $user['id']]);
         if ($imageResult === false) respond(500, ['error' => 'Failed to export quiz']);
@@ -511,7 +517,15 @@ function handleExportQuizZip(int $quizId): never
         if (!$zip->addFromString($filename, pg_unescape_bytea($image['content']))) {
             respond(500, ['error' => 'Failed to export quiz']);
         }
-        $manifest['images'][] = ['id' => $id, 'name' => $image['original_name'], 'file' => $filename];
+        $entry = ['id' => $id, 'name' => $image['original_name'], 'file' => $filename];
+        if ($image['source_page'] !== null) {
+            $entry['source'] = [
+                'page' => $image['source_page'], 'creator' => $image['creator'],
+                'license' => $image['license_name'], 'license_url' => $image['license_url'],
+                'attribution' => $image['attribution'],
+            ];
+        }
+        $manifest['images'][] = $entry;
     }
     if (!$zip->addFromString('quiz.json', json_encode($manifest,
         JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n")

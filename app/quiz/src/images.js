@@ -17,7 +17,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       <h2>Choose image</h2>
       <button type="button" class="image-library-close" data-close aria-label="Close image picker" title="Close">${removeIcon}</button>
     </div>
-    <p>Personal images can be reused across apps. Shared images do not use your storage limit.</p>
+    <p data-library-description>Personal images can be reused across apps. Shared images do not use your storage limit.</p>
     <div class="image-library-usage" aria-live="polite">
       <div class="image-library-usage-bars" hidden>
         <div class="image-library-usage-row">
@@ -32,8 +32,12 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       </div>
       <p class="image-library-usage-message">Loading image limits…</p>
     </div>
+    <div class="image-library-tabs" aria-label="Image source">
+      <button type="button" data-source-tab="local" aria-pressed="true">My library</button>
+      <button type="button" data-source-tab="online" aria-pressed="false">Online</button>
+    </div>
     <label class="field image-library-search">
-      <span>Search images</span>
+      <span data-search-label>Search images</span>
       <input type="search" data-image-search placeholder="Search by name" autocomplete="off">
     </label>
     <input type="file" data-image-upload-input accept="image/png,image/jpeg,image/webp" multiple hidden>
@@ -62,6 +66,9 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   const storageBar = usage.querySelector('[data-image-storage-bar]')
   const perImageLabel = usage.querySelector('[data-image-per-limit]')
   const search = dialog.querySelector('[data-image-search]')
+  const searchLabel = dialog.querySelector('[data-search-label]')
+  const description = dialog.querySelector('[data-library-description]')
+  const sourceTabs = dialog.querySelectorAll('[data-source-tab]')
   const status = dialog.querySelector('.form-status')
   const upload = dialog.querySelector('[data-upload]')
   const multiActions = dialog.querySelector('.image-library-multi-actions')
@@ -75,6 +82,10 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   const imageLoads = new Map()
   const visiblePreviews = new Map()
   let loadTimer = null
+  let sourceMode = 'local'
+  let onlineResults = []
+  let onlineSearchTimer = null
+  let onlineSearchController = null
   const imageObserver = new IntersectionObserver((entries) => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue
@@ -113,6 +124,121 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     visiblePreviews.clear()
   }
 
+  function stopOnlineSearch() {
+    clearTimeout(onlineSearchTimer)
+    onlineSearchController?.abort()
+    onlineSearchController = null
+  }
+
+  function setSourceMode(mode) {
+    stopOnlineSearch()
+    if (mode === 'online') stopImageLoads()
+    sourceMode = mode
+    onlineResults = []
+    search.value = ''
+    searchLabel.textContent = mode === 'online' ? 'Search Wikimedia Commons' : 'Search images'
+    search.placeholder = mode === 'online' ? 'Enter at least two characters' : 'Search by name'
+    description.textContent = mode === 'online'
+      ? 'Select an image to save it to your uploads. Check its source and license before using it.'
+      : 'Personal images can be reused across apps. Shared images do not use your storage limit.'
+    for (const tab of sourceTabs) tab.setAttribute('aria-pressed', String(tab.dataset.sourceTab === mode))
+    multiActions.hidden = mode === 'online' || !onChooseMany
+    setStatus(status, '')
+    render()
+  }
+
+  function renderOnline(message = 'Search for images to add to your library.') {
+    grid.replaceChildren()
+    if (!onlineResults.length) {
+      const empty = document.createElement('p')
+      empty.className = 'image-library-no-results'
+      empty.textContent = message
+      grid.append(empty)
+      return
+    }
+    for (const result of onlineResults) {
+      const tile = document.createElement('div')
+      tile.className = 'image-library-item'
+      const choose = document.createElement('button')
+      choose.type = 'button'
+      choose.className = 'image-library-choice'
+      choose.setAttribute('aria-label', `Import ${result.name}`)
+      choose.title = `Import ${result.name}`
+      const thumbnail = document.createElement('img')
+      thumbnail.src = result.thumbnail_url
+      thumbnail.alt = ''
+      thumbnail.loading = 'lazy'
+      choose.append(thumbnail)
+      choose.addEventListener('click', async () => {
+        choose.disabled = true
+        setStatus(status, `Importing ${result.name}…`)
+        try {
+          const [response, image] = await requestJson('POST', '/api/media/images/import', { id: result.id })
+          if (!dialog.open) return
+          if (!response.ok) {
+            setStatus(status, responseError(response, image), true)
+            return
+          }
+          setSourceMode('local')
+          if (!await refresh()) return
+          if (onChooseMany) {
+            selectedIds.add(image.id)
+            updateMultiSelection()
+            setStatus(status, 'Image added to your library.', false, true)
+          } else {
+            if (active?.isConnected) setImage(active, image.id)
+            dialog.close()
+          }
+        } catch {
+          setStatus(status, 'Could not import image.', true)
+        } finally {
+          choose.disabled = false
+        }
+      })
+      const name = document.createElement('span')
+      name.className = 'image-library-name'
+      name.textContent = result.name
+      name.title = result.name
+      const source = document.createElement('a')
+      source.className = 'image-library-source'
+      source.href = result.source_page
+      source.target = '_blank'
+      source.rel = 'noopener noreferrer'
+      source.textContent = 'Source and license'
+      tile.append(choose, name, source)
+      grid.append(tile)
+    }
+  }
+
+  function searchOnline() {
+    stopOnlineSearch()
+    const query = search.value.trim()
+    onlineResults = []
+    if (query.length < 2) {
+      renderOnline('Enter at least two characters to search Wikimedia Commons.')
+      return
+    }
+    renderOnline('Searching…')
+    onlineSearchTimer = setTimeout(async () => {
+      const controller = new AbortController()
+      onlineSearchController = controller
+      try {
+        const response = await fetch(`/api/media/online-search?q=${encodeURIComponent(query)}`,
+          { signal: controller.signal })
+        const payload = await response.json().catch(() => null)
+        if (controller.signal.aborted || sourceMode !== 'online') return
+        if (!response.ok) {
+          renderOnline(responseError(response, payload))
+          return
+        }
+        onlineResults = Array.isArray(payload?.results) ? payload.results : []
+        renderOnline('No matching images within the upload limits.')
+      } catch {
+        if (!controller.signal.aborted) renderOnline('Could not search online images.')
+      }
+    }, 350)
+  }
+
   function updateMultiSelection() {
     addSelected.disabled = selectedIds.size === 0
     addSelected.textContent = selectedIds.size ? `Add ${selectedIds.size} image${selectedIds.size === 1 ? '' : 's'}` : 'Add images'
@@ -135,7 +261,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     upload.title = callback ? 'Upload images' : 'Upload image'
     uploadTile.querySelector('.image-library-name').textContent = callback ? 'Upload images' : 'Upload image'
     dialog.querySelector('.image-library-heading h2').textContent = callback ? 'Choose images' : 'Choose image'
-    search.value = ''
+    setSourceMode('local')
     setStatus(status, 'Loading images…')
     dialog.showModal()
     await refresh()
@@ -193,6 +319,10 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   }
 
   function render() {
+    if (sourceMode === 'online') {
+      renderOnline()
+      return
+    }
     const query = search.value.trim().toLocaleLowerCase()
     const visibleImages = query
       ? images.filter((image) => image.name.toLocaleLowerCase().includes(query))
@@ -298,6 +428,16 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       name.textContent = image.name
       name.title = image.name
       tile.append(choose, name)
+      if (image.source) {
+        const source = document.createElement('a')
+        source.className = 'image-library-source'
+        source.href = image.source.page
+        source.target = '_blank'
+        source.rel = 'noopener noreferrer'
+        source.textContent = image.source.license
+        source.title = image.source.attribution || image.source.creator || image.source.license
+        tile.append(source)
+      }
       if (scope === 'personal') tile.append(remove)
       grid.append(tile)
       }
@@ -353,7 +493,13 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   }
 
   upload.addEventListener('click', () => input.click())
-  search.addEventListener('input', render)
+  search.addEventListener('input', () => {
+    if (sourceMode === 'online') searchOnline()
+    else render()
+  })
+  for (const tab of sourceTabs) {
+    tab.addEventListener('click', () => setSourceMode(tab.dataset.sourceTab))
+  }
   input.addEventListener('change', async () => {
     const files = Array.from(input.files || [])
     input.value = ''
@@ -408,7 +554,10 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     callback(ids)
   })
   dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close())
-  dialog.addEventListener('close', stopImageLoads)
+  dialog.addEventListener('close', () => {
+    stopImageLoads()
+    stopOnlineSearch()
+  })
   render()
   return { createPicker, setImage, chooseMany }
 }

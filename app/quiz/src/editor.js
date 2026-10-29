@@ -344,9 +344,10 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
       }
       for (const { config } of questionsPayload.questions) collectImageIds(config)
       const images = []
-      const imageNames = new Map(imagesPayload.images.map((image) => [image.id, image.name]))
+      const imageDetails = new Map(imagesPayload.images.map((image) => [image.id, image]))
       for (const id of imageIds) {
-        const name = imageNames.get(id)
+        const details = imageDetails.get(id)
+        const name = details?.name
         if (typeof name !== 'string') throw new Error('Could not export image name')
         const response = await fetch(`/api/media/images/${id}`)
         if (!response.ok) throw new Error('Could not export image')
@@ -355,7 +356,7 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
         for (let offset = 0; offset < bytes.length; offset += 8192) {
           binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192))
         }
-        images.push({ id, name, data: btoa(binary) })
+        images.push({ id, name, data: btoa(binary), ...(details.source ? { source: details.source } : {}) })
       }
       const data = {
         format: 'softerr-quiz',

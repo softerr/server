@@ -76,7 +76,46 @@ function publicMediaImage(array $row): array
         'size_bytes' => (int) $row['size_bytes'],
         'scope' => $row['shared'] === 't' ? 'shared' : 'personal',
         'group_id' => isset($row['group_id']) ? (int) $row['group_id'] : null,
+        'source' => isset($row['source_page']) ? [
+            'page' => $row['source_page'],
+            'creator' => $row['creator'],
+            'license' => $row['license_name'],
+            'license_url' => $row['license_url'],
+            'attribution' => $row['attribution'],
+        ] : null,
     ];
+}
+
+function validatedMediaSource(mixed $source): ?array
+{
+    if ($source === null) return null;
+    if (!is_array($source)) respond(400, ['error' => 'Invalid image source']);
+    foreach (['page', 'creator', 'license', 'attribution'] as $key) {
+        if (!is_string($source[$key] ?? null) || strlen($source[$key]) > 2000) {
+            respond(400, ['error' => 'Invalid image source']);
+        }
+    }
+    $licenseUrl = $source['license_url'] ?? null;
+    if (($licenseUrl !== null && (!is_string($licenseUrl) || strlen($licenseUrl) > 2000))
+        || !filter_var($source['page'], FILTER_VALIDATE_URL)
+        || !str_starts_with($source['page'], 'https://')
+        || ($licenseUrl !== null && (!filter_var($licenseUrl, FILTER_VALIDATE_URL)
+            || !str_starts_with($licenseUrl, 'https://')))
+        || $source['license'] === '') {
+        respond(400, ['error' => 'Invalid image source']);
+    }
+    return $source;
+}
+
+function saveMediaSource($db, int $imageId, array $source): void
+{
+    $saved = @pg_query_params($db,
+        'INSERT INTO public.image_source
+            (image_id, source_page, creator, license_name, license_url, attribution)
+         VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (image_id) DO NOTHING',
+        [$imageId, $source['page'], $source['creator'], $source['license'],
+         $source['license_url'], $source['attribution']]);
+    if ($saved === false) respond(500, ['error' => 'Failed to save image source']);
 }
 
 function ensureMediaAccountActive(int $authUserId, bool $adminRequired = false): void
@@ -93,15 +132,17 @@ function ensureMediaAccountActive(int $authUserId, bool $adminRequired = false):
     }
 }
 
-function mediaImageByHash($db, int $authUserId, string $hash): ?array
+function mediaImageByHash($db, int $authUserId, string $hash, bool $reuseShared = true): ?array
 {
     $result = @pg_query_params($db,
         'SELECT i.id, i.original_name, i.shared, i.group_id, b.mime_type, b.width, b.height,
-                octet_length(b.content) AS size_bytes
+                octet_length(b.content) AS size_bytes,
+                s.source_page, s.creator, s.license_name, s.license_url, s.attribution
          FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
-         WHERE b.sha256 = $1 AND (i.shared = TRUE OR i.owner_auth_user_id = $2)
+         LEFT JOIN public.image_source s ON s.image_id = i.id
+         WHERE b.sha256 = $1 AND (i.owner_auth_user_id = $2 OR ($3::boolean AND i.shared = TRUE))
          ORDER BY i.shared DESC LIMIT 1',
-        [$hash, $authUserId]);
+        [$hash, $authUserId, $reuseShared ? 'true' : 'false']);
     if ($result === false) respond(500, ['error' => 'Failed to save image']);
     $row = pg_fetch_assoc($result);
     return $row === false ? null : publicMediaImage($row);
@@ -121,10 +162,11 @@ function mediaBlobId($db, string $hash, string $bytes, string $mime, int $width,
 }
 
 function saveMediaImage($db, int $authUserId, string $name, string $bytes,
-    string $mime, int $width, int $height, ?array &$createdIds = null): array
+    string $mime, int $width, int $height, ?array &$createdIds = null,
+    bool $reuseShared = true): array
 {
     $hash = hash('sha256', $bytes);
-    $existing = mediaImageByHash($db, $authUserId, $hash);
+    $existing = mediaImageByHash($db, $authUserId, $hash, $reuseShared);
     if ($existing !== null) return $existing;
 
     $usage = @pg_query_params($db,
@@ -165,8 +207,10 @@ function listMediaImages(bool $mineOnly): never
     $db = connectMediaDb();
     $result = @pg_query_params($db,
         'SELECT i.id, i.original_name, i.shared, i.group_id, b.mime_type, b.width, b.height,
-                octet_length(b.content) AS size_bytes
+                octet_length(b.content) AS size_bytes,
+                s.source_page, s.creator, s.license_name, s.license_url, s.attribution
          FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
+         LEFT JOIN public.image_source s ON s.image_id = i.id
          WHERE i.owner_auth_user_id = $1 OR (NOT $2::boolean AND i.shared = TRUE)
          ORDER BY i.shared DESC, lower(i.original_name), i.original_name, i.id',
         [$user['id'], $mineOnly ? 'true' : 'false']);

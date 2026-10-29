@@ -764,6 +764,86 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /media/online-search:
+    get:
+      tags: [Media]
+      operationId: searchOnlineImages
+      summary: Search importable Wikimedia Commons images
+      description: Returns up to 20 PNG, JPEG, or WebP images within the current upload size and dimension limits. Results contain thumbnails; files are saved only when imported.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: {type: string, minLength: 2, maxLength: 100}
+      responses:
+        '200':
+          description: Search results.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, thumbnail_url, source_page]
+                      properties:
+                        id: {type: integer, minimum: 1}
+                        name: {type: string}
+                        thumbnail_url: {type: string, format: uri}
+                        source_page: {type: string, format: uri}
+        '400':
+          description: Invalid search query.
+        '401':
+          description: No active session.
+        '503':
+          description: Wikimedia Commons is unavailable.
+
+  /media/images/import:
+    post:
+      tags: [Media]
+      operationId: importOnlineImage
+      summary: Save a Wikimedia Commons image to the personal library
+      description: Resolves a Commons file ID on the server, validates the image, stores its license and source details, and applies the personal media quota. Identical bytes reuse an existing personal image, but a shared copy does not prevent a personal library entry.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: {type: integer, minimum: 1}
+      responses:
+        '201':
+          description: Image saved or reused.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizImage'
+        '400':
+          description: Invalid Commons image ID or filename.
+        '401':
+          description: No active session.
+        '404':
+          description: Commons image not found.
+        '409':
+          description: Personal library is full.
+        '413':
+          description: Image exceeds upload size limit.
+        '422':
+          description: Image source or license is unavailable.
+        '503':
+          description: Wikimedia Commons is unavailable.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /media/my-images:
     get:
       tags: [Media]
@@ -2325,6 +2405,8 @@ components:
               data:
                 type: string
                 contentEncoding: base64
+              source:
+                $ref: '#/components/schemas/ImageSource'
     QuizAttemptSummary:
       type: object
       required: [id, quiz_id, play_style, allow_go_back, randomize_questions, randomize_answers, question_limit, created, completed]
@@ -2409,6 +2491,19 @@ components:
           format: int64
           minimum: 1
           description: Shared media folder, or null for ungrouped and personal images.
+        source:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/ImageSource'
+    ImageSource:
+      type: object
+      required: [page, creator, license, license_url, attribution]
+      properties:
+        page: {type: string, format: uri}
+        creator: {type: string}
+        license: {type: string}
+        license_url: {type: [string, 'null'], format: uri}
+        attribution: {type: string}
     MediaGroupInput:
       type: object
       required: [name]

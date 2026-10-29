@@ -39,6 +39,15 @@ CREATE INDEX IF NOT EXISTS image_group_id_idx
 CREATE INDEX IF NOT EXISTS image_shared_name_idx
     ON public.image (lower(original_name), id) WHERE shared = TRUE;
 
+CREATE TABLE IF NOT EXISTS public.image_source (
+    image_id BIGINT PRIMARY KEY REFERENCES public.image(id) ON DELETE CASCADE,
+    source_page TEXT NOT NULL,
+    creator TEXT NOT NULL,
+    license_name TEXT NOT NULL,
+    license_url TEXT,
+    attribution TEXT NOT NULL
+);
+
 -- Media is committed before the quiz transaction. Keep a durable record so a
 -- failed or interrupted import can remove only images created by that import.
 CREATE TABLE IF NOT EXISTS public.quiz_import_recovery (
@@ -57,6 +66,7 @@ GRANT SELECT, INSERT, DELETE ON TABLE public.image_blob TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.image TO auth_api;
 GRANT UPDATE (owner_auth_user_id, shared, group_id, original_name) ON TABLE public.image TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.media_group TO auth_api;
+GRANT SELECT, INSERT ON TABLE public.image_source TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quiz_import_recovery TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.image_blob_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.image_id_seq TO auth_api;
