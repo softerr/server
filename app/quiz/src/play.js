@@ -1,4 +1,5 @@
 import { moveDownIcon, moveUpIcon } from './icons.js'
+import { submitAttempt } from './submit-attempt.js'
 
 const templateNames = {
   multiple_choice: 'Multiple choice', one_choice: 'One choice', number: 'Number',
@@ -699,11 +700,12 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     if (!expired) markDirty(position)
     else dirtyQuestions.clear()
     try {
-      if (!expired) await flushAnswers()
-      sampleTime()
-      await saveQuestionTime(activeQuestionId)
-      const [response, payload] = await requestJson('POST',
-        `/api/quiz/quizzes/${quizId}/attempts/${attemptId}/complete`)
+      const [response, payload] = await submitAttempt({
+        saveAnswers: expired ? null : flushAnswers,
+        saveTime: () => { sampleTime(); return saveQuestionTime(activeQuestionId) },
+        complete: () => requestJson('POST',
+          `/api/quiz/quizzes/${quizId}/attempts/${attemptId}/complete`),
+      })
       if (!response.ok) throw new Error(responseError(response, payload))
       goToResults()
     } catch (error) {
