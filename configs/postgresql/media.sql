@@ -8,22 +8,6 @@ CREATE TABLE IF NOT EXISTS public.image_blob (
         CHECK (octet_length(content) BETWEEN 1 AND 6291456)
 );
 
--- Existing databases have the original automatically named 2 MiB check.
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM pg_constraint
-               WHERE conrelid = 'public.image_blob'::regclass
-                 AND conname = 'image_blob_content_check') THEN
-        ALTER TABLE public.image_blob DROP CONSTRAINT image_blob_content_check;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint
-                   WHERE conrelid = 'public.image_blob'::regclass
-                     AND conname = 'image_blob_content_size_check') THEN
-        ALTER TABLE public.image_blob ADD CONSTRAINT image_blob_content_size_check
-            CHECK (octet_length(content) BETWEEN 1 AND 6291456);
-    END IF;
-END $$;
-
 CREATE TABLE IF NOT EXISTS public.media_group (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,

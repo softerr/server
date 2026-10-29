@@ -761,12 +761,22 @@
   margin: 0;
 }
 
+.image-library-search {
+  margin-top: 16px;
+}
+
 .image-library-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 120px), 1fr));
   gap: 10px;
   min-height: 60px;
   margin: 18px 0;
+}
+
+.image-library-no-results {
+  grid-column: 1 / -1;
+  margin: 12px 0;
+  color: var(--text-grey);
 }
 
 .image-library-group-title {

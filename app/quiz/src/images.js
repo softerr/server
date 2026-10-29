@@ -32,7 +32,11 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       </div>
       <p class="image-library-usage-message">Loading image limits…</p>
     </div>
-    <input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+    <label class="field image-library-search">
+      <span>Search images</span>
+      <input type="search" data-image-search placeholder="Search by name" autocomplete="off">
+    </label>
+    <input type="file" data-image-upload-input accept="image/png,image/jpeg,image/webp" multiple hidden>
     <div class="image-library-grid">
       <div class="image-library-item" data-upload-tile>
         <button type="button" class="image-library-choice image-library-choice-upload" data-upload aria-label="Upload image" title="Upload image">${uploadImageIcon}</button>
@@ -46,7 +50,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     <p class="form-status" role="status" aria-live="polite"></p>
   `
   section.append(dialog)
-  const input = dialog.querySelector('input')
+  const input = dialog.querySelector('[data-image-upload-input]')
   const grid = dialog.querySelector('.image-library-grid')
   const uploadTile = grid.querySelector('[data-upload-tile]')
   const usage = dialog.querySelector('.image-library-usage')
@@ -57,6 +61,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   const storageLabel = usage.querySelector('[data-image-storage]')
   const storageBar = usage.querySelector('[data-image-storage-bar]')
   const perImageLabel = usage.querySelector('[data-image-per-limit]')
+  const search = dialog.querySelector('[data-image-search]')
   const status = dialog.querySelector('.form-status')
   const upload = dialog.querySelector('[data-upload]')
   const multiActions = dialog.querySelector('.image-library-multi-actions')
@@ -90,6 +95,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     upload.title = callback ? 'Upload images' : 'Upload image'
     uploadTile.querySelector('.image-library-name').textContent = callback ? 'Upload images' : 'Upload image'
     dialog.querySelector('.image-library-heading h2').textContent = callback ? 'Choose images' : 'Choose image'
+    search.value = ''
     setStatus(status, 'Loading images…')
     dialog.showModal()
     await refresh()
@@ -147,6 +153,10 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   }
 
   function render() {
+    const query = search.value.trim().toLocaleLowerCase()
+    const visibleImages = query
+      ? images.filter((image) => image.name.toLocaleLowerCase().includes(query))
+      : images
     const emptyTile = document.createElement('div')
     emptyTile.className = 'image-library-item'
     const emptyChoice = document.createElement('button')
@@ -166,7 +176,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     grid.replaceChildren(emptyTile, uploadTile)
     emptyTile.hidden = Boolean(onChooseMany)
     for (const scope of ['shared', 'personal']) {
-      const group = images.filter((image) => image.scope === scope)
+      const group = visibleImages.filter((image) => image.scope === scope)
       if (!group.length) continue
       const heading = document.createElement('h3')
       heading.className = 'image-library-group-title'
@@ -188,7 +198,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       choose.append(preview)
       choose.addEventListener('click', (event) => {
         if (onChooseMany) {
-          const orderedIds = images.map((item) => item.id)
+          const orderedIds = visibleImages.map((item) => item.id)
           const start = orderedIds.indexOf(selectionAnchor)
           const end = orderedIds.indexOf(image.id)
           if (event.shiftKey && start !== -1) {
@@ -240,6 +250,12 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       grid.append(tile)
       }
     }
+    if (query && !visibleImages.length) {
+      const noResults = document.createElement('p')
+      noResults.className = 'image-library-no-results'
+      noResults.textContent = 'No images match your search.'
+      grid.append(noResults)
+    }
     updateMultiSelection()
   }
 
@@ -278,6 +294,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   }
 
   upload.addEventListener('click', () => input.click())
+  search.addEventListener('input', render)
   input.addEventListener('change', async () => {
     const files = Array.from(input.files || [])
     input.value = ''
