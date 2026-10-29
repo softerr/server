@@ -744,7 +744,7 @@ test_auth_login_session_lifecycle() {
   [[ "${response##*$'\n'}" == 200 ]] || { fail_test "could not configure fixed random mode: ${response}"; return 1; }
   response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}")"
   if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
-    '(.questions | length) == 30 and [.questions[].source_question_id] as $ids | all(range(1; $ids | length); $ids[.] != $ids[. - 1])' \
+    '((.questions | length) == 30) and ([.questions[].source_question_id] as $ids | all(range(1; ($ids | length)); $ids[.] != $ids[. - 1]))' \
     <<<"${response%$'\n'*}" >/dev/null; then
     fail_test "fixed random mode repeated an adjacent question: ${response}"
     return 1
