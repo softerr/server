@@ -3,7 +3,7 @@ info:
   title: Softerr API
   version: 1.0.0
   description: |
-    Account signup, email verification, login, admin user listing, password reset, quiz library, and shared media API. PHP responses are JSON. Nginx may return
+    Account signup, email verification, login, admin user and backup access, password reset, quiz library, and shared media API. Most PHP responses are JSON; backup downloads are ZIP files. Nginx may return
     redirects or HTML error pages before a request reaches PHP, notably for
     oversized or rate-limited requests. Clients should use HTTP status codes
     and should not assume every error response has a JSON body.
@@ -230,6 +230,72 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
+
+  /auth/backups:
+    get:
+      tags: [Administration]
+      operationId: listBackups
+      summary: List complete, restore-checked database backup sets
+      description: Requires a current admin session. Each set contains auth, quiz, and media archives from one backup run, newest first. Responses are not cached.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Available backup sets.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [backups]
+                properties:
+                  backups:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, created, size_bytes]
+                      properties:
+                        id: { type: string, pattern: '^\d{8}T\d{6}Z$' }
+                        created: { type: string, format: date-time }
+                        size_bytes: { type: integer, format: int64, minimum: 0 }
+        '401':
+          description: No active session.
+        '403':
+          description: Current account is not an admin.
+        '503':
+          description: Backup storage or an archive is unavailable.
+
+  /auth/backups/{backupId}/download:
+    parameters:
+      - name: backupId
+        in: path
+        required: true
+        schema: { type: string, pattern: '^\d{8}T\d{6}Z$' }
+    get:
+      tags: [Administration]
+      operationId: downloadBackup
+      summary: Download all three database archives in one ZIP
+      description: Requires a current admin session. The ZIP contains auth.dump, quiz.dump, and media.dump. Responses are not cached.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Complete database backup.
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        '401':
+          description: No active session.
+        '403':
+          description: Current account is not an admin.
+        '404':
+          description: Backup set not found.
+        '500':
+          description: Could not assemble the ZIP.
+        '503':
+          description: Backup storage or an archive is unavailable.
 
   /auth/users/{userId}/role:
     parameters:

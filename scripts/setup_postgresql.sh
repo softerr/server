@@ -83,7 +83,11 @@ systemctl enable --now softerr-prune-user-tokens.timer
 
 echo "Installing verified database backup timer..."
 install -d -m 755 /usr/local/lib/softerr
-install -d -o postgres -g postgres -m 700 /var/backups/softerr
+install -d -o postgres -g www-data -m 2750 /var/backups/softerr
+chmod 2750 /var/backups/softerr
+# Existing verified archives become available to the web API for admin downloads.
+find /var/backups/softerr -maxdepth 1 -type f -name '*.dump' \
+  -exec chgrp www-data -- {} + -exec chmod 640 -- {} +
 install -m 755 "${BACKUP_SCRIPT_FILE}" /usr/local/lib/softerr/backup_postgresql.sh
 install -m 644 "${BACKUP_SERVICE_FILE}" /etc/systemd/system/softerr-backup-postgresql.service
 install -m 644 "${BACKUP_TIMER_FILE}" /etc/systemd/system/softerr-backup-postgresql.timer

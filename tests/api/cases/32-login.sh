@@ -59,6 +59,10 @@ test_quiz_library_requires_login() {
 test_auth_users_requires_admin() {
   api_request GET /api/auth/users
   assert_status 401 || return 1
+  api_request GET /api/auth/backups
+  assert_status 401 || return 1
+  api_request GET /api/auth/backups/19700101T000000Z/download
+  assert_status 401 || return 1
   api_request POST /api/auth/users '{}'
   assert_status 405 || return 1
   api_request PATCH /api/auth/users/1/role '{"role":"mod"}'
@@ -132,6 +136,19 @@ test_auth_login_session_lifecycle() {
     fail_test "user role could list users: ${response}"
     return 1
   fi
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/auth/backups")"
+  if [[ "${response##*$'\n'}" != 403 ]]; then
+    rm -f "${cookie_file}"
+    fail_test "user role could list backups: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/auth/backups/19700101T000000Z/download")"
+  if [[ "${response##*$'\n'}" != 403 ]]; then
+    rm -f "${cookie_file}"
+    fail_test "user role could download backups: ${response}"
+    return 1
+  fi
 
   response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
     --data '{"role":"mod"}' -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/auth/users/${current_id}/role")"
@@ -191,6 +208,40 @@ test_auth_login_session_lifecycle() {
           fail_test "admin could not list users safely: ${response}"
           return 1
         fi
+        response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/auth/backups")"
+        if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e '.backups | type == "array"' \
+          <<<"${response%$'\n'*}" >/dev/null; then
+          rm -f "${cookie_file}"
+          fail_test "admin could not list backups: ${response}"
+          return 1
+        fi
+        local backup_id backup_zip backup_status
+        backup_id="$(jq -r '.backups[0].id // empty' <<<"${response%$'\n'*}")"
+        if [[ -z "${backup_id}" ]]; then
+          rm -f "${cookie_file}"
+          fail_test 'admin backup list contained no complete backup sets'
+          return 1
+        fi
+        backup_zip="$(mktemp --suffix=.zip)"
+        backup_status="$(curl -sS -b "${cookie_file}" -o "${backup_zip}" -w '%{http_code}' \
+          "${API_TEST_BASE_URL%/}/api/auth/backups/${backup_id}/download")"
+        if [[ "${backup_status}" != 200 ]] || ! php -r '
+          $zip = new ZipArchive();
+          if ($zip->open($argv[1]) !== true) exit(1);
+          $names = [];
+          for ($i = 0; $i < $zip->numFiles; $i++) {
+            $entry = $zip->statIndex($i);
+            if ($entry["size"] < 1) exit(1);
+            $names[] = $entry["name"];
+          }
+          sort($names);
+          exit($names === ["auth.dump", "media.dump", "quiz.dump"] ? 0 : 1);
+        ' "${backup_zip}"; then
+          rm -f "${backup_zip}" "${cookie_file}"
+          fail_test "admin backup download was incomplete: HTTP ${backup_status}"
+          return 1
+        fi
+        rm -f "${backup_zip}"
         response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' \
           "${API_TEST_BASE_URL%/}/api/auth/users/${target_id}/approve")"
         if [[ "${response##*$'\n'}" != 409 ]]; then
@@ -363,6 +414,12 @@ test_auth_login_session_lifecycle() {
         fail_test "${role} role could list users: ${response}"
         return 1
       else
+        response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/auth/backups")"
+        if [[ "${response##*$'\n'}" != 403 ]]; then
+          rm -f "${cookie_file}"
+          fail_test "${role} role could list backups: ${response}"
+          return 1
+        fi
         response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
           --data '{"role":"admin"}' -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/auth/users/${target_id}/role")"
         if [[ "${response##*$'\n'}" != 403 ]]; then

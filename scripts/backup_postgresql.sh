@@ -60,6 +60,9 @@ backup_database() {
     echo "Refusing to overwrite existing backup: ${archive}" >&2
     return 1
   fi
+  # The setup directory is setgid to www-data. Publish complete archives with
+  # read-only group access so the admin API can serve them without root access.
+  chmod 640 -- "${partial}"
   mv -- "${partial}" "${archive}"
   partial=''
   find "${BACKUP_DIR}" -maxdepth 1 -type f -name "${db_name}-*.dump" \

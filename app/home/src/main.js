@@ -1,6 +1,7 @@
 import './style.css'
 import { startAuthApp } from '../../shared/auth-app.js'
 import { renderMedia } from './media.js'
+import { renderBackups } from './backups.js'
 import { createPageNotice } from '../../shared/page-notice.js'
 
 const deleteIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>'
@@ -236,11 +237,12 @@ startAuthApp({
   signupPrompt: 'New here?',
   defaultView: 'apps',
   publicViews: ['apps'],
-  views: ['users', 'media'],
+  views: ['users', 'media', 'backups'],
   links: [
     { view: 'apps', label: 'Apps' },
     { view: 'media', label: 'Media', roles: ['user', 'mod', 'admin'] },
     { view: 'users', label: 'Users', roles: ['admin'] },
+    { view: 'backups', label: 'Backups', roles: ['admin'] },
   ],
   showLinksWhenLoggedOut: true,
   showGuestLogin: true,
@@ -251,6 +253,10 @@ startAuthApp({
     }
     if (view === 'users') {
       renderUsers(app, helpers)
+      return true
+    }
+    if (view === 'backups') {
+      renderBackups(app, helpers)
       return true
     }
     if (view !== 'apps') return false

@@ -133,7 +133,7 @@ sudo -u postgres psql -d auth -c "\copy (SELECT * FROM public.user_token ORDER B
 
 ## 6. Verified database backups
 
-PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after 03:00 server time, dumps `auth`, `quiz`, and `media`, restores each dump into a temporary database, checks the expected tables, and only then publishes the archives under `/var/backups/softerr`. The directory is accessible only to `postgres` and root. Verified archives are kept for 30 days. A failed dump or restore leaves earlier backups in place and makes the service fail. Keep enough free disk space for each archive and its temporary restored database.
+PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after 03:00 server time, dumps `auth`, `quiz`, and `media`, restores each dump into a temporary database, checks the expected tables, and only then publishes the archives under `/var/backups/softerr`. The directory is writable only by `postgres`; `www-data` has read-only access so an authenticated admin can download a complete set from **Home → Backups**. Verified archives are kept for 30 days. A failed dump or restore leaves earlier backups in place and makes the service fail. Keep enough free disk space for each archive, its temporary restored database, and the ZIP assembled for a download.
 
 Check the timer, run a backup now, and inspect the result:
 
@@ -144,7 +144,7 @@ sudo journalctl -u softerr-backup-postgresql.service -n 100 --no-pager
 sudo ls -lh /var/backups/softerr/*.dump
 ```
 
-These are local backups. Copy them to storage outside the server for protection against host or disk loss. Preserve the archive's restricted access because it contains account data and password hashes. The database role and password also need to be recreated from the bootstrap and setup workflow during disaster recovery.
+These are local backups. Copy them to storage outside the server for protection against host or disk loss. An admin can download a complete `auth`, `quiz`, and `media` set as one ZIP from the Home app. Keep the ZIP private because it contains account data and password hashes. The database role and password also need to be recreated from the bootstrap and setup workflow during disaster recovery. After deploying this feature to an existing server, run **Setup PostgreSQL On Server** to grant the web API read access to existing verified archives.
 
 ## 7. Restore a backup for inspection
 

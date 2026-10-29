@@ -8,32 +8,14 @@ CREATE TABLE IF NOT EXISTS public.quiz (
     user_id BIGINT NOT NULL REFERENCES public."user"(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     description VARCHAR(1000) NOT NULL DEFAULT '',
-    play_style VARCHAR(16) NOT NULL DEFAULT 'basic',
+    play_style VARCHAR(16) NOT NULL DEFAULT 'basic'
+        CONSTRAINT quiz_play_style_check CHECK (play_style IN ('basic', 'game_show')),
     show_correct_answers BOOLEAN NOT NULL DEFAULT FALSE,
     randomize_questions BOOLEAN NOT NULL DEFAULT FALSE,
-    question_limit INTEGER,
+    question_limit INTEGER
+        CONSTRAINT quiz_question_limit_check CHECK (question_limit BETWEEN 0 AND 1000),
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS play_style VARCHAR(16) NOT NULL DEFAULT 'basic';
-ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS show_correct_answers BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS randomize_questions BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS question_limit INTEGER;
-DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.quiz'::regclass
-        AND conname = 'quiz_question_limit_check') THEN
-        ALTER TABLE public.quiz ADD CONSTRAINT quiz_question_limit_check
-            CHECK (question_limit BETWEEN 0 AND 1000);
-    END IF;
-END $$;
-DO $$ BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conrelid = 'public.quiz'::regclass
-          AND conname = 'quiz_play_style_check'
-    ) THEN
-        ALTER TABLE public.quiz ADD CONSTRAINT quiz_play_style_check
-            CHECK (play_style IN ('basic', 'game_show'));
-    END IF;
-END $$;
 CREATE INDEX IF NOT EXISTS quiz_user_id_id_idx
     ON public.quiz (user_id, id DESC);
 

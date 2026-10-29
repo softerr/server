@@ -12,6 +12,7 @@ require_once __DIR__ . '/handlers/resend.php';
 require_once __DIR__ . '/handlers/verify.php';
 require_once __DIR__ . '/handlers/login.php';
 require_once __DIR__ . '/handlers/users.php';
+require_once __DIR__ . '/handlers/backups.php';
 require_once __DIR__ . '/handlers/password_reset.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -57,6 +58,16 @@ if ($path === '/users') {
         respond(405, ['error' => 'Method not allowed']);
     }
     handleListUsers();
+}
+
+if ($path === '/backups') {
+    if ($method !== 'GET') respond(405, ['error' => 'Method not allowed']);
+    handleListBackups();
+}
+
+if (is_string($path) && preg_match('#^/backups/(\d{8}T\d{6}Z)/download$#D', $path, $backupMatch)) {
+    if ($method !== 'GET') respond(405, ['error' => 'Method not allowed']);
+    handleDownloadBackup($backupMatch[1]);
 }
 
 if (is_string($path) && preg_match('#^/users/([1-9][0-9]*)/role$#', $path, $userMatch)) {
