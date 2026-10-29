@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS public.quiz_attempt_question (
     source_question_id BIGINT NOT NULL,
     position INTEGER NOT NULL,
     started_at TIMESTAMPTZ,
+    time_spent_ms BIGINT NOT NULL DEFAULT 0 CHECK (time_spent_ms >= 0),
     UNIQUE (attempt_id, id),
     UNIQUE (attempt_id, position),
     FOREIGN KEY (attempt_id, source_question_id)
@@ -117,6 +118,8 @@ ALTER TABLE public.quiz_attempt ADD COLUMN IF NOT EXISTS deadline_at TIMESTAMPTZ
 ALTER TABLE public.quiz_attempt_source ADD COLUMN IF NOT EXISTS time_limit_seconds INTEGER
     CHECK (time_limit_seconds BETWEEN 1 AND 86400);
 ALTER TABLE public.quiz_attempt_question ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+ALTER TABLE public.quiz_attempt_question ADD COLUMN IF NOT EXISTS time_spent_ms BIGINT NOT NULL DEFAULT 0
+    CHECK (time_spent_ms >= 0);
 
 GRANT CONNECT ON DATABASE quiz TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;

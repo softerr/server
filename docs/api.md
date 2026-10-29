@@ -75,6 +75,12 @@ key to its local user. The API creates the local user on the first quiz create.
   completes the attempt and preserves answers already saved.
   When `allow_go_back` is false, start each question before saving its answer.
   Reopening an earlier question or replacing its answer after moving forward returns `409`.
+- `PUT /api/quiz/quizzes/{quizId}/attempts/{attemptId}/questions/{questionId}/time`
+  with `{ "time_spent_ms": 12500 }` saves cumulative time spent viewing a reached
+  question appearance. Older or repeated values cannot reduce the stored time.
+  Each attempt question includes `time_spent_ms`, including in the review response.
+  The web app counts time while its tab is visible and focused, sends periodic
+  updates, and flushes on navigation. This client-reported value is informational.
 - `POST /api/quiz/quizzes/{quizId}/attempts` starts or resumes an attempt. Active
   responses include only reached questions. `question_count` gives the fixed
   total, and `score` is `null` until completion. Question `config` contains

@@ -517,6 +517,55 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
   let tickTimer = null
   const startingQuestions = new Map()
   const expiredQuestions = new Set()
+  const timeSpent = new Map()
+  const sentTime = new Map()
+  let activeQuestionId = null
+  let sampledAt = performance.now()
+  let countingTime = false
+  let timeTimer = null
+  const canCountTime = () => document.visibilityState === 'visible' && document.hasFocus()
+  function sampleTime() {
+    const now = performance.now()
+    if (countingTime && activeQuestionId !== null) {
+      timeSpent.set(activeQuestionId, Math.min(2147483647,
+        (timeSpent.get(activeQuestionId) || 0) + Math.max(0, now - sampledAt)))
+    }
+    sampledAt = now
+  }
+  async function saveQuestionTime(questionId) {
+    if (questionId === null || attemptId === null) return
+    const milliseconds = Math.floor(timeSpent.get(questionId) || 0)
+    if (milliseconds <= (sentTime.get(questionId) || 0)) return
+    const response = await fetch(`/api/quiz/quizzes/${quizId}/attempts/${attemptId}/questions/${questionId}/time`, {
+      method: 'PUT', credentials: 'same-origin', keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ time_spent_ms: milliseconds }),
+    })
+    if (!response.ok) throw new Error('Could not save question time.')
+    sentTime.set(questionId, Math.max(sentTime.get(questionId) || 0, milliseconds))
+  }
+  function pauseTime() {
+    sampleTime()
+    countingTime = false
+    void saveQuestionTime(activeQuestionId).catch(() => {})
+  }
+  function resumeTime() {
+    sampledAt = performance.now()
+    countingTime = activeQuestionId !== null && canCountTime()
+  }
+  function leavePlay() {
+    if (finished) return
+    pauseTime()
+    clearInterval(timeTimer)
+    clearInterval(tickTimer)
+    document.removeEventListener('visibilitychange', onVisibilityChange)
+    window.removeEventListener('focus', resumeTime)
+    window.removeEventListener('blur', pauseTime)
+    window.removeEventListener('pagehide', pauseTime)
+    window.removeEventListener('hashchange', onHashChange)
+  }
+  function onVisibilityChange() { if (document.visibilityState === 'hidden') pauseTime(); else resumeTime() }
+  function onHashChange() { if (!app.contains(questionArea)) leavePlay() }
   const remaining = (deadline) => Math.max(0, Math.ceil((deadline - (Date.now() + serverOffset)) / 1000))
   const clockText = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
   function syncAttemptClock(attempt) {
@@ -524,6 +573,7 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     if (typeof attempt.server_time_ms === 'number') serverOffset = attempt.server_time_ms - Date.now()
   }
   function goToResults() {
+    leavePlay()
     finished = true
     clearInterval(tickTimer)
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#results?quiz=${quizId}&attempt=${attemptId}${fromExplore ? '&source=explore' : ''}`)
@@ -618,6 +668,11 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
   }
 
   function showPosition() {
+    sampleTime()
+    const previousQuestionId = activeQuestionId
+    activeQuestionId = questions[position]?.id ?? null
+    if (previousQuestionId !== activeQuestionId) void saveQuestionTime(previousQuestionId).catch(() => {})
+    resumeTime()
     questions.forEach(({ card }, index) => { card.hidden = position !== index })
     progress.textContent = unlimited ? `Question ${position + 1} · Until you finish` : `Question ${position + 1} of ${questionCount}`
     if (!unlimited) progress.style.setProperty('--progress', `${(position / questionCount) * 100}%`)
@@ -645,6 +700,8 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     else dirtyQuestions.clear()
     try {
       if (!expired) await flushAnswers()
+      sampleTime()
+      await saveQuestionTime(activeQuestionId)
       const [response, payload] = await requestJson('POST',
         `/api/quiz/quizzes/${quizId}/attempts/${attemptId}/complete`)
       if (!response.ok) throw new Error(responseError(response, payload))
@@ -699,6 +756,8 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     const view = { id: question.id, timeLimit: question.time_limit_seconds, started: question.started,
       deadline: question.deadline_ms, ...buildQuestion(question, index) }
     questions.push(view)
+    timeSpent.set(question.id, question.time_spent_ms || 0)
+    sentTime.set(question.id, question.time_spent_ms || 0)
     if (answers?.[question.id]) view.restoreAnswer(answers[question.id])
     view.card.addEventListener('input', () => markDirty(index))
     view.card.addEventListener('change', () => markDirty(index))
@@ -742,6 +801,16 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     setStatus(status, '')
     showPosition()
     tickTimer = setInterval(tick, 250)
+    timeTimer = setInterval(() => {
+      if (!app.contains(questionArea)) { leavePlay(); return }
+      sampleTime()
+      void saveQuestionTime(activeQuestionId).catch(() => {})
+    }, 5000)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('focus', resumeTime)
+    window.addEventListener('blur', pauseTime)
+    window.addEventListener('pagehide', pauseTime)
+    window.addEventListener('hashchange', onHashChange)
   }).catch(() => {
     if (app.contains(questionArea)) setStatus(status, 'Could not load this quiz. Please try again.', true)
   })

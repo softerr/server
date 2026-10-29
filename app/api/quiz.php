@@ -100,6 +100,15 @@ if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/attempts/([1-9][0-9
     respond(405, ['error' => 'Method not allowed']);
 }
 
+if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/attempts/([1-9][0-9]*)/questions/([1-9][0-9]*)/time$#', $path, $timeMatch)) {
+    $quizId = filter_var($timeMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $attemptId = filter_var($timeMatch[2], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $questionId = filter_var($timeMatch[3], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($quizId === false || $attemptId === false || $questionId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'PUT') handleSaveQuestionTime($quizId, $attemptId, $questionId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
 if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/attempts/([1-9][0-9]*)/questions/([1-9][0-9]*)/reveal$#', $path, $revealMatch)) {
     $quizId = filter_var($revealMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     $attemptId = filter_var($revealMatch[2], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);

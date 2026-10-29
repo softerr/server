@@ -610,6 +610,21 @@ test_auth_login_session_lifecycle() {
     return 1
   fi
   attempt_question_id="$(jq -r '.questions[0].id' <<<"${response%$'\n'*}")"
+  local question_time_path
+  question_time_path="${attempt_path}/${attempt_id}/questions/${attempt_question_id}/time"
+  for milliseconds in 2500 1000 4000; do
+    response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+      --data "{\"time_spent_ms\":${milliseconds}}" -w $'\n%{http_code}' "${question_time_path}")"
+    if [[ "${response##*$'\n'}" != 200 ]]; then
+      fail_test "could not save question time: ${response}"; return 1
+    fi
+  done
+  if ! jq -e '.time_spent_ms == 4000' <<<"${response%$'\n'*}" >/dev/null; then
+    fail_test "older question time reduced the saved value: ${response}"; return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    --data '{"time_spent_ms":-1}' -w $'\n%{http_code}' "${question_time_path}")"
+  [[ "${response##*$'\n'}" == 400 ]] || { fail_test "invalid question time was accepted: ${response}"; return 1; }
   response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
     --data '{"answer":{"selected":[0]}}' -w $'\n%{http_code}' \
     "${attempt_path}/${attempt_id}/answers/${attempt_question_id}")"
@@ -641,7 +656,7 @@ test_auth_login_session_lifecycle() {
   fi
   response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' "${attempt_path}/${attempt_id}")"
   if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --arg id "${attempt_question_id}" \
-    '.completed != null and .answers[$id].selected == [0]' <<<"${response%$'\n'*}" >/dev/null; then
+    '.completed != null and .answers[$id].selected == [0] and .questions[0].time_spent_ms == 4000' <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}"
     fail_test "completed quiz answer was not retained: ${response}"
     return 1

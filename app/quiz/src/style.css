@@ -1003,6 +1003,12 @@
   text-transform: uppercase;
 }
 
+.review-time-spent {
+  margin: -5px 0 14px;
+  color: var(--text-grey);
+  font-size: 13px;
+}
+
 .play-prompt h2,
 .play-results h2 {
   margin: 0 0 18px;

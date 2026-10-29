@@ -25,6 +25,12 @@ function attemptDate(value) {
   return value ? `${String(value).replace(' ', ' · ')} UTC` : ''
 }
 
+function spentTime(milliseconds) {
+  const seconds = Math.round(milliseconds / 1000)
+  const minutes = Math.floor(seconds / 60)
+  return minutes ? `${minutes}m ${seconds % 60}s` : `${seconds}s`
+}
+
 function answerContent(text, imageId) {
   const content = element('span', 'review-answer-content')
   if (text) content.append(element('span', '', text))
@@ -321,6 +327,8 @@ export function renderQuizAttempt(app, { requestJson, responseError, setStatus }
     for (const [index, question] of (attempt.questions || []).entries()) {
       const view = buildQuestion(question, index)
       view.card.hidden = false
+      view.card.querySelector('.play-question-type').after(
+        element('p', 'review-time-spent', `Time spent: ${spentTime(question.time_spent_ms || 0)}`))
       const hasSavedAnswer = Object.prototype.hasOwnProperty.call(attempt.answers ?? {}, question.id)
       let result = null
       if (hasSavedAnswer) {

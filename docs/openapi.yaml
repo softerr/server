@@ -1766,6 +1766,54 @@ paths:
         '409':
           description: Attempt is complete.
 
+  /quiz/quizzes/{quizId}/attempts/{attemptId}/questions/{questionId}/time:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: attemptId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: questionId
+        in: path
+        required: true
+        description: Question appearance ID from the attempt.
+        schema: { type: integer, minimum: 1 }
+    put:
+      tags: [Quizzes]
+      operationId: saveQuestionTime
+      summary: Save cumulative foreground time spent viewing a reached question
+      description: Repeated or out of order writes keep the greatest value. Time is measured by the client and is informational.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [time_spent_ms]
+              properties:
+                time_spent_ms: { type: integer, minimum: 0, maximum: 2147483647 }
+      responses:
+        '200':
+          description: Saved cumulative time in milliseconds.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [time_spent_ms]
+                properties:
+                  time_spent_ms: { type: integer, minimum: 0 }
+        '400':
+          description: Invalid duration.
+        '401':
+          description: No active session.
+        '404':
+          description: Attempt or reached question not found.
+
   /quiz/quizzes/{quizId}/attempts/{attemptId}/answers/{questionId}:
     parameters:
       - name: quizId
@@ -2300,7 +2348,7 @@ components:
               description: Only reached question appearances are returned while an attempt is active. Completed attempts return all appearances. Each has a unique ID, even when a source question repeats.
               items:
                 type: object
-                required: [id, source_question_id, template, prompt, config, started, time_limit_seconds, deadline_ms]
+                required: [id, source_question_id, template, prompt, config, started, time_limit_seconds, deadline_ms, time_spent_ms]
                 properties:
                   id: { type: integer, format: int64 }
                   source_question_id: { type: integer, format: int64 }
@@ -2310,6 +2358,7 @@ components:
                   solution: { type: object, description: Full source configuration, present only after completion when show_correct_answers is enabled. }
                   correct: { type: [boolean, 'null'], description: Server result for this question, present only with solution. Null means it is not automatically graded. }
                   started: { type: boolean, description: Whether this question's clock or navigation position has started. }
+                  time_spent_ms: { type: integer, minimum: 0, description: Client reported cumulative foreground time viewing this question appearance. }
                   time_limit_seconds: { type: [integer, 'null'], minimum: 1, maximum: 86400 }
                   deadline_ms: { type: [integer, 'null'], description: Unix milliseconds when this question expires, set on first opening. }
             answers:

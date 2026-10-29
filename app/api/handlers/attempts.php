@@ -27,7 +27,7 @@ function attemptDocument($db, array $row): array
     $showSolutions = $row['completed'] !== null && pg_fetch_result($settings, 0, 0) === 't';
     $snapshots = @pg_query_params($db,
         'SELECT s.id, b.question_id AS source_question_id, b.template, b.prompt, b.config,
-            b.time_limit_seconds, s.started_at,
+            b.time_limit_seconds, s.started_at, s.time_spent_ms,
             CASE WHEN s.started_at IS NULL OR b.time_limit_seconds IS NULL THEN NULL
                 ELSE EXTRACT(EPOCH FROM (s.started_at + b.time_limit_seconds * INTERVAL \'1 second\')) * 1000 END AS deadline_ms
          FROM public.quiz_attempt_question s
@@ -51,6 +51,7 @@ function attemptDocument($db, array $row): array
                 $row['randomize_answers'] === 't'),
             'time_limit_seconds' => $snapshot['time_limit_seconds'] === null ? null : (int) $snapshot['time_limit_seconds'],
             'started' => $snapshot['started_at'] !== null,
+            'time_spent_ms' => (int) $snapshot['time_spent_ms'],
             'deadline_ms' => $snapshot['deadline_ms'] === null ? null : (int) $snapshot['deadline_ms'],
         ];
         if ($showSolutions) {
@@ -334,6 +335,27 @@ function handleGetQuizAttempt(int $quizId, int $attemptId): never
         $attempt = expireQuizAttempt($db, $attempt);
     }
     respond(200, attemptDocument($db, $attempt));
+}
+
+function handleSaveQuestionTime(int $quizId, int $attemptId, int $questionId): never
+{
+    $payload = readJsonBody(256);
+    $milliseconds = $payload['time_spent_ms'] ?? null;
+    if (!is_array($payload) || !is_int($milliseconds) || $milliseconds < 0 || $milliseconds > 2147483647) {
+        respond(400, ['error' => 'Invalid time spent']);
+    }
+    $user = currentSessionUser();
+    $db = connectQuizDb();
+    ownedQuizAttempt($db, $quizId, $attemptId, (int) $user['id']);
+    $result = @pg_query_params($db,
+        'UPDATE public.quiz_attempt_question s SET time_spent_ms = GREATEST(s.time_spent_ms, $3::bigint)
+         FROM public.quiz_attempt a
+         WHERE s.attempt_id = $1 AND s.id = $2 AND a.id = s.attempt_id
+             AND s.position <= a.furthest_position
+         RETURNING time_spent_ms', [$attemptId, $questionId, $milliseconds]);
+    if ($result === false) respond(500, ['error' => 'Failed to save question time']);
+    if (pg_num_rows($result) === 0) respond(404, ['error' => 'Question not found']);
+    respond(200, ['time_spent_ms' => (int) pg_fetch_result($result, 0, 0)]);
 }
 
 function handleStartAttemptQuestion(int $quizId, int $attemptId, int $questionId): never

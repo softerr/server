@@ -33,7 +33,7 @@ function handleReadiness(): never
             u.auth_user_id, t.id, t.quiz_id, t.template, t.prompt, t.config, t.time_limit_seconds,
             a.id, a.quiz_id, a.user_id, a.completed, a.allow_go_back, a.furthest_position, a.randomize_questions, a.randomize_answers, a.question_limit, a.time_limit_seconds, a.deadline_at,
             b.attempt_id, b.question_id, b.position, b.template, b.prompt, b.config, b.time_limit_seconds,
-            s.id, s.attempt_id, s.source_question_id, s.position, s.started_at, r.attempt_id, r.question_id, r.answer
+            s.id, s.attempt_id, s.source_question_id, s.position, s.started_at, s.time_spent_ms, r.attempt_id, r.question_id, r.answer
         FROM public.quiz q, public."user" u, public.question t,
              public.quiz_attempt a, public.quiz_attempt_source b,
              public.quiz_attempt_question s, public.quiz_answer r LIMIT 0');
