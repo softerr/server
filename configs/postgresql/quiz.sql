@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS public.quiz (
 );
 CREATE INDEX IF NOT EXISTS quiz_user_id_id_idx
     ON public.quiz (user_id, id DESC);
+CREATE INDEX IF NOT EXISTS quiz_public_id_idx
+    ON public.quiz (id DESC) WHERE is_public = TRUE;
 CREATE TABLE IF NOT EXISTS public.question (
     id BIGSERIAL PRIMARY KEY,
     quiz_id BIGINT NOT NULL REFERENCES public.quiz(id) ON DELETE CASCADE,
@@ -98,28 +100,6 @@ CREATE TABLE IF NOT EXISTS public.quiz_answer (
         FOREIGN KEY (attempt_id, question_id)
         REFERENCES public.quiz_attempt_question(attempt_id, id) ON DELETE CASCADE
 );
-
--- Upgrade the previously deployed quiz schema before the API readiness check.
-ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS time_limit_seconds INTEGER
-    CHECK (time_limit_seconds BETWEEN 1 AND 86400);
-ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS allow_go_back BOOLEAN NOT NULL DEFAULT TRUE;
-ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS randomize_answers BOOLEAN NOT NULL DEFAULT FALSE;
-CREATE INDEX IF NOT EXISTS quiz_public_id_idx
-    ON public.quiz (id DESC) WHERE is_public = TRUE;
-ALTER TABLE public.question ADD COLUMN IF NOT EXISTS time_limit_seconds INTEGER
-    CHECK (time_limit_seconds BETWEEN 1 AND 86400);
-ALTER TABLE public.quiz_attempt ADD COLUMN IF NOT EXISTS time_limit_seconds INTEGER
-    CHECK (time_limit_seconds BETWEEN 1 AND 86400);
-ALTER TABLE public.quiz_attempt ADD COLUMN IF NOT EXISTS allow_go_back BOOLEAN NOT NULL DEFAULT TRUE;
-ALTER TABLE public.quiz_attempt ADD COLUMN IF NOT EXISTS randomize_answers BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE public.quiz_attempt ADD COLUMN IF NOT EXISTS furthest_position INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE public.quiz_attempt ADD COLUMN IF NOT EXISTS deadline_at TIMESTAMPTZ;
-ALTER TABLE public.quiz_attempt_source ADD COLUMN IF NOT EXISTS time_limit_seconds INTEGER
-    CHECK (time_limit_seconds BETWEEN 1 AND 86400);
-ALTER TABLE public.quiz_attempt_question ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
-ALTER TABLE public.quiz_attempt_question ADD COLUMN IF NOT EXISTS time_spent_ms BIGINT NOT NULL DEFAULT 0
-    CHECK (time_spent_ms >= 0);
 
 GRANT CONNECT ON DATABASE quiz TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
