@@ -1,4 +1,5 @@
 import { buildQuestion } from './play.js'
+import { createPreviewQuestionSequence } from './question-sequence.js'
 
 function element(tag, className = '', text) {
   const node = document.createElement(tag)
@@ -45,28 +46,7 @@ export function openQuizPreview(dialog, quiz, questions) {
   const unlimited = quiz.question_limit === 0
   finish.hidden = !unlimited
   if (unlimited) progress.classList.add('is-unlimited')
-  const pool = [...questions]
-  if (quiz.question_limit === null && quiz.randomize_questions) {
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[pool[i], pool[j]] = [pool[j], pool[i]]
-    }
-  }
-  const selectedIndexes = []
-  function sourceAt(index) {
-    let choice = index % pool.length
-    if (quiz.randomize_questions && quiz.question_limit !== null) {
-      const previous = selectedIndexes.at(-1)
-      if (previous === undefined || pool.length === 1) {
-        choice = Math.floor(Math.random() * pool.length)
-      } else {
-        choice = Math.floor(Math.random() * (pool.length - 1))
-        if (choice >= previous) choice++
-      }
-    }
-    selectedIndexes.push(choice)
-    return pool[choice]
-  }
+  const sequence = createPreviewQuestionSequence(questions, quiz)
   const views = []
   const deadlines = []
   const quizDeadline = quiz.time_limit_seconds === null ? null : Date.now() + quiz.time_limit_seconds * 1000
@@ -92,14 +72,14 @@ export function openQuizPreview(dialog, quiz, questions) {
     return { ...source, config }
   }
   function appendView() {
-    const source = sourceAt(views.length)
+    const source = sequence.next()
     const view = buildQuestion(previewPresentation(source), views.length)
     view.timeLimit = source.time_limit_seconds
     views.push(view)
     deadlines.push(null)
     questionArea.append(view.card)
   }
-  const initialCount = unlimited ? 1 : quiz.question_limit === null ? pool.length : quiz.question_limit
+  const initialCount = sequence.initialCount
   for (let i = 0; i < initialCount; i++) appendView()
   let position = 0
 

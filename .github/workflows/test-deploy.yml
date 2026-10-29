@@ -24,6 +24,7 @@ on:
       - "scripts/setup_postgresql.sh"
       - "scripts/backup_postgresql.sh"
       - "tests/deploy/**"
+      - "tests/frontend/**"
       - ".github/workflows/deploy-apps.yml"
       - ".github/workflows/setup-nginx.yml"
       - ".github/workflows/setup-server.yml"
@@ -54,6 +55,7 @@ on:
       - "scripts/setup_postgresql.sh"
       - "scripts/backup_postgresql.sh"
       - "tests/deploy/**"
+      - "tests/frontend/**"
       - ".github/workflows/deploy-apps.yml"
       - ".github/workflows/setup-nginx.yml"
       - ".github/workflows/setup-server.yml"
@@ -99,6 +101,9 @@ jobs:
           npm ci
           npm run build
           test -f dist/index.html
+
+      - name: Test frontend behavior
+        run: node --test tests/frontend/*.test.js
 
       - name: Build quiz
         working-directory: app/quiz
