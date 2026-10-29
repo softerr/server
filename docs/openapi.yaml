@@ -923,6 +923,8 @@ paths:
           description: Admin access required.
         '409':
           description: A folder with the same name exists.
+        '413':
+          description: Request body is too large.
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -961,6 +963,8 @@ paths:
           description: Folder not found.
         '409':
           description: A folder with the same name exists.
+        '413':
+          description: Request body is too large.
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -1075,6 +1079,8 @@ paths:
           description: Group or shared image not found.
         '409':
           description: Group changed during the request.
+        '413':
+          description: Request body is too large.
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -1170,6 +1176,8 @@ paths:
           description: No active session.
         '404':
           description: Image does not exist or cannot be renamed by this account.
+        '413':
+          description: Request body is too large.
         '500':
           $ref: '#/components/responses/InternalError'
     delete:
@@ -1694,6 +1702,8 @@ paths:
           description: Attempt or question not found.
         '409':
           description: Attempt is complete, the current question is invalid, or there are no more questions.
+        '413':
+          description: Request body exceeds 1024 bytes.
 
   /quiz/quizzes/{quizId}/attempts/{attemptId}/questions/{questionId}/reveal:
     parameters:
@@ -1872,6 +1882,8 @@ paths:
           description: Attempt or question not found.
         '409':
           description: Attempt is complete or the question's time is up.
+        '413':
+          description: Request body exceeds 32768 bytes.
 
   /quiz/quizzes/{quizId}/attempts/{attemptId}/complete:
     parameters:

@@ -494,6 +494,7 @@ uses a different HTTP port, set `API_TEST_BASE_URL` to its local origin. The
 generated data may produce schema-validation warnings for signup,
 verification, and password reset confirmation even when the response checks
 pass; inspect the reported status codes and use the endpoint tests to cover successful requests.
+Set `OPENAPI_TEST_SEED` to replay a reported Schemathesis seed.
 
 The runner workflow also runs `scripts/test_openapi_authenticated.sh`. It creates
 an approved disposable admin account with a quiz attempt and image, verifies
@@ -501,7 +502,6 @@ that 18 protected operations return HTTP 200, then checks their responses with
 Schemathesis. The fixture is removed when the check ends. To run this check
 manually, use a provisioned local test server with Schemathesis, Python, `psql`,
 and passwordless `sudo -u postgres` access; it should not be run against production.
-Set `OPENAPI_TEST_SEED` to replay a reported Schemathesis seed.
 
 Run against local QEMU VM:
 

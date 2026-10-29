@@ -31,10 +31,13 @@ test_dir="$(mktemp -d)"
 trap 'rm -rf -- "${test_dir}"' EXIT
 cd "${test_dir}"
 
+seed_args=()
+if [[ -n "${OPENAPI_TEST_SEED:-}" ]]; then seed_args=(--seed "${OPENAPI_TEST_SEED}"); fi
 schemathesis run "${REPO_ROOT}/docs/openapi.yaml" \
   --origin "${origin}" \
   --phases examples,fuzzing \
   --mode positive \
   --max-examples 5 \
   --checks not_a_server_error,status_code_conformance,content_type_conformance,response_schema_conformance \
+  "${seed_args[@]}" \
   --no-color
