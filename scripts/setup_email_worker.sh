@@ -15,7 +15,10 @@ load_mail_env
 
 EMAIL_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-send-email.service"
 EMAIL_TIMER_FILE="${REPO_ROOT}/configs/systemd/softerr-send-email.timer"
-if [[ ! -f "${EMAIL_SERVICE_FILE}" || ! -f "${EMAIL_TIMER_FILE}" ]]; then
+RECOVERY_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-recover-quiz-imports.service"
+RECOVERY_TIMER_FILE="${REPO_ROOT}/configs/systemd/softerr-recover-quiz-imports.timer"
+if [[ ! -f "${EMAIL_SERVICE_FILE}" || ! -f "${EMAIL_TIMER_FILE}" \
+  || ! -f "${RECOVERY_SERVICE_FILE}" || ! -f "${RECOVERY_TIMER_FILE}" ]]; then
   echo "Email worker unit files not found." >&2
   exit 1
 fi
@@ -44,6 +47,9 @@ chown root:www-data /etc/softerr/email-worker.env
 chmod 640 /etc/softerr/email-worker.env
 install -m 644 "${EMAIL_SERVICE_FILE}" /etc/systemd/system/softerr-send-email.service
 install -m 644 "${EMAIL_TIMER_FILE}" /etc/systemd/system/softerr-send-email.timer
+install -m 644 "${RECOVERY_SERVICE_FILE}" /etc/systemd/system/softerr-recover-quiz-imports.service
+install -m 644 "${RECOVERY_TIMER_FILE}" /etc/systemd/system/softerr-recover-quiz-imports.timer
 systemctl daemon-reload
 systemctl enable --now softerr-send-email.timer
+systemctl enable --now softerr-recover-quiz-imports.timer
 

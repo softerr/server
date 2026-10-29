@@ -88,6 +88,7 @@ PROVISION_COMPONENTS=php-fpm,email-worker,nginx,api,home,quiz bash "${SCRIPT_DIR
 systemctl is-active --quiet nginx
 systemctl is-active --quiet postgresql
 systemctl is-active --quiet softerr-send-email.timer
+systemctl is-active --quiet softerr-recover-quiz-imports.timer
 systemctl is-active --quiet softerr-prune-user-tokens.timer
 systemctl is-active --quiet softerr-backup-postgresql.timer
 

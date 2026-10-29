@@ -48,9 +48,12 @@ key to its local user. The API creates the local user on the first quiz create.
 - `POST /api/quiz/quizzes/import` accepts version 1 quiz JSON or ZIP and creates
   a new quiz with its questions in order. The request is limited to 48 MiB and
   100 questions. Send JSON as `application/json` or ZIP bytes as
-  `application/octet-stream` (also accepts `application/zip`). The import is
-  atomic: an invalid question, image, or archive leaves no partial quiz. It
-  returns the new quiz with HTTP `201`; a full library returns `409`.
+  `application/octet-stream` (also accepts `application/zip`). The import
+  validates questions and images before writing, and a failed quiz commit
+  removes newly imported personal images. An interrupted import is recorded
+  durably and recovered by the server timer; images already in a personal or
+  shared library are never removed by recovery. It returns the new quiz with
+  HTTP `201`; a full library returns `409`.
 - `GET /api/quiz/quizzes/{quizId}/export.zip` downloads an owned quiz as ZIP.
   The archive contains `quiz.json` and used images under `images/{imageId}/`
   with their original filenames.

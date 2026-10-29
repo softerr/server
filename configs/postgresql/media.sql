@@ -38,12 +38,25 @@ CREATE INDEX IF NOT EXISTS image_group_id_idx
 CREATE INDEX IF NOT EXISTS image_shared_name_idx
     ON public.image (lower(original_name), id) WHERE shared = TRUE;
 
+-- Media is committed before the quiz transaction. Keep a durable record so a
+-- failed or interrupted import can remove only images created by that import.
+CREATE TABLE IF NOT EXISTS public.quiz_import_recovery (
+    id CHAR(32) PRIMARY KEY,
+    owner_auth_user_id BIGINT NOT NULL,
+    quiz_id BIGINT NOT NULL,
+    image_ids JSONB NOT NULL CHECK (jsonb_typeof(image_ids) = 'array'),
+    created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS quiz_import_recovery_created_idx
+    ON public.quiz_import_recovery (created);
+
 GRANT CONNECT ON DATABASE media TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.image_blob TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.image TO auth_api;
 GRANT UPDATE (owner_auth_user_id, shared, group_id, original_name) ON TABLE public.image TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.media_group TO auth_api;
+GRANT SELECT, INSERT, DELETE ON TABLE public.quiz_import_recovery TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.image_blob_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.image_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.media_group_id_seq TO auth_api;

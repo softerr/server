@@ -45,6 +45,9 @@ function handleReadiness(): never
     if ($quizOwnerConstraint === false || pg_num_rows($quizOwnerConstraint) !== 1) {
         respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
     }
+    if (@pg_query($quizDb, 'SELECT id, quiz_id FROM public.quiz_import_receipt LIMIT 0') === false) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
+    }
 
     [$mediaDb, $mediaError] = openMediaDb();
     if ($mediaDb === false) {
@@ -57,6 +60,9 @@ function handleReadiness(): never
         respond(503, ['status' => 'unavailable', 'error' => 'Media database schema is not ready']);
     }
     if (@pg_query($mediaDb, 'SELECT id, name FROM public.media_group LIMIT 0') === false) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Media database schema is not ready']);
+    }
+    if (@pg_query($mediaDb, 'SELECT id, quiz_id, image_ids FROM public.quiz_import_recovery LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media database schema is not ready']);
     }
 

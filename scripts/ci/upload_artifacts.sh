@@ -84,13 +84,17 @@ case "${MODE}" in
       exit 1
     fi
 
-    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs/postgresql' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/home/dist' '$REMOTE_DIR/app/quiz/dist'"
+    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs/postgresql' '$REMOTE_DIR/configs/systemd' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/home/dist' '$REMOTE_DIR/app/quiz/dist'"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
       "${REPO_ROOT}/scripts/lib/app_selection.sh" \
       "${REPO_ROOT}/scripts/lib/deploy_checks.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
     if app_selected api; then
-      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/postgresql/quiz.sql" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/postgresql/"
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/postgresql/quiz.sql" \
+        "${REPO_ROOT}/configs/postgresql/media.sql" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/postgresql/"
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/systemd/softerr-recover-quiz-imports.service" \
+        "${REPO_ROOT}/configs/systemd/softerr-recover-quiz-imports.timer" \
+        "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/systemd/"
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_api.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
       scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/api/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/api/"
     fi

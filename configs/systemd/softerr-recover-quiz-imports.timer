@@ -1,0 +1,9 @@
+[Unit]
+Description=Recover interrupted quiz imports every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

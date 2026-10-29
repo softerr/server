@@ -38,6 +38,7 @@ run_root_script() {
 run_postgresql() {
   run_root_script "${SCRIPT_DIR}/setup_postgresql.sh"
   QUIZ_SCHEMA_APPLIED=1
+  MEDIA_SCHEMA_APPLIED=1
 }
 
 run_nginx() {
@@ -61,6 +62,15 @@ run_api_deploy() {
     fi
     sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d quiz < "${quiz_schema}"
     QUIZ_SCHEMA_APPLIED=1
+  fi
+  if [[ "${MEDIA_SCHEMA_APPLIED:-0}" != 1 ]]; then
+    local media_schema="${REPO_ROOT}/configs/postgresql/media.sql"
+    if [[ ! -f "${media_schema}" ]]; then
+      echo "Media schema not found: ${media_schema}" >&2
+      exit 1
+    fi
+    sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d media < "${media_schema}"
+    MEDIA_SCHEMA_APPLIED=1
   fi
   run_root_script "${SCRIPT_DIR}/deploy_api.sh"
 }

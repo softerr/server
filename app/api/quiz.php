@@ -7,6 +7,7 @@ require_once __DIR__ . '/lib/http.php';
 require_once __DIR__ . '/lib/url.php';
 require_once __DIR__ . '/lib/session.php';
 require_once __DIR__ . '/handlers/images.php';
+require_once __DIR__ . '/lib/quiz_import_recovery.php';
 require_once __DIR__ . '/handlers/quizzes.php';
 require_once __DIR__ . '/handlers/questions.php';
 require_once __DIR__ . '/handlers/attempt_presentation.php';

@@ -38,6 +38,19 @@ WEB_GROUP="${WEB_GROUP:-www-data}"
 source "${SCRIPT_DIR}/lib/atomic_deploy.sh"
 source "${SCRIPT_DIR}/lib/deploy_checks.sh"
 
+RECOVERY_SERVICE_FILE="${SCRIPT_DIR}/../configs/systemd/softerr-recover-quiz-imports.service"
+RECOVERY_TIMER_FILE="${SCRIPT_DIR}/../configs/systemd/softerr-recover-quiz-imports.timer"
+for file in "${RECOVERY_SERVICE_FILE}" "${RECOVERY_TIMER_FILE}" /etc/softerr/email-worker.env; do
+  if [[ ! -f "${file}" ]]; then
+    echo "Quiz import recovery requirement is missing: ${file}" >&2
+    exit 1
+  fi
+done
+install -m 644 "${RECOVERY_SERVICE_FILE}" /etc/systemd/system/softerr-recover-quiz-imports.service
+install -m 644 "${RECOVERY_TIMER_FILE}" /etc/systemd/system/softerr-recover-quiz-imports.timer
+systemctl daemon-reload
+systemctl enable --now softerr-recover-quiz-imports.timer
+
 echo "Deploying API from: ${SOURCE_DIR}"
 restart_api_fpm() {
   local routes_file=/etc/nginx/snippets/softerr-routes.conf

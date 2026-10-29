@@ -24,6 +24,15 @@ CREATE INDEX IF NOT EXISTS quiz_user_id_id_idx
     ON public.quiz (user_id, id DESC);
 CREATE INDEX IF NOT EXISTS quiz_public_id_idx
     ON public.quiz (id DESC) WHERE is_public = TRUE;
+
+-- Survives quiz deletion so recovery can distinguish a committed import from
+-- one whose quiz transaction rolled back after media was committed.
+CREATE TABLE IF NOT EXISTS public.quiz_import_receipt (
+    id CHAR(32) PRIMARY KEY,
+    owner_auth_user_id BIGINT NOT NULL,
+    quiz_id BIGINT NOT NULL,
+    created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS public.question (
     id BIGSERIAL PRIMARY KEY,
     quiz_id BIGINT NOT NULL REFERENCES public.quiz(id) ON DELETE CASCADE,
@@ -105,6 +114,7 @@ GRANT CONNECT ON DATABASE quiz TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public."user" TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quiz TO auth_api;
+GRANT SELECT, INSERT, DELETE ON TABLE public.quiz_import_receipt TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.question TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quiz_attempt TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quiz_attempt_source TO auth_api;

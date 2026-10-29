@@ -1,0 +1,15 @@
+[Unit]
+Description=Recover interrupted quiz imports
+Requires=postgresql.service
+After=postgresql.service
+ConditionPathExists=/var/www/api/bin/recover_quiz_imports.php
+
+[Service]
+Type=oneshot
+TimeoutStartSec=10min
+User=www-data
+Group=www-data
+EnvironmentFile=/etc/softerr/email-worker.env
+ExecStart=/usr/bin/php /var/www/api/bin/recover_quiz_imports.php
+NoNewPrivileges=true
+PrivateTmp=true

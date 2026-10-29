@@ -121,7 +121,7 @@ function mediaBlobId($db, string $hash, string $bytes, string $mime, int $width,
 }
 
 function saveMediaImage($db, int $authUserId, string $name, string $bytes,
-    string $mime, int $width, int $height): array
+    string $mime, int $width, int $height, ?array &$createdIds = null): array
 {
     $hash = hash('sha256', $bytes);
     $existing = mediaImageByHash($db, $authUserId, $hash);
@@ -153,6 +153,9 @@ function saveMediaImage($db, int $authUserId, string $name, string $bytes,
          LIMIT 1', [$blobId, $authUserId]);
     $row = $stored === false ? false : pg_fetch_assoc($stored);
     if ($row === false) respond(500, ['error' => 'Failed to save image']);
+    if ($createdIds !== null && pg_affected_rows($insert) === 1) {
+        $createdIds[] = (int) $row['id'];
+    }
     return publicMediaImage($row);
 }
 

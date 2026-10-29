@@ -398,8 +398,10 @@ function handleImportQuiz(): never
     }
     ensureMediaAccountActive((int) $user['id']);
     $imageIds = [];
+    $createdImageIds = [];
     foreach ($decodedImages as $oldId => [$imageName, $bytes, $mime, $width, $height]) {
-        $stored = saveMediaImage($mediaDb, (int) $user['id'], $imageName, $bytes, $mime, $width, $height);
+        $stored = saveMediaImage($mediaDb, (int) $user['id'], $imageName, $bytes, $mime, $width, $height,
+            $createdImageIds);
         $imageIds[$oldId] = $stored['id'];
     }
     $quiz = insertQuizRow($db, $localUserId, $name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $timeLimit, $allowGoBack, $isPublic, $randomizeAnswers, $error);
@@ -418,8 +420,35 @@ function handleImportQuiz(): never
             respond(500, ['error' => $error]);
         }
     }
-    if (@pg_query($mediaDb, 'COMMIT') === false || @pg_query($db, 'COMMIT') === false) {
+    $batchId = bin2hex(random_bytes(16));
+    if (@pg_query_params($db,
+        'INSERT INTO public.quiz_import_receipt (id, owner_auth_user_id, quiz_id)
+         VALUES ($1, $2, $3)', [$batchId, $user['id'], $quiz['id']]) === false) {
+        @pg_query($db, 'ROLLBACK');
+        @pg_query($mediaDb, 'ROLLBACK');
         respond(500, ['error' => $error]);
+    }
+    $recorded = @pg_query_params($mediaDb,
+        'INSERT INTO public.quiz_import_recovery (id, owner_auth_user_id, quiz_id, image_ids)
+         VALUES ($1, $2, $3, $4::jsonb)',
+        [$batchId, $user['id'], $quiz['id'], json_encode($createdImageIds, JSON_THROW_ON_ERROR)]);
+    if ($recorded === false || @pg_query($mediaDb, 'COMMIT') === false) {
+        @pg_query($db, 'ROLLBACK');
+        respond(500, ['error' => $error]);
+    }
+    if (@pg_query($db, 'COMMIT') === false) {
+        @pg_query($db, 'ROLLBACK');
+        if (!recoverQuizImportBatch($db, $mediaDb, $batchId)) {
+            error_log('Quiz import recovery is pending for batch ' . $batchId);
+        }
+        respond(500, ['error' => $error]);
+    }
+    if (@pg_query_params($mediaDb,
+        'DELETE FROM public.quiz_import_recovery WHERE id = $1', [$batchId]) === false) {
+        error_log('Quiz import recovery record could not be cleared for batch ' . $batchId);
+    } elseif (@pg_query_params($db,
+        'DELETE FROM public.quiz_import_receipt WHERE id = $1', [$batchId]) === false) {
+        error_log('Quiz import receipt could not be cleared for batch ' . $batchId);
     }
     respond(201, $quiz);
 }
