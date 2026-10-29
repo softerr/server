@@ -895,12 +895,12 @@ test_auth_login_session_lifecycle() {
 
   local import_path import_id import_body
   import_path="${API_TEST_BASE_URL%/}/api/quiz/quizzes/import"
-  import_body='{"format":"softerr-quiz","version":1,"name":"Imported quiz","description":"From JSON","play_style":"game_show","show_correct_answers":true,"randomize_questions":true,"question_limit":0,"questions":[{"template":"no_answer","prompt":"First","config":{}},{"template":"ordering","prompt":"Second","config":{"items":[{"text":"A"},{"text":"B"}]}}],"images":[]}'
+  import_body='{"format":"softerr-quiz","version":1,"name":"Imported quiz","description":"From JSON","play_style":"game_show","show_correct_answers":true,"randomize_questions":true,"randomize_answers":true,"question_limit":0,"questions":[{"template":"no_answer","prompt":"First","config":{}},{"template":"ordering","prompt":"Second","config":{"items":[{"text":"A"},{"text":"B"}]}}],"images":[]}'
   response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
     --data "${import_body}" -w $'\n%{http_code}' "${import_path}")"
   import_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
   if [[ "${response##*$'\n'}" != 201 || -z "${import_id}" ]] || ! jq -e \
-    '.name == "Imported quiz" and .description == "From JSON" and .play_style == "game_show" and .show_correct_answers == true and .randomize_questions == true and .question_limit == 0' \
+    '.name == "Imported quiz" and .description == "From JSON" and .play_style == "game_show" and .show_correct_answers == true and .randomize_questions == true and .randomize_answers == true and .question_limit == 0' \
     <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}"
     fail_test "quiz import failed: ${response}"
@@ -928,6 +928,7 @@ test_auth_login_session_lifecycle() {
       && ($manifest["play_style"] ?? null) === "game_show"
       && ($manifest["show_correct_answers"] ?? null) === true
       && ($manifest["randomize_questions"] ?? null) === true
+      && ($manifest["randomize_answers"] ?? null) === true
       && ($manifest["question_limit"] ?? null) === 0
       && count($manifest["questions"] ?? []) === 2
       && str_contains($json, "\n    \"version\": 1,") ? 0 : 1);
@@ -940,7 +941,7 @@ test_auth_login_session_lifecycle() {
     --data-binary "@${zip_file}" -w $'\n%{http_code}' "${import_path}")"
   rm -f "${zip_file}"
   zip_import_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
-  if [[ "${response##*$'\n'}" != 201 || -z "${zip_import_id}" ]] || ! jq -e '.play_style == "game_show" and .show_correct_answers == true and .randomize_questions == true and .question_limit == 0' <<<"${response%$'\n'*}" >/dev/null; then
+  if [[ "${response##*$'\n'}" != 201 || -z "${zip_import_id}" ]] || ! jq -e '.play_style == "game_show" and .show_correct_answers == true and .randomize_questions == true and .randomize_answers == true and .question_limit == 0' <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}"
     fail_test "quiz ZIP import failed: ${response}"
     return 1
@@ -1146,9 +1147,9 @@ test_auth_login_session_lifecycle() {
     "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${timed_quiz_id}")"
   [[ "${response##*$'\n'}" == 204 ]] || { fail_test "timed quiz cleanup failed: ${response}"; return 1; }
 
-  local secret_quiz_id secret_attempt_id secret_first secret_second secret_reveal secret_path hidden_second
+  local secret_quiz_id secret_attempt_id secret_first secret_second secret_reveal secret_path hidden_second secret_choice_index
   response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
-    --data '{"name":"Server scoring check","show_correct_answers":false}' \
+    --data '{"name":"Server scoring check","show_correct_answers":false,"randomize_answers":true}' \
     "${API_TEST_BASE_URL%/}/api/quiz/quizzes")"
   secret_quiz_id="$(jq -r '.id // empty' <<<"$response")"
   [[ "$secret_quiz_id" =~ ^[0-9]+$ ]] || { fail_test "scoring quiz creation failed: ${response}"; return 1; }
@@ -1168,24 +1169,33 @@ test_auth_login_session_lifecycle() {
     "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${secret_quiz_id}/attempts")"
   secret_attempt_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
   secret_first="$(jq -r '.questions[0].id // empty' <<<"${response%$'\n'*}")"
+  secret_choice_index="$(jq -r '[.questions[0].config.options[].text] | index("2")' <<<"${response%$'\n'*}")"
   [[ "${response##*$'\n'}" == 200 ]] && jq -e \
-    '.question_count == 3 and (.questions | length) == 1 and .questions[0].prompt == "Pick the prime" and
+    '.question_count == 3 and .randomize_answers == true and (.questions | length) == 1 and .questions[0].prompt == "Pick the prime" and
       (.questions[0].config.options | all(has("correct") | not)) and .score == null' \
     <<<"${response%$'\n'*}" >/dev/null \
     || { fail_test "active attempt exposed answers or a future question: ${response}"; return 1; }
+  [[ "$secret_choice_index" =~ ^[0-9]+$ ]] || { fail_test "correct choice missing from play presentation: ${response}"; return 1; }
   secret_path="${API_TEST_BASE_URL%/}/api/quiz/quizzes/${secret_quiz_id}/attempts/${secret_attempt_id}"
   hidden_second="$(test_psql quiz "SELECT id FROM public.quiz_attempt_question WHERE attempt_id = ${secret_attempt_id} AND position = 2;")"
   response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' \
     "${secret_path}/questions/${hidden_second}/start")"
   [[ "${response##*$'\n'}" == 404 ]] || { fail_test "future question was opened early: ${response}"; return 1; }
   response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
-    --data '{"answer":{"selected":[1]}}' -w $'\n%{http_code}' "${secret_path}/answers/${secret_first}")"
+    --data "$(jq -nc --argjson selected "$secret_choice_index" '{answer:{selected:[$selected]}}')" \
+    -w $'\n%{http_code}' "${secret_path}/answers/${secret_first}")"
   [[ "${response##*$'\n'}" == 200 ]] || { fail_test "first scoring answer was not saved: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"Server scoring check","randomize_answers":false}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${secret_quiz_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] && jq -e '.randomize_answers == false' \
+    <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "answer randomization setting did not update: ${response}"; return 1; }
   response="$(curl -sS -b "${cookie_file}" -X POST -H 'Content-Type: application/json' \
     --data "{\"after\":${secret_first}}" -w $'\n%{http_code}' "${secret_path}/next")"
   secret_second="$(jq -r '.questions[1].id // empty' <<<"${response%$'\n'*}")"
   [[ "${response##*$'\n'}" == 200 && "$secret_second" == "$hidden_second" ]] && jq -e \
-    '(.questions | length) == 2 and (.questions[1].config | has("answer") | not) and .score == null' \
+    '(.questions | length) == 2 and .randomize_answers == true and (.questions[1].config | has("answer") | not) and .score == null' \
     <<<"${response%$'\n'*}" >/dev/null \
     || { fail_test "next question exposed its answer: ${response}"; return 1; }
   response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \

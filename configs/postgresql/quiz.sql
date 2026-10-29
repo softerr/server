@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS public.quiz (
     is_public BOOLEAN NOT NULL DEFAULT FALSE,
     allow_go_back BOOLEAN NOT NULL DEFAULT TRUE,
     randomize_questions BOOLEAN NOT NULL DEFAULT FALSE,
+    randomize_answers BOOLEAN NOT NULL DEFAULT FALSE,
     question_limit INTEGER
         CONSTRAINT quiz_question_limit_check CHECK (question_limit BETWEEN 0 AND 1000),
     time_limit_seconds INTEGER CHECK (time_limit_seconds BETWEEN 1 AND 86400),
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS public.quiz_attempt (
     allow_go_back BOOLEAN NOT NULL DEFAULT TRUE,
     furthest_position INTEGER NOT NULL DEFAULT 0,
     randomize_questions BOOLEAN NOT NULL DEFAULT FALSE,
+    randomize_answers BOOLEAN NOT NULL DEFAULT FALSE,
     question_limit INTEGER CHECK (question_limit BETWEEN 0 AND 1000),
     time_limit_seconds INTEGER CHECK (time_limit_seconds BETWEEN 1 AND 86400),
     deadline_at TIMESTAMPTZ,
@@ -101,6 +103,7 @@ ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS time_limit_seconds INTEGER
     CHECK (time_limit_seconds BETWEEN 1 AND 86400);
 ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS allow_go_back BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS randomize_answers BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS quiz_public_id_idx
     ON public.quiz (id DESC) WHERE is_public = TRUE;
 ALTER TABLE public.question ADD COLUMN IF NOT EXISTS time_limit_seconds INTEGER
@@ -108,6 +111,7 @@ ALTER TABLE public.question ADD COLUMN IF NOT EXISTS time_limit_seconds INTEGER
 ALTER TABLE public.quiz_attempt ADD COLUMN IF NOT EXISTS time_limit_seconds INTEGER
     CHECK (time_limit_seconds BETWEEN 1 AND 86400);
 ALTER TABLE public.quiz_attempt ADD COLUMN IF NOT EXISTS allow_go_back BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE public.quiz_attempt ADD COLUMN IF NOT EXISTS randomize_answers BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE public.quiz_attempt ADD COLUMN IF NOT EXISTS furthest_position INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE public.quiz_attempt ADD COLUMN IF NOT EXISTS deadline_at TIMESTAMPTZ;
 ALTER TABLE public.quiz_attempt_source ADD COLUMN IF NOT EXISTS time_limit_seconds INTEGER

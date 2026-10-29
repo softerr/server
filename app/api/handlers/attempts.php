@@ -47,7 +47,8 @@ function attemptDocument($db, array $row): array
         $question = [
             'id' => (int) $snapshot['id'], 'source_question_id' => (int) $snapshot['source_question_id'],
             'template' => $snapshot['template'], 'prompt' => $snapshot['prompt'],
-            'config' => (object) playQuestionConfig($snapshot['template'], $config, (int) $snapshot['id'], false),
+            'config' => (object) playQuestionConfig($snapshot['template'], $config, (int) $snapshot['id'], false,
+                $row['randomize_answers'] === 't'),
             'time_limit_seconds' => $snapshot['time_limit_seconds'] === null ? null : (int) $snapshot['time_limit_seconds'],
             'started' => $snapshot['started_at'] !== null,
             'deadline_ms' => $snapshot['deadline_ms'] === null ? null : (int) $snapshot['deadline_ms'],
@@ -55,11 +56,21 @@ function attemptDocument($db, array $row): array
         if ($showSolutions) {
             if ($snapshot['template'] === 'match') {
                 $config['_display_order'] = presentationOrder(count($config['pairs']), (int) $snapshot['id'], 'match');
+                $config['_keyword_order'] = $row['randomize_answers'] === 't'
+                    ? presentationOrder(count($config['pairs']), (int) $snapshot['id'], 'match-keywords')
+                    : array_keys($config['pairs']);
             } elseif ($snapshot['template'] === 'ordering') {
                 $config['_display_order'] = presentationOrder(count($config['items']), (int) $snapshot['id'], 'ordering');
             } elseif ($snapshot['template'] === 'categorize') {
                 $itemCount = array_sum(array_map(static fn (array $category): int => count($category['items']), $config['categories']));
                 $config['_display_order'] = presentationOrder($itemCount, (int) $snapshot['id'], 'categorize');
+                $config['_category_order'] = $row['randomize_answers'] === 't'
+                    ? presentationOrder(count($config['categories']), (int) $snapshot['id'], 'category-labels')
+                    : array_keys($config['categories']);
+            } elseif (in_array($snapshot['template'], ['multiple_choice', 'one_choice'], true)) {
+                $config['_option_order'] = $row['randomize_answers'] === 't'
+                    ? presentationOrder(count($config['options']), (int) $snapshot['id'], 'choices')
+                    : array_keys($config['options']);
             } elseif ($snapshot['template'] === 'fill_blanks') {
                 $imageAnswerIndices = [];
                 foreach ($config['answers'] as $answerIndex => $answer) {
@@ -93,7 +104,7 @@ function attemptDocument($db, array $row): array
         foreach ($allQuestions as $index => $snapshot) {
             $saved = $answers[$snapshot['id']] ?? null;
             $grade = gradeAttemptAnswer($snapshot['template'], json_decode($snapshot['config'], true),
-                is_array($saved) ? $saved : null, (int) $snapshot['id']);
+                is_array($saved) ? $saved : null, (int) $snapshot['id'], $row['randomize_answers'] === 't');
             if ($grade === null) $score['ungraded']++;
             else {
                 $score['graded']++;
@@ -109,6 +120,7 @@ function attemptDocument($db, array $row): array
         'completed' => $row['completed'],
         'play_style' => $row['play_style'],
         'randomize_questions' => $row['randomize_questions'] === 't',
+        'randomize_answers' => $row['randomize_answers'] === 't',
         'allow_go_back' => $row['allow_go_back'] === 't',
         'furthest_position' => (int) $row['furthest_position'],
         'question_limit' => $row['question_limit'] === null ? null : (int) $row['question_limit'],
@@ -192,7 +204,7 @@ function handleStartQuizAttempt(int $quizId): never
         }
     }
     $result = @pg_query_params($db,
-        'SELECT id, quiz_id, play_style, allow_go_back, furthest_position, randomize_questions, question_limit, time_limit_seconds, deadline_at, created, completed
+        'SELECT id, quiz_id, play_style, allow_go_back, furthest_position, randomize_questions, randomize_answers, question_limit, time_limit_seconds, deadline_at, created, completed
          FROM public.quiz_attempt
          WHERE quiz_id = $1 AND user_id = $2 AND completed IS NULL FOR UPDATE', [$quizId, $playerId]);
     if ($result === false) respond(500, ['error' => 'Failed to start quiz']);
@@ -207,11 +219,11 @@ function handleStartQuizAttempt(int $quizId): never
             respond(404, ['error' => 'Quiz not found']);
         }
         $result = @pg_query_params($db,
-            'INSERT INTO public.quiz_attempt (quiz_id, user_id, play_style, allow_go_back, randomize_questions, question_limit, time_limit_seconds, deadline_at)
-             SELECT id, $2::bigint, play_style, allow_go_back, randomize_questions, question_limit, time_limit_seconds,
+            'INSERT INTO public.quiz_attempt (quiz_id, user_id, play_style, allow_go_back, randomize_questions, randomize_answers, question_limit, time_limit_seconds, deadline_at)
+             SELECT id, $2::bigint, play_style, allow_go_back, randomize_questions, randomize_answers, question_limit, time_limit_seconds,
                 CASE WHEN time_limit_seconds IS NULL THEN NULL ELSE clock_timestamp() + time_limit_seconds * INTERVAL \'1 second\' END
              FROM public.quiz WHERE id = $1
-             RETURNING id, quiz_id, play_style, allow_go_back, furthest_position, randomize_questions, question_limit, time_limit_seconds, deadline_at, created, completed',
+             RETURNING id, quiz_id, play_style, allow_go_back, furthest_position, randomize_questions, randomize_answers, question_limit, time_limit_seconds, deadline_at, created, completed',
             [$quizId, $playerId]);
         if ($result === false) respond(500, ['error' => 'Failed to start quiz']);
         $attempt = pg_fetch_assoc($result);
@@ -267,7 +279,7 @@ function handleListQuizAttempts(int $quizId): never
         respond(400, ['error' => 'Invalid before cursor']);
     }
     $result = @pg_query_params($db,
-        'SELECT a.id, a.quiz_id, a.play_style, a.allow_go_back, a.randomize_questions, a.question_limit, a.created, a.completed,
+        'SELECT a.id, a.quiz_id, a.play_style, a.allow_go_back, a.randomize_questions, a.randomize_answers, a.question_limit, a.created, a.completed,
             (SELECT COUNT(*) FROM public.quiz_attempt_question s WHERE s.attempt_id = a.id) AS question_count,
             (SELECT COUNT(*) FROM public.quiz_answer r WHERE r.attempt_id = a.id) AS answered_count
          FROM public.quiz_attempt a
@@ -281,6 +293,7 @@ function handleListQuizAttempts(int $quizId): never
             'created' => $row['created'], 'completed' => $row['completed'],
             'play_style' => $row['play_style'],
             'randomize_questions' => $row['randomize_questions'] === 't',
+            'randomize_answers' => $row['randomize_answers'] === 't',
             'allow_go_back' => $row['allow_go_back'] === 't',
             'question_limit' => $row['question_limit'] === null ? null : (int) $row['question_limit'],
             'question_count' => (int) $row['question_count'],
@@ -295,7 +308,7 @@ function handleListQuizAttempts(int $quizId): never
 function ownedQuizAttempt($db, int $quizId, int $attemptId, int $authUserId, bool $lock = false): array
 {
     $result = @pg_query_params($db,
-        'SELECT a.id, a.quiz_id, a.play_style, a.allow_go_back, a.furthest_position, a.randomize_questions, a.question_limit,
+        'SELECT a.id, a.quiz_id, a.play_style, a.allow_go_back, a.furthest_position, a.randomize_questions, a.randomize_answers, a.question_limit,
             a.time_limit_seconds, a.deadline_at, a.created, a.completed FROM public.quiz_attempt a
          JOIN public."user" u ON u.id = a.user_id
          WHERE a.id = $1 AND a.quiz_id = $2 AND u.auth_user_id = $3'
@@ -504,7 +517,7 @@ function handleCompleteQuizAttempt(int $quizId, int $attemptId): never
     if ($attempt['completed'] === null) {
         $result = @pg_query_params($db,
             'UPDATE public.quiz_attempt SET completed = CURRENT_TIMESTAMP WHERE id = $1
-             RETURNING id, quiz_id, play_style, allow_go_back, furthest_position, randomize_questions, question_limit, time_limit_seconds, deadline_at, created, completed', [$attemptId]);
+             RETURNING id, quiz_id, play_style, allow_go_back, furthest_position, randomize_questions, randomize_answers, question_limit, time_limit_seconds, deadline_at, created, completed', [$attemptId]);
         if ($result === false) respond(500, ['error' => 'Failed to finish quiz']);
         $attempt = pg_fetch_assoc($result);
     }

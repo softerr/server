@@ -1298,6 +1298,10 @@ paths:
                 randomize_questions:
                   type: boolean
                   default: false
+                randomize_answers:
+                  type: boolean
+                  default: false
+                  description: Shuffle choice options, match keyword rows, and category labels for each attempt.
                 question_limit:
                   type: [integer, 'null']
                   minimum: 0
@@ -1495,6 +1499,9 @@ paths:
                 randomize_questions:
                   type: boolean
                   description: Omit to keep the current order setting.
+                randomize_answers:
+                  type: boolean
+                  description: Omit to keep the current answer order setting.
                 question_limit:
                   type: [integer, 'null']
                   minimum: 0
@@ -2141,7 +2148,7 @@ components:
   schemas:
     Quiz:
       type: object
-      required: [id, name, description, play_style, show_correct_answers, is_public, allow_go_back, randomize_questions, question_limit, time_limit_seconds, play_count, created]
+      required: [id, name, description, play_style, show_correct_answers, is_public, allow_go_back, randomize_questions, randomize_answers, question_limit, time_limit_seconds, play_count, created]
       properties:
         id:
           type: integer
@@ -2166,6 +2173,9 @@ components:
         randomize_questions:
           type: boolean
           description: Select question order randomly when an attempt starts.
+        randomize_answers:
+          type: boolean
+          description: Shuffle choice options, match keyword rows, and category labels per attempt. Match definitions, ordering items, category items, and blank image choices retain their protective shuffling regardless of this setting.
         question_limit:
           type: [integer, 'null']
           minimum: 0
@@ -2217,6 +2227,9 @@ components:
         randomize_questions:
           type: boolean
           default: false
+        randomize_answers:
+          type: boolean
+          default: false
         question_limit:
           type: [integer, 'null']
           minimum: 0
@@ -2251,13 +2264,14 @@ components:
                 contentEncoding: base64
     QuizAttemptSummary:
       type: object
-      required: [id, quiz_id, play_style, allow_go_back, randomize_questions, question_limit, created, completed]
+      required: [id, quiz_id, play_style, allow_go_back, randomize_questions, randomize_answers, question_limit, created, completed]
       properties:
         id: { type: integer, format: int64 }
         quiz_id: { type: integer, format: int64 }
         play_style: { type: string, enum: [basic, game_show] }
         allow_go_back: { type: boolean }
         randomize_questions: { type: boolean }
+        randomize_answers: { type: boolean }
         question_limit: { type: [integer, 'null'], minimum: 0, maximum: 1000 }
         created: { type: string }
         completed: { type: [string, 'null'] }

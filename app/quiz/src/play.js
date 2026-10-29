@@ -280,7 +280,7 @@ export function buildQuestion(question, index) {
     const pairs = config.pairs || []
     const definitions = config.definitions || pairs
     const activity = dragAssignment(answer,
-      shuffledIndexes(pairs.length).map((pairIndex) => ({
+      (config.definitions ? pairs.map((_, index) => index) : shuffledIndexes(pairs.length)).map((pairIndex) => ({
         text: definitions[pairIndex].definition, imageId: definitions[pairIndex].definition_image_id,
         target: pairIndex, source: pairIndex,
       })),
@@ -308,7 +308,7 @@ export function buildQuestion(question, index) {
     }
   } else if (question.template === 'ordering') {
     const items = config.items || []
-    const order = shuffledIndexes(items.length)
+    const order = config._ordered_for_play ? items.map((_, index) => index) : shuffledIndexes(items.length)
     const rows = element('div', 'play-order-list')
     let orderLocked = false
     function renderOrder() {
@@ -427,7 +427,7 @@ export function buildQuestion(question, index) {
       : categories.flatMap((category, categoryIndex) =>
         (category.items || []).map((item) => ({ text: item.text, imageId: item.image_id, target: categoryIndex })))
     items.forEach((item, source) => { item.source = source })
-    const activity = dragAssignment(answer, shuffledIndexes(items.length).map((i) => items[i]),
+    const activity = dragAssignment(answer, (config.items ? items.map((_, index) => index) : shuffledIndexes(items.length)).map((i) => items[i]),
       categories.map((category) => ({ text: category.name, imageId: category.name_image_id })), Infinity)
     grade = activity.grade
     finish = activity.finish

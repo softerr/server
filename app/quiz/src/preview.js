@@ -75,9 +75,25 @@ export function openQuizPreview(dialog, quiz, questions) {
   let tickTimer = null
   let completed = false
   const expiredQuestions = new Set()
+  function previewPresentation(source) {
+    if (!quiz.randomize_answers) return source
+    const config = { ...source.config }
+    const shuffle = (items) => {
+      const copy = [...items]
+      for (let index = copy.length - 1; index > 0; index--) {
+        const other = Math.floor(Math.random() * (index + 1))
+        ;[copy[index], copy[other]] = [copy[other], copy[index]]
+      }
+      return copy
+    }
+    if (['multiple_choice', 'one_choice'].includes(source.template)) config.options = shuffle(config.options)
+    if (source.template === 'match') config.pairs = shuffle(config.pairs)
+    if (source.template === 'categorize') config.categories = shuffle(config.categories)
+    return { ...source, config }
+  }
   function appendView() {
     const source = sourceAt(views.length)
-    const view = buildQuestion(source, views.length)
+    const view = buildQuestion(previewPresentation(source), views.length)
     view.timeLimit = source.time_limit_seconds
     views.push(view)
     deadlines.push(null)

@@ -74,13 +74,14 @@ function correctAnswers(question) {
 function markReviewedChoices(card, question) {
   const choices = card.querySelectorAll('.play-choice-list .play-choice')
   const options = question.solution?.options || []
+  const optionOrder = question.solution?._option_order || options.map((_, index) => index)
   const booleanChoice = question.template === 'true_false' || question.template === 'yes_no'
   choices.forEach((choice, index) => {
     const input = choice.querySelector('input')
     const selected = input?.checked === true
     const correct = booleanChoice
       ? input?.value === String(question.solution?.answer)
-      : options[index]?.correct === true
+      : options[optionOrder[index]]?.correct === true
     choice.classList.add(selected === correct ? 'is-review-correct' : 'is-review-incorrect')
     const status = selected
       ? (correct ? 'Correctly selected' : 'Incorrectly selected')
@@ -102,10 +103,12 @@ function markReviewedMatch(card, question, savedAnswer) {
   const rows = card.querySelectorAll('.play-drag-activity.is-match .play-drop-row')
   const pairs = question.solution?.pairs || []
   const displayOrder = question.solution?._display_order || pairs.map((_, index) => index)
-  pairs.forEach((pair, index) => {
+  const keywordOrder = question.solution?._keyword_order || pairs.map((_, index) => index)
+  keywordOrder.forEach((sourceIndex, index) => {
+    const pair = pairs[sourceIndex]
     const row = rows[index]
     if (!row) return
-    const correct = String(savedAnswer?.assignments?.[index]) === String(displayOrder.indexOf(index))
+    const correct = String(savedAnswer?.assignments?.[index]) === String(displayOrder.indexOf(sourceIndex))
     const dragged = row.querySelector('.play-drop-zone .play-drag-card')
     if (dragged) dragged.classList.add(correct ? 'is-review-correct' : 'is-review-incorrect')
     row.append(element('span', 'review-choice-status', correct ? 'Correct match' : 'Incorrect match'))
@@ -119,8 +122,9 @@ function markReviewedMatch(card, question, savedAnswer) {
 
 function markReviewedCategories(card, question, savedAnswer) {
   const categories = question.solution?.categories || []
+  const categoryOrder = question.solution?._category_order || categories.map((_, index) => index)
   const sourceItems = categories.flatMap((category, categoryIndex) =>
-    (category.items || []).map((answer) => ({ answer, categoryIndex })))
+    (category.items || []).map((answer) => ({ answer, categoryIndex: categoryOrder.indexOf(categoryIndex) })))
   const expectedItems = (question.solution?._display_order || sourceItems.map((_, index) => index))
     .map((source) => sourceItems[source])
   const items = card.querySelectorAll('.play-drag-activity .play-drag-card[data-source]')

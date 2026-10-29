@@ -41,6 +41,10 @@ key to its local user. The API creates the local user on the first quiz create.
   earlier questions during an attempt. The setting is copied into each attempt.
   `is_public` defaults to `false`. Set it to `true` to show the quiz in Explore
   and let other signed-in users play it.
+  `randomize_answers` defaults to `false`. When enabled, each attempt shuffles
+  choice options, match keyword rows, and category labels. The order is stable
+  when an attempt is resumed. Match definitions, ordering items, category items,
+  and blank image choices are always shuffled to avoid exposing their answers.
 - `POST /api/quiz/quizzes/import` accepts version 1 quiz JSON or ZIP and creates
   a new quiz with its questions in order. The request is limited to 48 MiB and
   100 questions. Send JSON as `application/json` or ZIP bytes as
