@@ -379,7 +379,7 @@ test_auth_login_session_lifecycle() {
   local quiz_id
   quiz_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
   if [[ "${response##*$'\n'}" != 201 ]] || ! jq -e \
-    '.name == "Geography" and .description == ""' \
+    '.name == "Geography" and .description == "" and .play_style == "basic" and .show_correct_answers == false' \
     <<<"${response%$'\n'*}" >/dev/null || [[ -z "${quiz_id}" ]]; then
     rm -f "${cookie_file}"
     fail_test "quiz creation failed: ${response}"
@@ -407,6 +407,20 @@ test_auth_login_session_lifecycle() {
     fail_test 'blank quiz name was accepted'
     return 1
   fi
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+    --data '{"name":"Invalid style","play_style":"playful"}' -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes")"
+  if [[ "${response##*$'\n'}" != 400 ]]; then
+    rm -f "${cookie_file}"
+    fail_test 'invalid quiz play style was accepted'
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+    --data '{"name":"Invalid review setting","show_correct_answers":"yes"}' -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes")"
+  if [[ "${response##*$'\n'}" != 400 ]]; then
+    rm -f "${cookie_file}"
+    fail_test 'invalid quiz review setting was accepted'
+    return 1
+  fi
 
   response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
     --data '{"name":"  World map  "}' -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}")"
@@ -416,10 +430,10 @@ test_auth_login_session_lifecycle() {
     return 1
   fi
   response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
-    --data '{"name":"World map","description":"  Countries and capitals  "}' \
+    --data '{"name":"World map","description":"  Countries and capitals  ","play_style":"game_show","show_correct_answers":true}' \
     -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}")"
   if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
-    '.description == "Countries and capitals"' \
+    '.description == "Countries and capitals" and .play_style == "game_show" and .show_correct_answers == true' \
     <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}"
     fail_test "quiz description or template update failed: ${response}"
@@ -428,7 +442,7 @@ test_auth_login_session_lifecycle() {
   response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}")"
   if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
-    '.description == "Countries and capitals"' \
+    '.description == "Countries and capitals" and .play_style == "game_show" and .show_correct_answers == true' \
     <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}"
     fail_test "quiz editor fields were not saved: ${response}"
@@ -436,7 +450,7 @@ test_auth_login_session_lifecycle() {
   fi
   response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes")"
   if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --argjson id "${quiz_id}" \
-    '.quizzes | any(.id == $id and .name == "World map" and .description == "Countries and capitals")' \
+    '.quizzes | any(.id == $id and .name == "World map" and .description == "Countries and capitals" and .play_style == "game_show" and .show_correct_answers == true)' \
     <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}"
     fail_test "renamed quiz missing from library: ${response}"
@@ -526,6 +540,222 @@ test_auth_login_session_lifecycle() {
     fail_test "quiz question update failed: ${response}"
     return 1
   fi
+  local attempt_path attempt_id resumed_id attempt_question_id resumed_question_id
+  attempt_path="${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}/attempts"
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}")"
+  attempt_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  if [[ "${response##*$'\n'}" != 200 || -z "${attempt_id}" ]] || ! jq -e \
+    --argjson id "${question_id}" \
+    '.play_style == "game_show" and (.questions | length) == 13 and any(.questions[]; .source_question_id == $id and .prompt == "Pick one prime")' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "could not start quiz attempt: ${response}"
+    return 1
+  fi
+  attempt_question_id="$(jq -r --argjson id "${question_id}" '.questions[] | select(.source_question_id == $id) | .id' <<<"${response%$'\n'*}")"
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    --data '{"answer":{"selected":[0]}}' -w $'\n%{http_code}' \
+    "${attempt_path}/${attempt_id}/answers/${attempt_question_id}")"
+  if [[ "${response##*$'\n'}" != 200 ]]; then
+    rm -f "${cookie_file}"
+    fail_test "could not save quiz answer: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}")"
+  resumed_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  if [[ "${response##*$'\n'}" != 200 || "${resumed_id}" != "${attempt_id}" ]] || ! jq -e \
+    --arg id "${attempt_question_id}" '.answers[$id].selected == [0]' <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "quiz attempt did not resume saved answer: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}/${attempt_id}/complete")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e '.completed != null' <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "could not complete quiz attempt: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' "${attempt_path}/${attempt_id}")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --arg id "${attempt_question_id}" \
+    '.completed != null and .answers[$id].selected == [0]' <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "completed quiz answer was not retained: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    --data '{"answer":{"selected":[1]}}' -w $'\n%{http_code}' \
+    "${attempt_path}/${attempt_id}/answers/${attempt_question_id}")"
+  if [[ "${response##*$'\n'}" != 409 ]]; then
+    rm -f "${cookie_file}"
+    fail_test "completed quiz attempt accepted an answer: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}")"
+  resumed_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  resumed_question_id="$(jq -r --argjson id "${question_id}" '.questions[] | select(.source_question_id == $id) | .id' <<<"${response%$'\n'*}")"
+  if [[ "${response##*$'\n'}" != 200 || -z "${resumed_id}" || "${resumed_id}" == "${attempt_id}" ]]; then
+    rm -f "${cookie_file}"
+    fail_test "new quiz attempt was not created: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' "${attempt_path}")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
+    --argjson current "${resumed_id}" --argjson previous "${attempt_id}" \
+    '.attempts | length == 2 and .[0].id == $current and .[0].completed == null and .[0].question_count == 13 and .[1].id == $previous and .[1].completed != null' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "quiz attempt history is incomplete: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' "${attempt_path}?before=${resumed_id}")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --argjson previous "${attempt_id}" \
+    '.attempts | length == 1 and .[0].id == $previous' <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "quiz attempt pagination failed: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    --data '{"answer":{}}' -w $'\n%{http_code}' \
+    "${attempt_path}/${resumed_id}/answers/${resumed_question_id}")"
+  if [[ "${response##*$'\n'}" != 200 ]]; then
+    rm -f "${cookie_file}"
+    fail_test "empty quiz answer object was rejected: ${response}"
+    return 1
+  fi
+  # Question appearances retain separate answers when a source repeats.
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}/${resumed_id}/complete")"
+  if [[ "${response##*$'\n'}" != 200 ]]; then
+    fail_test "could not finish active attempt before sequence checks: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"World map","randomize_questions":true,"question_limit":null}' \
+    -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}")"
+  if [[ "${response##*$'\n'}" != 200 ]]; then
+    fail_test "could not configure randomized All mode: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}")"
+  local all_attempt_id all_sources
+  all_attempt_id="$(jq -r '.id' <<<"${response%$'\n'*}")"
+  all_sources="$(jq -c '[.questions[].source_question_id] | sort' <<<"${response%$'\n'*}")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
+    '(.questions | length) == 13 and ([.questions[].source_question_id] | unique | length) == 13 and .randomize_questions == true and .question_limit == null' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    fail_test "randomized All mode repeated or omitted a source: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}/${all_attempt_id}/complete")"
+  if [[ "${response##*$'\n'}" != 200 ]]; then
+    fail_test "could not finish randomized All attempt: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"World map","randomize_questions":false,"question_limit":0}' \
+    -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}")"
+  if [[ "${response##*$'\n'}" != 200 ]]; then
+    fail_test "could not configure unlimited ordered mode: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}")"
+  local infinite_attempt_id first_source first_instance next_instance step
+  infinite_attempt_id="$(jq -r '.id' <<<"${response%$'\n'*}")"
+  first_instance="$(jq -r '.questions[0].id' <<<"${response%$'\n'*}")"
+  first_source="$(jq -r '.questions[0].source_question_id' <<<"${response%$'\n'*}")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
+    '(.questions | length) == 1 and .question_limit == 0' <<<"${response%$'\n'*}" >/dev/null; then
+    fail_test "unlimited attempt did not start with one question: ${response}"
+    return 1
+  fi
+  next_instance="${first_instance}"
+  for step in {1..13}; do
+    response="$(curl -sS -b "${cookie_file}" -X POST -H 'Content-Type: application/json' \
+      --data "{\"after\":${next_instance}}" -w $'\n%{http_code}' \
+      "${attempt_path}/${infinite_attempt_id}/next")"
+    next_instance="$(jq -r '.questions[-1].id // empty' <<<"${response%$'\n'*}")"
+    if [[ "${response##*$'\n'}" != 200 || -z "${next_instance}" ]]; then
+      fail_test "unlimited attempt could not advance: ${response}"
+      return 1
+    fi
+  done
+  if ! jq -e --argjson source "${first_source}" \
+    '(.questions | length) == 14 and .questions[13].source_question_id == $source and ([.questions[].id] | unique | length) == 14' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    fail_test "unlimited ordered mode did not cycle: ${response}"
+    return 1
+  fi
+  local repeated_instance
+  repeated_instance="${next_instance}"
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    --data '{"answer":{"text":"first"}}' -w $'\n%{http_code}' \
+    "${attempt_path}/${infinite_attempt_id}/answers/${first_instance}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "could not save first repeated answer: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    --data '{"answer":{"text":"second"}}' -w $'\n%{http_code}' \
+    "${attempt_path}/${infinite_attempt_id}/answers/${repeated_instance}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "could not save second repeated answer: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' "${attempt_path}/${infinite_attempt_id}")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
+    --arg first "${first_instance}" --arg second "${repeated_instance}" \
+    '.answers[$first].text == "first" and .answers[$second].text == "second"' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    fail_test "repeated questions did not retain separate answers: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}/${infinite_attempt_id}/complete")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "could not finish unlimited attempt: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"World map","randomize_questions":true,"question_limit":0}' \
+    -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "could not configure unlimited random mode: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}")"
+  local random_attempt_id random_after
+  random_attempt_id="$(jq -r '.id' <<<"${response%$'\n'*}")"
+  random_after="$(jq -r '.questions[0].id' <<<"${response%$'\n'*}")"
+  response="$(curl -sS -b "${cookie_file}" -X POST -H 'Content-Type: application/json' \
+    --data "{\"after\":${random_after}}" -w $'\n%{http_code}' \
+    "${attempt_path}/${random_attempt_id}/next")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --argjson sources "${all_sources}" \
+    '(.questions | length) == 2 and .questions[0].source_question_id != .questions[1].source_question_id and all(.questions[]; .source_question_id as $id | $sources | index($id) != null)' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    fail_test "unlimited random mode did not append a bank question: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}/${random_attempt_id}/complete")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "could not finish unlimited random attempt: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"World map","randomize_questions":false,"question_limit":15}' \
+    -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "could not configure fixed count: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
+    '(.questions | length) == 15 and .questions[0].source_question_id == .questions[13].source_question_id and ([.questions[].id] | unique | length) == 15' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    fail_test "fixed count did not cycle in order: ${response}"
+    return 1
+  fi
+  local ordered_attempt_id
+  ordered_attempt_id="$(jq -r '.id' <<<"${response%$'\n'*}")"
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}/${ordered_attempt_id}/complete")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "could not finish fixed ordered attempt: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"World map","randomize_questions":true,"question_limit":30}' \
+    -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "could not configure fixed random mode: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X POST -w $'\n%{http_code}' "${attempt_path}")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e \
+    '(.questions | length) == 30 and [.questions[].source_question_id] as $ids | all(range(1; $ids | length); $ids[.] != $ids[. - 1])' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    fail_test "fixed random mode repeated an adjacent question: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X POST -H 'Content-Type: application/json' \
+    --data "{\"after\":${random_after}}" -w $'\n%{http_code}' \
+    "${attempt_path}/${random_attempt_id}/next")"
+  if [[ "${response##*$'\n'}" != 409 ]]; then
+    fail_test "completed random attempt accepted next question: ${response}"
+    return 1
+  fi
   local boundary_template boundary_key boundary_payload
   for boundary_template in multiple_choice match ordering fill_blanks categorize; do
     case "${boundary_template}" in
@@ -583,12 +813,12 @@ test_auth_login_session_lifecycle() {
 
   local import_path import_id import_body
   import_path="${API_TEST_BASE_URL%/}/api/quiz/quizzes/import"
-  import_body='{"format":"softerr-quiz","version":1,"name":"Imported quiz","description":"From JSON","questions":[{"template":"no_answer","prompt":"First","config":{}},{"template":"ordering","prompt":"Second","config":{"items":[{"text":"A"},{"text":"B"}]}}],"images":[]}'
+  import_body='{"format":"softerr-quiz","version":1,"name":"Imported quiz","description":"From JSON","play_style":"game_show","show_correct_answers":true,"randomize_questions":true,"question_limit":0,"questions":[{"template":"no_answer","prompt":"First","config":{}},{"template":"ordering","prompt":"Second","config":{"items":[{"text":"A"},{"text":"B"}]}}],"images":[]}'
   response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
     --data "${import_body}" -w $'\n%{http_code}' "${import_path}")"
   import_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
   if [[ "${response##*$'\n'}" != 201 || -z "${import_id}" ]] || ! jq -e \
-    '.name == "Imported quiz" and .description == "From JSON"' \
+    '.name == "Imported quiz" and .description == "From JSON" and .play_style == "game_show" and .show_correct_answers == true and .randomize_questions == true and .question_limit == 0' \
     <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}"
     fail_test "quiz import failed: ${response}"
@@ -613,6 +843,10 @@ test_auth_login_session_lifecycle() {
     $json = $zip->getFromName("quiz.json");
     $manifest = json_decode($json, true);
     exit(($manifest["version"] ?? null) === 1
+      && ($manifest["play_style"] ?? null) === "game_show"
+      && ($manifest["show_correct_answers"] ?? null) === true
+      && ($manifest["randomize_questions"] ?? null) === true
+      && ($manifest["question_limit"] ?? null) === 0
       && count($manifest["questions"] ?? []) === 2
       && str_contains($json, "\n    \"version\": 1,") ? 0 : 1);
   ' "${zip_file}"; then
@@ -624,7 +858,7 @@ test_auth_login_session_lifecycle() {
     --data-binary "@${zip_file}" -w $'\n%{http_code}' "${import_path}")"
   rm -f "${zip_file}"
   zip_import_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
-  if [[ "${response##*$'\n'}" != 201 || -z "${zip_import_id}" ]]; then
+  if [[ "${response##*$'\n'}" != 201 || -z "${zip_import_id}" ]] || ! jq -e '.play_style == "game_show" and .show_correct_answers == true and .randomize_questions == true and .question_limit == 0' <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}"
     fail_test "quiz ZIP import failed: ${response}"
     return 1
@@ -704,6 +938,14 @@ test_auth_login_session_lifecycle() {
   if [[ "${response##*$'\n'}" != 204 ]]; then
     rm -f "${cookie_file}"
     fail_test "quiz question deletion failed: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' "${attempt_path}/${attempt_id}")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --arg id "${attempt_question_id}" \
+    '.answers[$id].selected == [0] and any(.questions[]; .id == ($id | tonumber) and .prompt == "Pick one prime")' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "deleted question was lost from attempt review: ${response}"
     return 1
   fi
 

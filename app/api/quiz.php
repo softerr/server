@@ -9,6 +9,7 @@ require_once __DIR__ . '/lib/session.php';
 require_once __DIR__ . '/handlers/images.php';
 require_once __DIR__ . '/handlers/quizzes.php';
 require_once __DIR__ . '/handlers/questions.php';
+require_once __DIR__ . '/handlers/attempts.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $path = apiRequestPath('/api/quiz');
@@ -48,6 +49,47 @@ if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/export\.zip$#', $pa
     $quizId = filter_var($exportMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($quizId === false) respond(404, ['error' => 'Not found']);
     if ($method === 'GET') handleExportQuizZip($quizId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/attempts$#', $path, $attemptMatch)) {
+    $quizId = filter_var($attemptMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($quizId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'GET') handleListQuizAttempts($quizId);
+    if ($method === 'POST') handleStartQuizAttempt($quizId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/attempts/([1-9][0-9]*)$#', $path, $attemptMatch)) {
+    $quizId = filter_var($attemptMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $attemptId = filter_var($attemptMatch[2], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($quizId === false || $attemptId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'GET') handleGetQuizAttempt($quizId, $attemptId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/attempts/([1-9][0-9]*)/next$#', $path, $attemptMatch)) {
+    $quizId = filter_var($attemptMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $attemptId = filter_var($attemptMatch[2], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($quizId === false || $attemptId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'POST') handleNextQuizQuestion($quizId, $attemptId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/attempts/([1-9][0-9]*)/answers/([1-9][0-9]*)$#', $path, $answerMatch)) {
+    $quizId = filter_var($answerMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $attemptId = filter_var($answerMatch[2], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $questionId = filter_var($answerMatch[3], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($quizId === false || $attemptId === false || $questionId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'PUT') handleSaveQuizAnswer($quizId, $attemptId, $questionId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/quizzes/([1-9][0-9]*)/attempts/([1-9][0-9]*)/complete$#', $path, $attemptMatch)) {
+    $quizId = filter_var($attemptMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $attemptId = filter_var($attemptMatch[2], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($quizId === false || $attemptId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'POST') handleCompleteQuizAttempt($quizId, $attemptId);
     respond(405, ['error' => 'Method not allowed']);
 }
 

@@ -8,8 +8,32 @@ CREATE TABLE IF NOT EXISTS public.quiz (
     user_id BIGINT NOT NULL REFERENCES public."user"(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     description VARCHAR(1000) NOT NULL DEFAULT '',
+    play_style VARCHAR(16) NOT NULL DEFAULT 'basic',
+    show_correct_answers BOOLEAN NOT NULL DEFAULT FALSE,
+    randomize_questions BOOLEAN NOT NULL DEFAULT FALSE,
+    question_limit INTEGER,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS play_style VARCHAR(16) NOT NULL DEFAULT 'basic';
+ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS show_correct_answers BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS randomize_questions BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.quiz ADD COLUMN IF NOT EXISTS question_limit INTEGER;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.quiz'::regclass
+        AND conname = 'quiz_question_limit_check') THEN
+        ALTER TABLE public.quiz ADD CONSTRAINT quiz_question_limit_check
+            CHECK (question_limit BETWEEN 0 AND 1000);
+    END IF;
+END $$;
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conrelid = 'public.quiz'::regclass
+          AND conname = 'quiz_play_style_check'
+    ) THEN
+        ALTER TABLE public.quiz ADD CONSTRAINT quiz_play_style_check
+            CHECK (play_style IN ('basic', 'game_show'));
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS quiz_user_id_id_idx
     ON public.quiz (user_id, id DESC);
 
@@ -29,11 +53,67 @@ CREATE TABLE IF NOT EXISTS public.question (
 CREATE INDEX IF NOT EXISTS question_quiz_id_position_id_idx
     ON public.question (quiz_id, position, id);
 
+CREATE TABLE IF NOT EXISTS public.quiz_attempt (
+    id BIGSERIAL PRIMARY KEY,
+    quiz_id BIGINT NOT NULL REFERENCES public.quiz(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES public."user"(id) ON DELETE CASCADE,
+    play_style VARCHAR(16) NOT NULL DEFAULT 'basic'
+        CONSTRAINT quiz_attempt_play_style_check CHECK (play_style IN ('basic', 'game_show')),
+    randomize_questions BOOLEAN NOT NULL DEFAULT FALSE,
+    question_limit INTEGER CHECK (question_limit BETWEEN 0 AND 1000),
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS quiz_attempt_active_idx
+    ON public.quiz_attempt (quiz_id, user_id) WHERE completed IS NULL;
+CREATE INDEX IF NOT EXISTS quiz_attempt_user_quiz_idx
+    ON public.quiz_attempt (user_id, quiz_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS public.quiz_attempt_source (
+    attempt_id BIGINT NOT NULL REFERENCES public.quiz_attempt(id) ON DELETE CASCADE,
+    question_id BIGINT NOT NULL,
+    position INTEGER NOT NULL,
+    template VARCHAR(32) NOT NULL,
+    prompt VARCHAR(500) NOT NULL,
+    config JSONB NOT NULL,
+    PRIMARY KEY (attempt_id, question_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.quiz_attempt_question (
+    id BIGSERIAL PRIMARY KEY,
+    attempt_id BIGINT NOT NULL REFERENCES public.quiz_attempt(id) ON DELETE CASCADE,
+    source_question_id BIGINT NOT NULL,
+    position INTEGER NOT NULL,
+    UNIQUE (attempt_id, id),
+    UNIQUE (attempt_id, position),
+    FOREIGN KEY (attempt_id, source_question_id)
+        REFERENCES public.quiz_attempt_source(attempt_id, question_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS quiz_attempt_question_order_idx
+    ON public.quiz_attempt_question (attempt_id, position);
+
+CREATE TABLE IF NOT EXISTS public.quiz_answer (
+    attempt_id BIGINT NOT NULL REFERENCES public.quiz_attempt(id) ON DELETE CASCADE,
+    question_id BIGINT NOT NULL,
+    answer JSONB NOT NULL,
+    updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (attempt_id, question_id),
+    CONSTRAINT quiz_answer_attempt_question_fkey
+        FOREIGN KEY (attempt_id, question_id)
+        REFERENCES public.quiz_attempt_question(attempt_id, id) ON DELETE CASCADE
+);
+
 GRANT CONNECT ON DATABASE quiz TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public."user" TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quiz TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.question TO auth_api;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quiz_attempt TO auth_api;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quiz_attempt_source TO auth_api;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quiz_attempt_question TO auth_api;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quiz_answer TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.user_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.quiz_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.question_id_seq TO auth_api;
+GRANT USAGE, SELECT ON SEQUENCE public.quiz_attempt_id_seq TO auth_api;
+GRANT USAGE, SELECT ON SEQUENCE public.quiz_attempt_question_id_seq TO auth_api;

@@ -1,7 +1,7 @@
-import { editIcon, deleteIcon } from './icons.js'
+import { editIcon, deleteIcon, attemptsIcon } from './icons.js'
 import { createPageNotice } from '../../shared/page-notice.js'
 
-const quizActionIcons = { edit: editIcon, delete: deleteIcon }
+const quizActionIcons = { attempts: attemptsIcon, edit: editIcon, delete: deleteIcon }
 
 function addQuizToLibrary(list, quiz) {
   if (list.querySelector(`[data-quiz-id="${quiz.id}"]`)) return
@@ -18,18 +18,21 @@ function addQuizToLibrary(list, quiz) {
   description.hidden = !quiz.description
   const actions = document.createElement('div')
   actions.className = 'library-item-actions'
-  for (const action of ['edit', 'delete']) {
+  for (const action of ['attempts', 'edit', 'delete']) {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'icon-action'
     button.dataset.quizAction = action
-    button.setAttribute('aria-label', `${action === 'edit' ? 'Edit' : 'Delete'} quiz`)
+    button.setAttribute('aria-label', action === 'attempts' ? 'Review quiz attempts' : `${action === 'edit' ? 'Edit' : 'Delete'} quiz`)
     button.setAttribute('aria-describedby', title.id)
-    button.title = `${action === 'edit' ? 'Edit' : 'Delete'} quiz`
+    button.title = action === 'attempts' ? 'Review attempts' : `${action === 'edit' ? 'Edit' : 'Delete'} quiz`
     button.innerHTML = quizActionIcons[action]
     actions.append(button)
   }
-  const details = document.createElement('div')
+  const details = document.createElement('a')
+  details.className = 'library-item-open'
+  details.href = `#play?quiz=${quiz.id}`
+  details.setAttribute('aria-label', `Play ${quiz.name}`)
   details.append(title, description)
   item.append(details, actions)
   list.prepend(item)
@@ -54,6 +57,8 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
         <h2 id="quiz-name-title">Create quiz</h2>
         <form id="quiz-name-form">
           <label class="field"><span>Quiz name</span><input name="name" type="text" maxlength="100" autocomplete="off" required /></label>
+          <label class="field"><span>Play style</span><select name="play_style"><option value="basic">Basic</option><option value="game_show">Game Show</option></select></label>
+          <label class="quiz-review-setting"><input name="show_correct_answers" type="checkbox" /><span>Show correct answers in completed attempt reviews</span></label>
           <p id="quiz-name-status" class="form-status" role="status" aria-live="polite"></p>
           <div class="dialog-actions">
             <button id="cancel-quiz-name" class="auth-button auth-button-secondary" type="button">Cancel</button>
@@ -179,7 +184,9 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
     const action = event.target.closest('[data-quiz-action]')
     const item = action?.closest('.library-item')
     if (!item || !list.contains(item)) return
-    if (action.dataset.quizAction === 'edit') {
+    if (action.dataset.quizAction === 'attempts') {
+      window.location.hash = `#attempts?quiz=${item.dataset.quizId}`
+    } else if (action.dataset.quizAction === 'edit') {
       window.location.hash = `#edit?quiz=${item.dataset.quizId}`
     } else if (action.dataset.quizAction === 'delete') {
       deletingQuizId = item.dataset.quizId
@@ -200,7 +207,10 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
     button.disabled = true
     setStatus(nameStatus, 'Creating quiz…')
     try {
-      const [response, payload] = await postJson('/api/quiz/quizzes', { name })
+      const [response, payload] = await postJson('/api/quiz/quizzes', {
+        name, play_style: form.elements.play_style.value,
+        show_correct_answers: form.elements.show_correct_answers.checked,
+      })
       if (!app.contains(form)) return
       if (!response.ok) {
         setStatus(nameStatus, responseError(response, payload), true)

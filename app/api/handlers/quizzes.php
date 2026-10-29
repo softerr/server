@@ -7,6 +7,10 @@ function publicQuiz(array $quiz): array
         'id' => (int) $quiz['id'],
         'name' => $quiz['name'],
         'description' => $quiz['description'],
+        'play_style' => $quiz['play_style'],
+        'show_correct_answers' => $quiz['show_correct_answers'] === 't',
+        'randomize_questions' => $quiz['randomize_questions'] === 't',
+        'question_limit' => $quiz['question_limit'] === null ? null : (int) $quiz['question_limit'],
         'created' => $quiz['created'],
     ];
 }
@@ -17,7 +21,7 @@ function handleListQuizzes(): never
     $db = connectQuizDb();
     $result = @pg_query_params(
         $db,
-        'SELECT q.id, q.name, q.description, q.created
+        'SELECT q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.randomize_questions, q.question_limit, q.created
          FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
          WHERE u.auth_user_id = $1 ORDER BY q.id DESC',
         [$user['id']]
@@ -39,7 +43,7 @@ function handleGetQuiz(int $quizId): never
     $db = connectQuizDb();
     $result = @pg_query_params(
         $db,
-        'SELECT q.id, q.name, q.description, q.created
+        'SELECT q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.randomize_questions, q.question_limit, q.created
          FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
          WHERE q.id = $1 AND u.auth_user_id = $2',
         [$quizId, $user['id']]
@@ -71,7 +75,30 @@ function readQuizFields(?array $payload, bool $updating = false): array
     if ($description !== null && strlen(trim($description)) > 1000) {
         respond(400, ['error' => 'Quiz description must be at most 1000 bytes']);
     }
-    return [$name, $description === null ? null : trim($description)];
+    $playStyle = array_key_exists('play_style', $payload)
+        ? $payload['play_style'] : ($updating ? null : 'basic');
+    if ($playStyle !== null && !in_array($playStyle, ['basic', 'game_show'], true)) {
+        respond(400, ['error' => 'Quiz play style must be basic or game_show']);
+    }
+    $hasShowCorrectAnswers = array_key_exists('show_correct_answers', $payload);
+    $showCorrectAnswers = $hasShowCorrectAnswers
+        ? $payload['show_correct_answers'] : ($updating ? null : false);
+    if ($hasShowCorrectAnswers && !is_bool($showCorrectAnswers)) {
+        respond(400, ['error' => 'Show correct answers must be a boolean']);
+    }
+    $randomize = array_key_exists('randomize_questions', $payload)
+        ? $payload['randomize_questions'] : ($updating ? null : false);
+    if (array_key_exists('randomize_questions', $payload) && !is_bool($randomize)) {
+        respond(400, ['error' => 'Randomize questions must be a boolean']);
+    }
+    $questionLimit = array_key_exists('question_limit', $payload)
+        ? $payload['question_limit'] : null;
+    if ($questionLimit !== null && (!is_int($questionLimit) || $questionLimit < 0 || $questionLimit > 1000)) {
+        respond(400, ['error' => 'Question limit must be All or an integer from 0 to 1000']);
+    }
+    $limitProvided = array_key_exists('question_limit', $payload);
+    return [$name, $description === null ? null : trim($description), $playStyle,
+        $showCorrectAnswers, $randomize, $questionLimit, $limitProvided];
 }
 
 function beginQuizCreation($db, array $user, string $error): string
@@ -131,14 +158,15 @@ function beginQuizCreation($db, array $user, string $error): string
     return $localUserId;
 }
 
-function insertQuizRow($db, string $localUserId, string $name, string $description, string $error): array
+function insertQuizRow($db, string $localUserId, string $name, string $description, string $playStyle, bool $showCorrectAnswers, bool $randomize, ?int $questionLimit, string $error): array
 {
     $result = @pg_query_params(
         $db,
-        'INSERT INTO public.quiz (user_id, name, description)
-         VALUES ($1, $2, $3)
-         RETURNING id, name, description, created',
-        [$localUserId, $name, $description]
+        'INSERT INTO public.quiz (user_id, name, description, play_style, show_correct_answers, randomize_questions, question_limit)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, name, description, play_style, show_correct_answers, randomize_questions, question_limit, created',
+        [$localUserId, $name, $description, $playStyle, $showCorrectAnswers ? 't' : 'f',
+            $randomize ? 't' : 'f', $questionLimit]
     );
     if ($result === false) {
         @pg_query($db, 'ROLLBACK');
@@ -150,11 +178,11 @@ function insertQuizRow($db, string $localUserId, string $name, string $descripti
 function handleCreateQuiz(): never
 {
     $user = currentSessionUser();
-    [$name, $description] = readQuizFields(readJsonBody());
+    [$name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit] = readQuizFields(readJsonBody());
     $db = connectQuizDb();
     $error = 'Failed to create quiz';
     $localUserId = beginQuizCreation($db, $user, $error);
-    $quiz = insertQuizRow($db, $localUserId, $name, $description, $error);
+    $quiz = insertQuizRow($db, $localUserId, $name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $error);
     if (@pg_query($db, 'COMMIT') === false) {
         respond(500, ['error' => $error]);
     }
@@ -263,7 +291,7 @@ function handleImportQuiz(): never
         || count($payload['questions']) > 100) {
         respond(400, ['error' => 'Invalid quiz export']);
     }
-    [$name, $description] = readQuizFields($payload);
+    [$name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit] = readQuizFields($payload);
     $questions = [];
     foreach ($payload['questions'] as $question) {
         if (!is_array($question)) {
@@ -319,7 +347,7 @@ function handleImportQuiz(): never
         $stored = saveMediaImage($mediaDb, (int) $user['id'], $imageName, $bytes, $mime, $width, $height);
         $imageIds[$oldId] = $stored['id'];
     }
-    $quiz = insertQuizRow($db, $localUserId, $name, $description, $error);
+    $quiz = insertQuizRow($db, $localUserId, $name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $error);
     foreach ($questions as $position => [$template, $prompt, $config]) {
         $details = json_decode($config, true, 512, JSON_THROW_ON_ERROR);
         remapQuizImageIds($details, $imageIds);
@@ -347,7 +375,7 @@ function handleExportQuizZip(int $quizId): never
     $user = currentSessionUser();
     $db = connectQuizDb();
     $owner = @pg_query_params($db,
-        'SELECT q.name, q.description, q.user_id FROM public.quiz q
+        'SELECT q.name, q.description, q.play_style, q.show_correct_answers, q.randomize_questions, q.question_limit, q.user_id FROM public.quiz q
          JOIN public."user" u ON u.id = q.user_id
          WHERE q.id = $1 AND u.auth_user_id = $2', [$quizId, $user['id']]);
     if ($owner === false) respond(500, ['error' => 'Failed to export quiz']);
@@ -374,7 +402,10 @@ function handleExportQuizZip(int $quizId): never
     }
     $manifest = [
         'format' => 'softerr-quiz', 'version' => 1,
-        'name' => $quiz['name'], 'description' => $quiz['description'],
+        'name' => $quiz['name'], 'description' => $quiz['description'], 'play_style' => $quiz['play_style'],
+        'show_correct_answers' => $quiz['show_correct_answers'] === 't',
+        'randomize_questions' => $quiz['randomize_questions'] === 't',
+        'question_limit' => $quiz['question_limit'] === null ? null : (int) $quiz['question_limit'],
         'questions' => $questions, 'images' => [],
     ];
     $mediaDb = connectMediaDb();
@@ -409,17 +440,22 @@ function handleExportQuizZip(int $quizId): never
 function handleUpdateQuiz(int $quizId): never
 {
     $user = currentSessionUser();
-    [$name, $description] = readQuizFields(readJsonBody(), true);
+    [$name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $limitProvided] = readQuizFields(readJsonBody(), true);
 
     $db = connectQuizDb();
     $result = @pg_query_params(
         $db,
         'UPDATE public.quiz q SET name = $1,
-            description = COALESCE($2, q.description)
+            description = COALESCE($2, q.description),
+            play_style = COALESCE($3, q.play_style),
+            show_correct_answers = COALESCE($4::boolean, q.show_correct_answers),
+            randomize_questions = COALESCE($7::boolean, q.randomize_questions),
+            question_limit = CASE WHEN $8::boolean THEN $9::integer ELSE q.question_limit END
          FROM public."user" u
-         WHERE q.id = $3 AND q.user_id = u.id AND u.auth_user_id = $4
-         RETURNING q.id, q.name, q.description, q.created',
-        [$name, $description, $quizId, $user['id']]
+         WHERE q.id = $5 AND q.user_id = u.id AND u.auth_user_id = $6
+         RETURNING q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.randomize_questions, q.question_limit, q.created',
+        [$name, $description, $playStyle, $showCorrectAnswers === null ? null : ($showCorrectAnswers ? 't' : 'f'), $quizId, $user['id'],
+            $randomize === null ? null : ($randomize ? 't' : 'f'), $limitProvided ? 't' : 'f', $questionLimit]
     );
     if ($result === false) {
         respond(500, ['error' => 'Failed to update quiz']);

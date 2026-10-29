@@ -349,15 +349,25 @@ function handleDeleteImage(int $imageId): never
         respond(500, ['error' => 'Failed to delete image']);
     }
     $used = @pg_query_params($quizDb,
-        'SELECT 1 FROM public.question t JOIN public.quiz q ON q.id = t.quiz_id
-         JOIN public."user" u ON u.id = q.user_id
-         WHERE u.auth_user_id = $1 AND jsonb_path_exists(t.config, $2::jsonpath,
-           jsonb_build_object(\'id\', $3::bigint)) LIMIT 1',
+        'SELECT EXISTS (
+            SELECT 1 FROM public.question t JOIN public.quiz q ON q.id = t.quiz_id
+            JOIN public."user" u ON u.id = q.user_id
+            WHERE u.auth_user_id = $1 AND jsonb_path_exists(t.config, $2::jsonpath,
+              jsonb_build_object(\'id\', $3::bigint))
+         ) OR EXISTS (
+            SELECT 1 FROM public.quiz_attempt_source s
+            JOIN public.quiz_attempt a ON a.id = s.attempt_id
+            JOIN public."user" u ON u.id = a.user_id
+            WHERE u.auth_user_id = $1 AND jsonb_path_exists(s.config, $2::jsonpath,
+              jsonb_build_object(\'id\', $3::bigint))
+         ) AS used',
         [$user['id'],
          '$.** ? (@.image_id == $id || @.answer_image_id == $id || @.keyword_image_id == $id || @.definition_image_id == $id || @.name_image_id == $id)',
          $imageId]);
     if ($used === false) respond(500, ['error' => 'Failed to delete image']);
-    if (pg_num_rows($used) > 0) respond(409, ['error' => 'Remove this image from questions before deleting it']);
+    if (pg_fetch_result($used, 0, 'used') === 't') {
+        respond(409, ['error' => 'Image is used by a quiz or saved attempt']);
+    }
 
     $db = connectMediaDb();
     if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to delete image']);

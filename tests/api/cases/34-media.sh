@@ -4,7 +4,7 @@ test_shared_media_across_users_and_quizzes() (
   set -e
   # Earlier login cases may have exhausted the per-IP Nginx bucket.
   sudo -n systemctl restart nginx
-  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file direct_file folder_file response status shared_id private_id direct_id folder_id group_id quiz_id archive manifest count
+  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file direct_file folder_file response status shared_id private_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id archive manifest count
   admin_cookie="$(mktemp)"
   user_cookie="$(mktemp)"
   png_file="$(mktemp)"
@@ -46,6 +46,7 @@ test_shared_media_across_users_and_quizzes() (
 
   # A valid 1x1 PNG. Adding trailing bytes creates another valid image hash.
   printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=' | base64 -d > "$png_file"
+  printf '%s' "${API_TEST_RUN_ID}" >> "$png_file"
   cp "$png_file" "$private_file"
   printf 'personal' >> "$private_file"
   cp "$png_file" "$direct_file"
@@ -205,10 +206,10 @@ test_shared_media_across_users_and_quizzes() (
   # This admin did not upload the image but can still organize shared media.
   test_psql auth "UPDATE public.\"user\" SET role = 'admin' WHERE id = ${user_id};" >/dev/null
   response="$(curl -sS -b "$user_cookie" -X PATCH -H 'Content-Type: application/json' \
-    --data '{"name":"renamed-by-second-admin.png"}' -w $'\n%{http_code}' \
+    --data "$(jq -nc --arg name "api_test_${API_TEST_RUN_ID}_renamed_shared.png" '{name:$name}')" -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${shared_id}")"
   [[ "${response##*$'\n'}" == 200 ]] || { fail_test "second admin could not rename shared image: ${response}"; return 1; }
-  jq -e '.name == "renamed-by-second-admin.png" and .scope == "shared"' <<<"${response%$'\n'*}" >/dev/null \
+  jq -e --arg name "api_test_${API_TEST_RUN_ID}_renamed_shared.png" '.name == $name and .scope == "shared"' <<<"${response%$'\n'*}" >/dev/null \
     || { fail_test "second admin image rename returned wrong image: ${response}"; return 1; }
   response="$(curl -sS -b "$user_cookie" -X PATCH -H 'Content-Type: application/json' \
     --data "$(jq -nc --arg name "api_test_${API_TEST_RUN_ID}_renamed" '{name:$name}')" \
@@ -233,6 +234,27 @@ test_shared_media_across_users_and_quizzes() (
   response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${shared_id}")"
   [[ "${response##*$'\n'}" == 404 ]] || { fail_test "shared image could be deleted as personal: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -H 'Content-Type: application/json' \
+    --data '{"name":"Image attempt history"}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes")"
+  history_quiz_id="$(jq -r '.id // empty' <<<"$response")"
+  [[ "$history_quiz_id" =~ ^[0-9]+$ ]] || { fail_test "history quiz creation failed: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --argjson id "$private_id" '{template:"no_answer",prompt:"Remember this image",config:{image_id:$id}}')" \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}/questions")"
+  history_question_id="$(jq -r '.id // empty' <<<"$response")"
+  [[ "$history_question_id" =~ ^[0-9]+$ ]] || { fail_test "history question creation failed: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X POST -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}/attempts")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "image attempt creation failed: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}/questions/${history_question_id}")"
+  [[ "${response##*$'\n'}" == 204 ]] || { fail_test "history question deletion failed: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"
+  [[ "${response##*$'\n'}" == 409 ]] || { fail_test "image used by attempt could be deleted: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}")"
+  [[ "${response##*$'\n'}" == 204 ]] || { fail_test "history quiz deletion failed: ${response}"; return 1; }
   response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"
   [[ "${response##*$'\n'}" == 204 ]] || { fail_test "personal image deletion failed: ${response}"; return 1; }

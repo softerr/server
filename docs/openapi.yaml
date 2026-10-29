@@ -1119,7 +1119,7 @@ paths:
         '404':
           description: Image does not exist or belongs to another account.
         '409':
-          description: Image is still used by a saved question.
+          description: Image is used by a current quiz question or a saved attempt.
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -1176,6 +1176,23 @@ paths:
                 description:
                   type: string
                   description: Trimmed before storage; at most 1000 bytes. Defaults to empty.
+                play_style:
+                  type: string
+                  enum: [basic, game_show]
+                  default: basic
+                  description: Selects Basic or Game Show presentation.
+                show_correct_answers:
+                  type: boolean
+                  default: false
+                  description: Show solutions in reviews of completed attempts.
+                randomize_questions:
+                  type: boolean
+                  default: false
+                question_limit:
+                  type: [integer, 'null']
+                  minimum: 0
+                  maximum: 1000
+                  default: null
             example:
               name: Geography
       responses:
@@ -1347,6 +1364,21 @@ paths:
                 description:
                   type: string
                   description: Trimmed before storage; at most 1000 bytes.
+                play_style:
+                  type: string
+                  enum: [basic, game_show]
+                  description: Selects Basic or Game Show presentation. Omit to keep the current play style.
+                show_correct_answers:
+                  type: boolean
+                  description: Omit to keep the current review setting.
+                randomize_questions:
+                  type: boolean
+                  description: Omit to keep the current order setting.
+                question_limit:
+                  type: [integer, 'null']
+                  minimum: 0
+                  maximum: 1000
+                  description: Omit to keep the current limit; null selects All.
       responses:
         '200':
           description: Updated quiz.
@@ -1399,6 +1431,216 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
+
+  /quiz/quizzes/{quizId}/attempts:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: before
+        in: query
+        required: false
+        description: Return attempts with IDs lower than this cursor.
+        schema: { type: integer, minimum: 1 }
+    get:
+      tags: [Quizzes]
+      operationId: listQuizAttempts
+      summary: List attempts for an owned quiz, 100 per page
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Attempt summaries, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [attempts, next_before]
+                properties:
+                  attempts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuizAttemptSummary'
+                  next_before:
+                    type: [integer, 'null']
+                    description: Pass this as `before` to load the next page; null means there are no more attempts.
+        '401':
+          description: No active session.
+        '404':
+          description: Quiz not found.
+    post:
+      tags: [Quizzes]
+      operationId: startQuizAttempt
+      summary: Start or resume the unfinished attempt for an owned quiz
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Active attempt with its saved question snapshots and answers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizAttempt'
+        '401':
+          description: No active session.
+        '404':
+          description: Quiz not found.
+        '409':
+          description: Quiz has no questions.
+
+  /quiz/quizzes/{quizId}/attempts/{attemptId}:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: attemptId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    get:
+      tags: [Quizzes]
+      operationId: getQuizAttempt
+      summary: Get a saved attempt, its question snapshots, and answers
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Owned attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizAttempt'
+        '401':
+          description: No active session.
+        '404':
+          description: Attempt not found.
+
+  /quiz/quizzes/{quizId}/attempts/{attemptId}/next:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: attemptId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    post:
+      tags: [Quizzes]
+      operationId: nextQuizQuestion
+      summary: Append the next question in a 0 (unlimited) attempt
+      description: Retrying with the same after ID returns the same next appearance.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [after]
+              properties:
+                after: { type: integer, minimum: 1, description: Current question appearance ID }
+      responses:
+        '200':
+          description: Updated attempt with the next question appended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizAttempt'
+        '400':
+          description: Invalid current question ID.
+        '401':
+          description: No active session.
+        '404':
+          description: Attempt or question not found.
+        '409':
+          description: Attempt is complete or has a fixed question count.
+
+  /quiz/quizzes/{quizId}/attempts/{attemptId}/answers/{questionId}:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: attemptId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: questionId
+        in: path
+        required: true
+        description: Question appearance ID from the attempt, not the source question ID.
+        schema: { type: integer, minimum: 1 }
+    put:
+      tags: [Quizzes]
+      operationId: saveQuizAnswer
+      summary: Save or replace one answer in an unfinished attempt
+      description: |
+        The JSON body is limited to 32768 bytes. The answer is a template-specific
+        object: `selected` for choices and booleans, `text` for number, short and
+        open answers, `assignments` for match and categorize, `order` for ordering,
+        `values` for blanks, `revealed` for show-answer, or `viewed` for no-answer.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answer]
+              properties:
+                answer:
+                  type: object
+      responses:
+        '200':
+          description: Answer saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [saved]
+                properties:
+                  saved: { type: boolean, const: true }
+        '400':
+          description: Invalid answer body.
+        '401':
+          description: No active session.
+        '404':
+          description: Attempt or question not found.
+        '409':
+          description: Attempt is already complete.
+
+  /quiz/quizzes/{quizId}/attempts/{attemptId}/complete:
+    parameters:
+      - name: quizId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: attemptId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    post:
+      tags: [Quizzes]
+      operationId: completeQuizAttempt
+      summary: Finish an attempt and keep its answers as history
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Completed attempt with saved answers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizAttempt'
+        '401':
+          description: No active session.
+        '404':
+          description: Attempt not found.
 
   /quiz/quizzes/{quizId}/questions:
     parameters:
@@ -1699,7 +1941,7 @@ components:
   schemas:
     Quiz:
       type: object
-      required: [id, name, description, created]
+      required: [id, name, description, play_style, show_correct_answers, randomize_questions, question_limit, created]
       properties:
         id:
           type: integer
@@ -1708,6 +1950,21 @@ components:
           type: string
         description:
           type: string
+        play_style:
+          type: string
+          enum: [basic, game_show]
+          description: Both styles support drag activities for matching, ordering, and categorizing. Game Show presents answers as larger, colorful game tiles.
+        show_correct_answers:
+          type: boolean
+          description: Solutions appear in reviews only after an attempt is completed.
+        randomize_questions:
+          type: boolean
+          description: Select question order randomly when an attempt starts.
+        question_limit:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 1000
+          description: "null means All questions once; 0 continues until Finish; a positive number asks that many. Numeric modes cycle in order or draw randomly with repeats, but random draws do not repeat the previous question unless the bank has only one question."
         created:
           type: string
           description: PostgreSQL timestamp without timezone, formatted as YYYY-MM-DD HH:MM:SS.
@@ -1728,6 +1985,21 @@ components:
         description:
           type: string
           description: Trimmed before validation; at most 1000 bytes.
+        play_style:
+          type: string
+          enum: [basic, game_show]
+          default: basic
+        show_correct_answers:
+          type: boolean
+          default: false
+        randomize_questions:
+          type: boolean
+          default: false
+        question_limit:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 1000
+          default: null
         questions:
           type: array
           maxItems: 100
@@ -1750,6 +2022,41 @@ components:
               data:
                 type: string
                 contentEncoding: base64
+    QuizAttemptSummary:
+      type: object
+      required: [id, quiz_id, play_style, randomize_questions, question_limit, created, completed]
+      properties:
+        id: { type: integer, format: int64 }
+        quiz_id: { type: integer, format: int64 }
+        play_style: { type: string, enum: [basic, game_show] }
+        randomize_questions: { type: boolean }
+        question_limit: { type: [integer, 'null'], minimum: 0, maximum: 1000 }
+        created: { type: string }
+        completed: { type: [string, 'null'] }
+        question_count: { type: integer }
+        answered_count: { type: integer }
+    QuizAttempt:
+      allOf:
+        - $ref: '#/components/schemas/QuizAttemptSummary'
+        - type: object
+          required: [questions, answers]
+          properties:
+            questions:
+              type: array
+              description: Question appearances in play order. Each has a unique ID, even when a source question repeats.
+              items:
+                type: object
+                required: [id, source_question_id, template, prompt, config]
+                properties:
+                  id: { type: integer, format: int64 }
+                  source_question_id: { type: integer, format: int64 }
+                  template: { type: string }
+                  prompt: { type: string }
+                  config: { type: object }
+            answers:
+              type: object
+              description: Map from question appearance ID to saved answer object.
+              additionalProperties: { type: object }
     QuizImage:
       type: object
       required: [id, name, mime_type, width, height, size_bytes, scope, group_id]

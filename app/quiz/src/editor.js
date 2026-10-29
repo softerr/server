@@ -1,4 +1,5 @@
 import { mountQuestionEditor } from './questions.js'
+import { openQuizPreview } from './preview.js'
 
 export function renderQuizEditor(app, { currentUser, requestJson, responseError, setStatus }) {
   const quizId = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('quiz')
@@ -17,6 +18,25 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
           <span>Description</span>
           <textarea name="description" rows="5" maxlength="1000" placeholder="What is this quiz about?"></textarea>
         </label>
+        <section class="quiz-settings-group" aria-labelledby="quiz-play-settings-title">
+          <h2 id="quiz-play-settings-title">Play settings</h2>
+          <fieldset class="play-style-field">
+            <legend>Play style</legend>
+            <div class="play-style-options">
+              <label><input type="radio" name="play_style" value="basic" checked /><span><strong>Basic</strong><small>Calm layout with drag activities for matching, ordering, and categorizing.</small></span></label>
+              <label><input type="radio" name="play_style" value="game_show" /><span><strong>Game Show</strong><small>Large, colorful answer tiles and a game show layout.</small></span></label>
+            </div>
+          </fieldset>
+          <div class="quiz-question-settings">
+            <label class="field"><span>Questions to ask</span><select name="question_limit_mode"><option value="all">All</option><option value="until_finish">Until finish</option><option value="number">Set number</option></select></label>
+            <label class="field" id="question-limit-field" hidden><span>Number of questions</span><input name="question_limit" type="number" min="1" max="1000" step="1" value="1" required disabled /></label>
+            <label class="quiz-setting-toggle"><input name="randomize_questions" type="checkbox" /><span>Randomize question order</span></label>
+          </div>
+        </section>
+        <section class="quiz-settings-group" aria-labelledby="quiz-review-settings-title">
+          <h2 id="quiz-review-settings-title">Review settings</h2>
+          <label class="quiz-setting-toggle"><input name="show_correct_answers" type="checkbox" /><span>Show correct answers in completed attempt reviews</span></label>
+        </section>
         <div class="quiz-editor-actions">
           <button class="auth-button auth-button-primary" type="submit" disabled>Saved</button>
         </div>
@@ -24,10 +44,12 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
       <section id="question-editor-section" class="question-editor-section" aria-label="Questions" hidden></section>
       <div id="quiz-editor-save-all" class="quiz-editor-save-all" hidden>
         <p id="quiz-editor-save-all-status" class="form-status" role="status" aria-live="polite"></p>
+        <button id="preview-quiz" class="auth-button auth-button-secondary" type="button" disabled>Preview</button>
         <button id="export-quiz" class="auth-button auth-button-secondary" type="button" title="Export saved quiz as JSON" disabled>Export JSON</button>
         <button id="export-quiz-zip" class="auth-button auth-button-secondary" type="button" title="Export saved quiz with images as ZIP" disabled>Export ZIP</button>
         <button id="save-all" class="auth-button auth-button-primary" type="button" disabled>Saved</button>
       </div>
+      <dialog id="quiz-preview-dialog" class="quiz-preview-dialog" aria-label="Quiz preview"></dialog>
     </main>
   `
 
@@ -36,7 +58,25 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
   const saveButton = form.querySelector('[type="submit"]')
   const nameInput = form.elements.namedItem('name')
   const descriptionInput = form.elements.namedItem('description')
+  const styleInputs = form.elements.namedItem('play_style')
+  const showCorrectAnswersInput = form.elements.namedItem('show_correct_answers')
+  const randomizeInput = form.elements.namedItem('randomize_questions')
+  const limitMode = form.elements.namedItem('question_limit_mode')
+  const limitInput = form.elements.namedItem('question_limit')
+  const limitField = page.querySelector('#question-limit-field')
+  const modeForLimit = (limit) => limit === null ? 'all' : limit === 0 ? 'until_finish' : 'number'
+  const selectedLimit = () => limitMode.value === 'all' ? null
+    : limitMode.value === 'until_finish' ? 0 : Number(limitInput.value)
+  function syncLimitField() {
+    limitField.hidden = limitMode.value !== 'number'
+    if (!limitField.hidden && Number(limitInput.value) < 1) limitInput.value = '1'
+    limitInput.disabled = limitField.hidden
+  }
+  limitMode.addEventListener('change', syncLimitField)
+  const selectedStyle = () => [...styleInputs].find((input) => input.checked)?.value
   const saveAll = page.querySelector('#save-all')
+  const previewButton = page.querySelector('#preview-quiz')
+  const previewDialog = page.querySelector('#quiz-preview-dialog')
   const exportButton = page.querySelector('#export-quiz')
   const exportZipButton = page.querySelector('#export-quiz-zip')
   const saveAllWrap = page.querySelector('#quiz-editor-save-all')
@@ -50,7 +90,11 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
 
   function quizIsDirty() {
     return savedValues !== null && (nameInput.value !== savedValues.name
-      || descriptionInput.value !== savedValues.description)
+      || descriptionInput.value !== savedValues.description
+      || selectedStyle() !== savedValues.play_style
+      || showCorrectAnswersInput.checked !== savedValues.show_correct_answers
+      || randomizeInput.checked !== savedValues.randomize_questions
+      || selectedLimit() !== savedValues.question_limit)
   }
 
   function updateSaveAllButton() {
@@ -59,6 +103,7 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
     const ready = savedValues !== null && Boolean(questionEditor?.isReady())
     saveAll.disabled = busy || !ready || !dirty
     saveAll.textContent = savingAll ? 'Saving all…' : dirty ? 'Save all' : 'Saved'
+    previewButton.disabled = busy || !ready
     exportButton.disabled = busy || !ready
     exportZipButton.disabled = busy || !ready
     exportButton.textContent = exporting && exportFormat === 'json' ? 'Exporting…' : 'Export JSON'
@@ -85,7 +130,15 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
     }
     nameInput.value = quiz.name
     descriptionInput.value = quiz.description
-    savedValues = { name: quiz.name, description: quiz.description }
+    for (const input of styleInputs) input.checked = input.value === quiz.play_style
+    showCorrectAnswersInput.checked = quiz.show_correct_answers
+    randomizeInput.checked = quiz.randomize_questions
+    limitMode.value = modeForLimit(quiz.question_limit)
+    limitInput.value = String(quiz.question_limit || 1)
+    syncLimitField()
+    savedValues = { name: quiz.name, description: quiz.description, play_style: quiz.play_style,
+      show_correct_answers: quiz.show_correct_answers,
+      randomize_questions: quiz.randomize_questions, question_limit: quiz.question_limit }
     updateSaveButton()
     form.hidden = false
     const questions = page.querySelector('#question-editor-section')
@@ -131,12 +184,13 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
     saveButton.disabled = true
     saveButton.textContent = 'Saving…'
     updateSaveAllButton()
-    const fields = form.querySelectorAll('input, textarea')
+    const fields = form.querySelectorAll('input, textarea, select')
     fields.forEach((field) => { field.disabled = true })
     setStatus(status, '')
     try {
       const [response, quiz] = await requestJson('PATCH', `/api/quiz/quizzes/${quizId}`, {
-        name, description,
+        name, description, play_style: selectedStyle(), show_correct_answers: showCorrectAnswersInput.checked,
+        randomize_questions: randomizeInput.checked, question_limit: selectedLimit(),
       })
       if (!app.contains(form)) return false
       if (!response.ok) {
@@ -145,7 +199,14 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
       }
       nameInput.value = quiz.name
       descriptionInput.value = quiz.description
-      savedValues = { name: quiz.name, description: quiz.description }
+      for (const input of styleInputs) input.checked = input.value === quiz.play_style
+      showCorrectAnswersInput.checked = quiz.show_correct_answers
+      randomizeInput.checked = quiz.randomize_questions
+      limitMode.value = modeForLimit(quiz.question_limit)
+      limitInput.value = String(quiz.question_limit || 1)
+      savedValues = { name: quiz.name, description: quiz.description, play_style: quiz.play_style,
+        show_correct_answers: quiz.show_correct_answers,
+        randomize_questions: quiz.randomize_questions, question_limit: quiz.question_limit }
       setStatus(status, '')
       return true
     } catch {
@@ -153,6 +214,7 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
       return false
     } finally {
       fields.forEach((field) => { field.disabled = false })
+      syncLimitField()
       saving = false
       updateSaveButton()
     }
@@ -181,6 +243,27 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
       savingAll = false
       updateSaveAllButton()
     }
+  })
+
+  previewButton.addEventListener('click', () => {
+    if (previewButton.disabled || !questionEditor) return
+    setStatus(saveAllStatus, '')
+    const questions = questionEditor.previewQuestions()
+    if (questions === null) {
+      setStatus(saveAllStatus, 'Complete the question above before previewing.', true)
+      return
+    }
+    if (!questions.length) {
+      setStatus(saveAllStatus, 'Add a question to preview this quiz.', true)
+      return
+    }
+    openQuizPreview(previewDialog, {
+      name: nameInput.value.trim() || 'Untitled quiz',
+      description: descriptionInput.value.trim(),
+      play_style: selectedStyle(),
+      randomize_questions: randomizeInput.checked,
+      question_limit: selectedLimit(),
+    }, questions)
   })
 
   exportButton.addEventListener('click', async () => {
@@ -239,6 +322,10 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
         version: 1,
         name: quiz.name,
         description: quiz.description,
+        play_style: quiz.play_style,
+        show_correct_answers: quiz.show_correct_answers,
+        randomize_questions: quiz.randomize_questions,
+        question_limit: quiz.question_limit,
         questions: questionsPayload.questions.map(({ template, prompt, config }) => ({
           template, prompt, config,
         })),

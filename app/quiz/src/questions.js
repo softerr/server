@@ -672,7 +672,7 @@ function collectConfig(form, template) {
     config = { answers: [...fields.querySelectorAll('.question-blank-entries > *')].map((row) =>
       imageText(row, '[data-blank-answer]')) }
   } else if (template === 'categorize') {
-    config = { categories: [...fields.querySelectorAll('.question-category')].map((category) => ({
+    config = { categories: [...fields.querySelectorAll('.question-categories > .question-category')].map((category) => ({
       name: category.querySelector('[data-category-name]').value.trim(),
       ...(category.querySelector('[data-category-name-image] [data-image-id]').value
         ? { name_image_id: Number(category.querySelector('[data-category-name-image] [data-image-id]').value) } : {}),
@@ -874,12 +874,10 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
       setStatus(deleteStatus, '')
       deleteDialog.showModal()
     })
-    async function saveQuestion() {
-      if (!isDirty()) return true
-      if (saving || reordering) return false
+    function currentQuestion() {
       if (!form.reportValidity()) {
-        setStatus(status, 'Complete this question before saving.', true)
-        return false
+        setStatus(status, 'Complete this question.', true)
+        return null
       }
       const template = templateSelect.value
       const prompt = promptInput.value.trim()
@@ -887,17 +885,26 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
       if ((template === 'multiple_choice' || template === 'one_choice')
           && config.options.some((option) => !option.text && !option.image_id)) {
         setStatus(status, 'Each option needs text or an image.', true)
-        return false
+        return null
       }
       if (!prompt || encoder.encode(prompt).length > 500) {
         setStatus(status, 'Question must be 1 to 500 bytes.', true)
-        return false
+        return null
       }
       if ((template === 'multiple_choice' || template === 'one_choice')
           && !config.options.some((option) => option.correct)) {
         setStatus(status, 'Choose at least one correct answer.', true)
-        return false
+        return null
       }
+      return { template, prompt, config }
+    }
+
+    async function saveQuestion() {
+      if (!isDirty()) return true
+      if (saving || reordering) return false
+      const questionFields = currentQuestion()
+      if (questionFields === null) return false
+      const { template, prompt, config } = questionFields
 
       saving = true
       saveButton.disabled = true
@@ -946,7 +953,11 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
       event.preventDefault()
       if (!saveButton.disabled) void saveQuestion()
     })
-    cardControllers.set(card, { isDirty, isSaving: () => saving, save: saveQuestion })
+    cardControllers.set(card, { isDirty, isSaving: () => saving, save: saveQuestion,
+      preview: () => {
+        const fields = currentQuestion()
+        return fields === null ? null : { ...fields, id: savedQuestion?.id ?? null }
+      } })
     return card
   }
 
@@ -1050,6 +1061,19 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
     isReady: () => loaded,
     isSaving: () => reordering || [...cardControllers.values()].some((controller) => controller.isSaving()),
     hasChanges: () => [...cardControllers.values()].some((controller) => controller.isDirty()),
+    previewQuestions() {
+      if (!loaded || reordering || [...cardControllers.values()].some((controller) => controller.isSaving())) return null
+      const snapshot = []
+      for (const card of list.children) {
+        const question = cardControllers.get(card)?.preview()
+        if (!question) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          return null
+        }
+        snapshot.push(question)
+      }
+      return snapshot
+    },
     async saveChanges() {
       if (!loaded || reordering) return false
       for (const card of [...list.children]) {
