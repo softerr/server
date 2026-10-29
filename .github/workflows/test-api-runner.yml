@@ -26,6 +26,7 @@ on:
       - "tests/api/**"
       - "scripts/test_api.sh"
       - "scripts/test_openapi.sh"
+      - "scripts/test_openapi_authenticated.sh"
       - "configs/postgresql/**"
       - "configs/nginx/**"
       - "configs/systemd/**"
@@ -48,6 +49,7 @@ on:
       - "tests/api/**"
       - "scripts/test_api.sh"
       - "scripts/test_openapi.sh"
+      - "scripts/test_openapi_authenticated.sh"
       - "configs/postgresql/**"
       - "configs/nginx/**"
       - "configs/systemd/**"
@@ -168,6 +170,9 @@ jobs:
           # Give contract requests a fresh per-IP Nginx rate-limit window.
           sudo systemctl restart nginx
           bash scripts/test_openapi.sh
+
+      - name: Check authenticated OpenAPI operations
+        run: bash scripts/test_openapi_authenticated.sh
 
       - name: Check expired-token pruning
         run: bash tests/db/prune_user_tokens.sh
