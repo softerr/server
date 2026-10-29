@@ -479,26 +479,26 @@ Known routes with wrong HTTP method:
 ## 9. Automated endpoint tests
 
 Check live responses against the OpenAPI specification from the host after
-starting the local QEMU VM:
+starting a local QEMU VM configured to send test mail to Mailpit:
 
 ```bash
 bash scripts/qemu.sh start
 bash scripts/test_openapi.sh
 ```
 
-The contract check sends a small number of signup, resend, login, and password
-reset requests, so use the local test VM rather than production. It checks response status, content
-type, and schema. It cannot create a valid one-time verification token, so run
-the endpoint tests below for the full signup, verification, and session flow. If the VM
-uses a different HTTP port, set `API_TEST_BASE_URL` to its local origin. The
-generated data may produce schema-validation warnings for signup,
-verification, and password reset confirmation even when the response checks
-pass; inspect the reported status codes and use the endpoint tests to cover successful requests.
+The public contract check covers readiness and logout. It avoids protected
+routes, which would otherwise return only authentication errors, and email
+routes, which can queue messages. The authenticated contract check creates
+its test account directly in the local database, so it also queues no email.
+Run the endpoint tests below with Mailpit for the full email flows. If the VM
+uses a different HTTP port, set `API_TEST_BASE_URL` to its local origin.
+Both contract checks require their selected operations to reach useful
+responses; the endpoint tests cover token, email, and other stateful flows.
 Set `OPENAPI_TEST_SEED` to replay a reported Schemathesis seed.
 
 The runner workflow also runs `scripts/test_openapi_authenticated.sh`. It creates
 an approved disposable admin account with a quiz attempt and image, verifies
-that 18 protected operations return HTTP 200, then checks their responses with
+that 21 protected operations return HTTP 200, then checks their responses with
 Schemathesis. The fixture is removed when the check ends. To run this check
 manually, use a provisioned local test server with Schemathesis, Python, `psql`,
 and passwordless `sudo -u postgres` access; it should not be run against production.

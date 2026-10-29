@@ -24,6 +24,10 @@ if ! curl -fsS --connect-timeout 3 --max-time 10 "${origin}/api/" >/dev/null; th
   echo "API is not ready at ${origin}/api/. Start the VM with: bash scripts/qemu.sh start" >&2
   exit 1
 fi
+if [[ "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${origin}/api/auth/logout")" != 200 ]]; then
+  echo 'Unauthenticated logout did not return HTTP 200.' >&2
+  exit 1
+fi
 
 # Schemathesis stores failure data beneath its working directory. Keep that
 # generated data out of the repository, including when a check fails.
@@ -35,6 +39,7 @@ seed_args=()
 if [[ -n "${OPENAPI_TEST_SEED:-}" ]]; then seed_args=(--seed "${OPENAPI_TEST_SEED}"); fi
 schemathesis run "${REPO_ROOT}/docs/openapi.yaml" \
   --origin "${origin}" \
+  --include-operation-id-regex '^(getReadiness|logout)$' \
   --phases examples,fuzzing \
   --mode positive \
   --max-examples 5 \

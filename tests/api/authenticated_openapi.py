@@ -15,8 +15,8 @@ OPERATIONS = {
     "currentUser", "listUsers", "listBackups", "listImages", "listMyImages",
     "listSharedImages", "listMediaGroups", "exploreQuizzes", "listQuizzes",
     "getQuiz", "listQuizQuestions", "listQuizAttempts", "getQuizAttempt",
-    "getImage", "exportQuizZip", "startAttemptQuestion", "saveQuestionTime",
-    "saveQuizAnswer",
+    "getImage", "exportQuizZip", "startQuizAttempt", "nextQuizQuestion",
+    "revealQuizAnswer", "startAttemptQuestion", "saveQuestionTime", "saveQuizAnswer",
 }
 BODIES = {
     "saveQuestionTime": {"time_spent_ms": 1250},
@@ -27,7 +27,8 @@ BODIES = {
 def main():
     source, destination = sys.argv[1:3]
     ids = {name: int(os.environ[f"OPENAPI_{name.upper()}"]) for name in
-           ("userId", "quizId", "attemptId", "questionId", "imageId")}
+           ("userId", "quizId", "attemptId", "questionId", "revealQuestionId", "imageId")}
+    bodies = {**BODIES, "nextQuizQuestion": {"after": ids["questionId"]}}
     origin = os.environ["API_TEST_BASE_URL"].rstrip("/")
     cookie = os.environ["OPENAPI_AUTH_COOKIE"]
     with open(source, encoding="utf-8") as stream:
@@ -43,17 +44,21 @@ def main():
             operation = copy.deepcopy(operation)
             name = operation["operationId"]
             found.add(name)
-            if name in BODIES:
+            if name in bodies:
                 operation["requestBody"]["content"]["application/json"]["schema"] = {
-                    "const": BODIES[name]
+                    "const": bodies[name]
                 }
-                operation["requestBody"]["content"]["application/json"]["example"] = BODIES[name]
+                operation["requestBody"]["content"]["application/json"]["example"] = bodies[name]
             operations[method] = operation
         if operations:
             entry = {"parameters": copy.deepcopy(item.get("parameters", [])), **operations}
             for parameter in entry["parameters"]:
                 if parameter["name"] in ids:
-                    parameter["schema"] = {"type": "integer", "const": ids[parameter["name"]]}
+                    value = ids[parameter["name"]]
+                    if "revealQuizAnswer" in (operation.get("operationId") for operation in operations.values()) \
+                            and parameter["name"] == "questionId":
+                        value = ids["revealQuestionId"]
+                    parameter["schema"] = {"type": "integer", "const": value}
             selected[path] = entry
 
     if found != OPERATIONS:
@@ -65,13 +70,15 @@ def main():
     # A documented 401 or 404 would pass contract checks. Verify that every
     # selected operation actually reaches its successful response first.
     for path, item in selected.items():
-        actual = path
-        for name, value in ids.items():
-            actual = actual.replace("{" + name + "}", str(value))
         for method, operation in item.items():
             if method == "parameters":
                 continue
-            body = BODIES.get(operation["operationId"])
+            actual = path
+            for parameter in item["parameters"]:
+                if parameter["in"] == "path":
+                    actual = actual.replace("{" + parameter["name"] + "}",
+                                            str(parameter["schema"]["const"]))
+            body = bodies.get(operation["operationId"])
             data = None if body is None else json.dumps(body).encode()
             request = urllib.request.Request(
                 origin + "/api" + actual, data=data, method=method.upper(),

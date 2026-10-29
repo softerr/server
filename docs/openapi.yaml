@@ -479,8 +479,7 @@ paths:
       tags: [Authentication]
       operationId: logout
       summary: End the current session
-      security:
-        - sessionCookie: []
+      security: []
       responses:
         '200':
           description: Logged out; succeeds even when no session exists.

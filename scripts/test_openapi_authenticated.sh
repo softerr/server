@@ -39,19 +39,15 @@ suffix="$(date +%s%N)_${RANDOM}_$$"
 username="openapi_test_${suffix}"
 email="${username}@example.test"
 password="openapi_${suffix}"
-signup="$(curl -sS -H 'Content-Type: application/json' \
-  --data "$(jq -nc --arg username "${username}" --arg email "${email}" --arg password "${password}" \
-    '{username:$username,email:$email,password:$password}')" \
-  -w $'\n%{http_code}' "${origin}/api/auth/signup")"
-if [[ "${signup##*$'\n'}" != 201 ]]; then
-  echo "Could not create authenticated OpenAPI fixture: HTTP ${signup##*$'\n'}" >&2
-  exit 1
-fi
-auth_user_id="$(jq -r '.id // empty' <<<"${signup%$'\n'*}")"
-[[ "${auth_user_id}" =~ ^[1-9][0-9]*$ ]] || { echo 'Signup returned no user ID.' >&2; exit 1; }
-sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -q -d auth \
-  -c "UPDATE public.\"user\" SET verified = TRUE, approved_at = CURRENT_TIMESTAMP, role = 'admin'
-      WHERE id = ${auth_user_id}" >/dev/null
+password_hash="$(php -r 'echo password_hash($argv[1], PASSWORD_DEFAULT);' "${password}")"
+auth_user_id="$(sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -Atq -d auth \
+  -v fixture_username="${username}" -v fixture_email="${email}" -v fixture_password_hash="${password_hash}" <<'SQL'
+INSERT INTO public."user" (username, password, email, role, verified, approved_at)
+VALUES (:'fixture_username', :'fixture_password_hash', :'fixture_email', 'admin', TRUE, CURRENT_TIMESTAMP)
+RETURNING id;
+SQL
+)"
+[[ "${auth_user_id}" =~ ^[1-9][0-9]*$ ]] || { echo 'Could not create contract test user.' >&2; exit 1; }
 
 cookie_file="${test_dir}/cookies"
 login="$(curl -sS -c "${cookie_file}" -H 'Content-Type: application/json' \
@@ -78,10 +74,15 @@ quiz_id="$(jq -r '.id // empty' <<<"${quiz}")"
 [[ "${quiz_id}" =~ ^[1-9][0-9]*$ ]] || exit 1
 fixture_json POST "/api/quiz/quizzes/${quiz_id}/questions" \
   '{"template":"no_answer","prompt":"OpenAPI contract question","config":{}}' 201 >/dev/null
+fixture_json POST "/api/quiz/quizzes/${quiz_id}/questions" \
+  '{"template":"show_answer","prompt":"Reveal this answer","config":{"answer":"Known answer"}}' 201 >/dev/null
 attempt="$(fixture_json POST "/api/quiz/quizzes/${quiz_id}/attempts" '{}' 200)"
 attempt_id="$(jq -r '.id // empty' <<<"${attempt}")"
 question_id="$(jq -r '.questions[0].id // empty' <<<"${attempt}")"
 [[ "${attempt_id}" =~ ^[1-9][0-9]*$ && "${question_id}" =~ ^[1-9][0-9]*$ ]] || exit 1
+reveal_question_id="$(sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -Atq -d quiz \
+  -c "SELECT id FROM public.quiz_attempt_question WHERE attempt_id = ${attempt_id} AND position = 2")"
+[[ "${reveal_question_id}" =~ ^[1-9][0-9]*$ ]] || exit 1
 
 printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=' \
   | base64 -d > "${test_dir}/fixture.png"
@@ -95,6 +96,7 @@ image_id="$(jq -r '.id // empty' <<<"${image_response%$'\n'*}")"
 export API_TEST_BASE_URL OPENAPI_AUTH_COOKIE
 export OPENAPI_USERID="${auth_user_id}" OPENAPI_QUIZID="${quiz_id}"
 export OPENAPI_ATTEMPTID="${attempt_id}" OPENAPI_QUESTIONID="${question_id}"
+export OPENAPI_REVEALQUESTIONID="${reveal_question_id}"
 export OPENAPI_IMAGEID="${image_id}"
 python3 "${REPO_ROOT}/tests/api/authenticated_openapi.py" \
   "${REPO_ROOT}/docs/openapi.yaml" "${test_dir}/authenticated-openapi.yaml"
