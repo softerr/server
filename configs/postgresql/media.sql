@@ -10,10 +10,6 @@ CREATE TABLE IF NOT EXISTS public.image_blob (
     thumbnail_mime_type VARCHAR(16)
 );
 
--- Existing image blobs are filled when their thumbnail is first requested.
-ALTER TABLE public.image_blob ADD COLUMN IF NOT EXISTS thumbnail_content BYTEA;
-ALTER TABLE public.image_blob ADD COLUMN IF NOT EXISTS thumbnail_mime_type VARCHAR(16);
-
 CREATE TABLE IF NOT EXISTS public.media_group (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,

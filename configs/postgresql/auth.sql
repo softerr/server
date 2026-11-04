@@ -13,23 +13,13 @@ CREATE TABLE IF NOT EXISTS public."user" (
     verified BOOLEAN NOT NULL DEFAULT FALSE,
     approved_at TIMESTAMP,
     approved_by BIGINT REFERENCES public."user"(id) ON DELETE SET NULL,
-    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT user_account_credentials_check
+        CHECK ((account_kind = 'human' AND password IS NOT NULL AND email IS NOT NULL
+            AND service_owner_id IS NULL AND display_name IS NULL)
+            OR (account_kind = 'service' AND password IS NULL AND email IS NULL
+            AND service_owner_id IS NOT NULL AND display_name IS NOT NULL AND role = 'user'))
 );
--- Upgrade the user table present in the committed schema for service accounts.
-ALTER TABLE public."user" ADD COLUMN IF NOT EXISTS account_kind VARCHAR(16) NOT NULL DEFAULT 'human';
-ALTER TABLE public."user" ADD COLUMN IF NOT EXISTS service_owner_id BIGINT REFERENCES public."user"(id) ON DELETE CASCADE;
-ALTER TABLE public."user" ADD COLUMN IF NOT EXISTS display_name VARCHAR(100);
-ALTER TABLE public."user" ALTER COLUMN password DROP NOT NULL;
-ALTER TABLE public."user" ALTER COLUMN email DROP NOT NULL;
-DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_account_credentials_check') THEN
-        ALTER TABLE public."user" ADD CONSTRAINT user_account_credentials_check
-            CHECK ((account_kind = 'human' AND password IS NOT NULL AND email IS NOT NULL
-                AND service_owner_id IS NULL AND display_name IS NULL)
-                OR (account_kind = 'service' AND password IS NULL AND email IS NULL
-                AND service_owner_id IS NOT NULL AND display_name IS NOT NULL AND role = 'user'));
-    END IF;
-END $$;
 
 CREATE TABLE IF NOT EXISTS public.user_token (
     id BIGSERIAL PRIMARY KEY,
