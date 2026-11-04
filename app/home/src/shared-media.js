@@ -3,14 +3,13 @@ import { bindMediaCardSelection, updateMediaCardSelection } from './media-select
 import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
 
 const imageUrl = (id) => `/api/media/images/${id}`
-const thumbnailUrl = (id) => `${imageUrl(id)}/thumbnail`
 export const renameIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4.5-1 11-11a2.12 2.12 0 0 0-3-3l-11 11L4 20Z" /></svg>'
 const deleteIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>'
 const folderIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'
 const ungroupedIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m5 20 14-14"/></svg>'
 const createFolderIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v6m-3-3h6"/></svg>'
 
-export function renderSharedMedia(section, { currentUser, requestJson, responseError, setStatus, notify, renameImage, openDeleteDialog }) {
+export function renderSharedMedia(section, { currentUser, requestJson, responseError, setStatus, notify, renameImage, openDeleteDialog, thumbnailLoader }) {
   const admin = currentUser.role === 'admin'
   section.innerHTML = `
     <div id="shared-toolbar" class="shared-toolbar" ${admin ? '' : 'hidden'}>
@@ -147,8 +146,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
       const card = document.createElement('article')
       card.className = 'media-card'
       const preview = document.createElement('img')
-      preview.dataset.src = thumbnailUrl(image.id)
-      if (section.closest('.media-page').dataset.mediaLayout !== 'list') preview.src = preview.dataset.src
+      preview.dataset.mediaThumbId = String(image.id)
       preview.alt = image.name
       preview.loading = 'lazy'
       const listIcon = document.createElement('span')
@@ -190,6 +188,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
     }
     updateMediaCardSelection(imageGrid, selected)
     updateMoveButton()
+    thumbnailLoader.sync()
   }
 
   function folderRenameButton(group) {

@@ -81,8 +81,11 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   const selectedIds = new Set()
   const pickers = new Set()
   const imageLoads = new Map()
+  const pendingImages = new Set()
+  const activeBatches = new Set()
   const visiblePreviews = new Map()
   let loadTimer = null
+  let batchTimer = null
   let sourceMode = 'local'
   let onlineResults = []
   let onlineSearchTimer = null
@@ -92,35 +95,80 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       if (!entry.isIntersecting) continue
       imageObserver.unobserve(entry.target)
       const id = Number(entry.target.dataset.libraryPreviewId)
-      if (!imageLoads.has(id)) loadPreview(id)
+      if (imageLoads.has(id)) continue
+      imageLoads.set(id, { url: null })
+      pendingImages.add(id)
     }
+    if (pendingImages.size && batchTimer === null) batchTimer = setTimeout(flushImages, 0)
   }, { root: dialog, rootMargin: '80px' })
 
-  async function loadPreview(id) {
-    const load = { controller: new AbortController(), url: null }
-    imageLoads.set(id, load)
+  async function loadBatch(ids) {
+    const batch = { ids, controller: new AbortController(), loads: new Map(ids.map((id) => [id, imageLoads.get(id)])) }
+    activeBatches.add(batch)
     try {
-      const response = await fetch(thumbnailUrl(id), { signal: load.controller.signal })
-      if (!response.ok) return
-      const blob = await response.blob()
-      if (load.controller.signal.aborted || imageLoads.get(id) !== load) return
-      load.url = URL.createObjectURL(blob)
-      const preview = visiblePreviews.get(id)
-      if (preview) preview.src = load.url
+      const response = await fetch('/api/media/thumbnails', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_ids: ids }), signal: batch.controller.signal,
+      })
+      if (!response.ok) throw new Error('Thumbnail batch failed')
+      const payload = await response.json()
+      if (!Array.isArray(payload.images)) throw new Error('Invalid thumbnail batch')
+      const received = new Set()
+      for (const image of payload.images) {
+        if (!ids.includes(image.id) || !/^image\/(png|jpeg|webp)$/.test(image.mime_type)
+          || typeof image.data !== 'string') continue
+        const load = imageLoads.get(image.id)
+        if (!load || load !== batch.loads.get(image.id)) continue
+        load.url = `data:${image.mime_type};base64,${image.data}`
+        const preview = visiblePreviews.get(image.id)
+        if (preview) preview.src = load.url
+        received.add(image.id)
+      }
+      for (const id of ids) {
+        if (received.has(id)) continue
+        const load = imageLoads.get(id)
+        if (!load || load !== batch.loads.get(id)) continue
+        load.url = thumbnailUrl(id)
+        const preview = visiblePreviews.get(id)
+        if (preview) preview.src = load.url
+      }
     } catch {
-      // Searches and dialog closure cancel image requests in progress.
+      if (!batch.controller.signal.aborted) {
+        for (const id of ids) {
+          const load = imageLoads.get(id)
+          if (!load || load !== batch.loads.get(id)) continue
+          load.url = thumbnailUrl(id)
+          const preview = visiblePreviews.get(id)
+          if (preview) preview.src = load.url
+        }
+      }
     } finally {
-      if (imageLoads.get(id) === load && !load.url) imageLoads.delete(id)
+      activeBatches.delete(batch)
+      for (const id of ids) {
+        if (imageLoads.get(id) === batch.loads.get(id) && !imageLoads.get(id)?.url) imageLoads.delete(id)
+      }
+      flushImages()
+    }
+  }
+
+  function flushImages() {
+    clearTimeout(batchTimer)
+    batchTimer = null
+    if (!dialog.open) return
+    while (activeBatches.size < 2 && pendingImages.size) {
+      const ids = [...pendingImages].slice(0, 32)
+      for (const id of ids) pendingImages.delete(id)
+      loadBatch(ids)
     }
   }
 
   function stopImageLoads() {
     clearTimeout(loadTimer)
+    clearTimeout(batchTimer)
+    batchTimer = null
     imageObserver.disconnect()
-    for (const load of imageLoads.values()) {
-      load.controller.abort()
-      if (load.url) URL.revokeObjectURL(load.url)
-    }
+    for (const batch of activeBatches) batch.controller.abort()
+    pendingImages.clear()
     imageLoads.clear()
     visiblePreviews.clear()
   }
@@ -332,7 +380,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     return picker
   }
 
-  function render() {
+  function render(deferPreviews = false) {
     if (sourceMode === 'online') {
       renderOnline()
       return
@@ -343,13 +391,18 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       : images
     const visibleIds = new Set(visibleImages.map((image) => image.id))
     clearTimeout(loadTimer)
+    clearTimeout(batchTimer)
+    batchTimer = null
     imageObserver.disconnect()
     visiblePreviews.clear()
+    for (const id of pendingImages) imageLoads.delete(id)
+    pendingImages.clear()
     for (const [id, load] of imageLoads) {
       if (visibleIds.has(id)) continue
-      load.controller.abort()
-      if (load.url) URL.revokeObjectURL(load.url)
       imageLoads.delete(id)
+    }
+    for (const batch of activeBatches) {
+      if (!batch.ids.some((id) => visibleIds.has(id))) batch.controller.abort()
     }
     const emptyTile = document.createElement('div')
     emptyTile.className = 'image-library-item'
@@ -464,11 +517,13 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     }
     updateMultiSelection()
     if (dialog.open) {
-      loadTimer = setTimeout(() => {
+      const observePreviews = () => {
         for (const [id, preview] of visiblePreviews) {
           if (!imageLoads.has(id)) imageObserver.observe(preview)
         }
-      }, 200)
+      }
+      if (deferPreviews) loadTimer = setTimeout(observePreviews, 100)
+      else observePreviews()
     }
   }
 
@@ -509,7 +564,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   upload.addEventListener('click', () => input.click())
   search.addEventListener('input', () => {
     if (sourceMode === 'online') searchOnline()
-    else render()
+    else render(true)
   })
   for (const tab of sourceTabs) {
     tab.addEventListener('click', () => setSourceMode(tab.dataset.sourceTab))

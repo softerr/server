@@ -24,6 +24,11 @@ if ($path === '/images/usage') {
     respond(405, ['error' => 'Method not allowed']);
 }
 
+if ($path === '/thumbnails') {
+    if ($method === 'POST') handleGetMediaThumbnails();
+    respond(405, ['error' => 'Method not allowed']);
+}
+
 if ($path === '/online-search') {
     if ($method === 'GET') handleSearchOnlineImages();
     respond(405, ['error' => 'Method not allowed']);

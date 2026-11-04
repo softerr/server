@@ -1,6 +1,6 @@
 const imageUrl = (id) => `/api/media/images/${id}`
-const thumbnailUrl = (id) => `${imageUrl(id)}/thumbnail`
 import { renderSharedMedia, renameIcon } from './shared-media.js'
+import { createMediaThumbnailLoader } from './media-thumbnails.js'
 import { formatBytes, formatImageDetails, mediaImageIcon } from './media-format.js'
 import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
 import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
@@ -65,6 +65,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
   const page = app.querySelector('.media-page')
   const search = page.querySelector('#media-search')
   const viewButtons = [...page.querySelectorAll('.media-view-button')]
+  let thumbnailLoader = null
   const viewStorageKey = 'softerr-media-view'
   let savedView = null
   try { savedView = localStorage.getItem(viewStorageKey) } catch { /* Storage may be unavailable. */ }
@@ -75,8 +76,8 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
     }
     for (const preview of page.querySelectorAll('.media-card > img')) {
       if (view === 'list') preview.removeAttribute('src')
-      else preview.src = preview.dataset.src
     }
+    thumbnailLoader?.sync()
     if (save) {
       try { localStorage.setItem(viewStorageKey, view) } catch { /* Keep this view for the current page. */ }
     }
@@ -99,9 +100,11 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
   const selected = new Set()
   const selectionAnchor = { id: null }
   const mediaDeletion = createMediaDeletion(page, { requestJson, responseError, notify: notice.show })
+  thumbnailLoader = createMediaThumbnailLoader(page)
   const sharedMedia = renderSharedMedia(page.querySelector('#shared-media'), {
     currentUser, requestJson, responseError, setStatus, notify: notice.show,
     renameImage: openRename, openDeleteDialog: mediaDeletion.open,
+    thumbnailLoader,
   })
   search.addEventListener('input', () => {
     selected.clear()
@@ -120,6 +123,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
     }
     personalPanel.hidden = index !== 0
     sharedPanel.hidden = index !== 1
+    thumbnailLoader.sync()
   }
   tabs.forEach((tab, index) => tab.addEventListener('click', () => selectTab(index)))
   page.querySelector('.media-tabs').addEventListener('keydown', (event) => {
@@ -208,8 +212,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
       const card = document.createElement('article')
       card.className = 'media-card'
       const preview = document.createElement('img')
-      preview.dataset.src = thumbnailUrl(image.id)
-      if (page.dataset.mediaLayout !== 'list') preview.src = preview.dataset.src
+      preview.dataset.mediaThumbId = String(image.id)
       preview.alt = image.name
       preview.loading = 'lazy'
       const listIcon = document.createElement('span')
@@ -246,6 +249,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
     }
     updateMediaCardSelection(grid, selected)
     updatePublishButton()
+    thumbnailLoader.sync()
   }
 
   async function refresh() {

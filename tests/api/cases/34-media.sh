@@ -156,6 +156,17 @@ test_shared_media_across_users_and_quizzes() (
   answer_id="$(jq -r '.id // empty' <<<"$response")"
   [[ "$answer_id" =~ ^[0-9]+$ && "$answer_id" != "$private_id" ]] \
     || { fail_test "answer image upload failed: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --argjson a "$private_id" --argjson b "$shared_id" '{image_ids:[$a,$b]}')" \
+    "${API_TEST_BASE_URL%/}/api/media/thumbnails")"
+  jq -e --argjson a "$private_id" --argjson b "$shared_id" \
+    '(.images | map(.id) | sort) == ([$a,$b] | sort) and all(.images[]; .mime_type == "image/png" and (.data | length) > 0)' \
+    <<<"$response" >/dev/null || { fail_test "batch thumbnails missing accessible images: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --argjson a "$private_id" --argjson b "$shared_id" '{image_ids:[$a,$b]}')" \
+    "${API_TEST_BASE_URL%/}/api/media/thumbnails")"
+  jq -e --argjson id "$shared_id" '.images | length == 1 and .[0].id == $id' \
+    <<<"$response" >/dev/null || { fail_test "batch thumbnails exposed a private image: ${response}"; return 1; }
   response="$(curl -sS -b "$admin_cookie" -X PATCH -H 'Content-Type: application/json' \
     --data '{"name":"../invalid.png"}' -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"

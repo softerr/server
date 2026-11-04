@@ -447,6 +447,21 @@ function imageUsedByReadableOwnerQuiz(int $imageId, array $user): bool
     return false;
 }
 
+function storedMediaThumbnail($db, array $row): array
+{
+    if ($row['thumbnail_content'] !== null) {
+        return [$row['thumbnail_mime_type'], pg_unescape_bytea($row['thumbnail_content'])];
+    }
+    [$mime, $bytes] = mediaThumbnail(pg_unescape_bytea($row['content']), $row['mime_type'],
+        (int) $row['width'], (int) $row['height']);
+    $saved = @pg_query_params($db,
+        'UPDATE public.image_blob SET thumbnail_mime_type = $2, thumbnail_content = $3::bytea
+         WHERE id = $1 AND thumbnail_content IS NULL',
+        [$row['blob_id'], $mime, '\\x' . bin2hex($bytes)]);
+    if ($saved === false) respond(500, ['error' => 'Could not save image thumbnail']);
+    return [$mime, $bytes];
+}
+
 function handleGetImage(int $imageId, bool $thumbnail = false): never
 {
     $user = currentSessionUser();
@@ -477,18 +492,8 @@ function handleGetImage(int $imageId, bool $thumbnail = false): never
         $row = pg_fetch_assoc($result);
         if ($row === false) respond(404, ['error' => 'Image not found']);
     }
-    if ($thumbnail && $row['thumbnail_content'] === null) {
-        $original = pg_unescape_bytea($row['content']);
-        [$mime, $bytes] = mediaThumbnail($original, $row['mime_type'],
-            (int) $row['width'], (int) $row['height']);
-        $saved = @pg_query_params($db,
-            'UPDATE public.image_blob SET thumbnail_mime_type = $2, thumbnail_content = $3::bytea
-             WHERE id = $1 AND thumbnail_content IS NULL',
-            [$row['blob_id'], $mime, '\\x' . bin2hex($bytes)]);
-        if ($saved === false) respond(500, ['error' => 'Could not save image thumbnail']);
-    } elseif ($thumbnail) {
-        $mime = $row['thumbnail_mime_type'];
-        $bytes = pg_unescape_bytea($row['thumbnail_content']);
+    if ($thumbnail) {
+        [$mime, $bytes] = storedMediaThumbnail($db, $row);
     } else {
         $mime = $row['mime_type'];
         $bytes = pg_unescape_bytea($row['content']);
@@ -499,6 +504,39 @@ function handleGetImage(int $imageId, bool $thumbnail = false): never
     header('Cache-Control: private, no-store');
     echo $bytes;
     exit;
+}
+
+function handleGetMediaThumbnails(): never
+{
+    $user = currentSessionUser();
+    $payload = readJsonBody(1024);
+    $ids = $payload['image_ids'] ?? null;
+    if (!is_array($ids) || !array_is_list($ids) || $ids === [] || count($ids) > 32) {
+        respond(400, ['error' => 'Choose 1 to 32 images']);
+    }
+    foreach ($ids as $id) {
+        if (!is_int($id) || $id < 1) respond(400, ['error' => 'Invalid image ID']);
+    }
+    if (count(array_unique($ids)) !== count($ids)) respond(400, ['error' => 'Duplicate image ID']);
+
+    $db = connectMediaDb();
+    $result = @pg_query_params($db,
+        'SELECT i.id, b.id AS blob_id, b.mime_type, b.width, b.height,
+                b.thumbnail_mime_type, b.thumbnail_content,
+                CASE WHEN b.thumbnail_content IS NULL THEN b.content ELSE NULL END AS content
+         FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
+         WHERE i.id = ANY($1::bigint[])
+           AND (i.owner_auth_user_id = $2 OR i.shared = TRUE)',
+        ['{' . implode(',', $ids) . '}', $user['id']]);
+    if ($result === false) respond(500, ['error' => 'Failed to load thumbnails']);
+    $images = [];
+    while (($row = pg_fetch_assoc($result)) !== false) {
+        [$mime, $bytes] = storedMediaThumbnail($db, $row);
+        $images[] = ['id' => (int) $row['id'], 'mime_type' => $mime,
+            'data' => base64_encode($bytes)];
+    }
+    header('Cache-Control: private, no-store');
+    respond(200, ['images' => $images]);
 }
 
 function handleRenameImage(int $imageId): never

@@ -196,6 +196,9 @@ key to its local user. The API creates the local user on the first quiz create.
   returns a preview of at most 320 pixels per side. Small images may be served
   unchanged. The preview is generated when uploaded; existing images receive
   one on their first thumbnail request.
+- `POST /api/media/thumbnails` with `{ "image_ids": [12, 13] }` returns up to 32
+  personal or shared thumbnails as base64 data in one response. IDs outside
+  the caller's media library are omitted.
 - `POST /api/media/images/usage` with `{ "image_ids": [12, 13] }` lists every
   current question and saved attempt that references the selected images.
 - `DELETE /api/media/images/{imageId}` deletes an owned personal image or, for
