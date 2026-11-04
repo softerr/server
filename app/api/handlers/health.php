@@ -16,10 +16,13 @@ function handleReadiness(): never
     }
 
     $schema = @pg_query($db, 'SELECT u.id, u.email, u.role, u.deleting, u.approved_at, u.approved_by,
+            u.account_kind, u.service_owner_id, u.display_name,
             t.hash, t.email_attempted_at, o.token_id, o.available_at, o.claimed_until, o.claim_id,
-            a.applicant_id, a.recipient_id, a.available_at, a.claim_id
+            a.applicant_id, a.recipient_id, a.available_at, a.claim_id,
+            api.token_hash, api.read_owner_quizzes, api.edit_owner_quizzes,
+            api.quiz_permissions, activity.token_id, activity.status
         FROM public."user" u, public.user_token t, public.verification_email_outbox o,
-             public.approval_email_outbox a
+             public.approval_email_outbox a, public.api_token api, public.api_token_activity activity
         LIMIT 0');
     if ($schema === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Database schema is not ready']);

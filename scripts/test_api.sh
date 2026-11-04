@@ -78,11 +78,15 @@ cleanup_test_users() {
   local auth_prefix="api_test_${API_TEST_RUN_ID}_"
   local role_prefix="api_role_target_${API_TEST_RUN_ID}_"
   local ids
-  ids="$(test_psql "${API_TEST_DB_NAME}" "SELECT COALESCE(string_agg(id::text, ','), '')
-    FROM public.\"user\"
-    WHERE (left(username, length('${auth_prefix}')) = '${auth_prefix}'
-      OR left(username, length('${role_prefix}')) = '${role_prefix}')
-      AND email = username || '@example.test';")" || return 1
+  ids="$(test_psql "${API_TEST_DB_NAME}" "WITH people AS (
+      SELECT id FROM public.\"user\"
+      WHERE (left(username, length('${auth_prefix}')) = '${auth_prefix}'
+        OR left(username, length('${role_prefix}')) = '${role_prefix}')
+        AND email = username || '@example.test'
+    ), accounts AS (
+      SELECT id FROM people
+      UNION SELECT id FROM public.\"user\" WHERE service_owner_id IN (SELECT id FROM people)
+    ) SELECT COALESCE(string_agg(id::text, ','), '') FROM accounts;")" || return 1
   if [[ -z "${ids}" ]]; then
     echo 'Cleaned up 0 API test users.'
     return 0
@@ -123,6 +127,14 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 mapfile -t case_files < <(find "${CASES_DIR}" -maxdepth 1 -type f -name '*.sh' -printf '%f\n' | sort)
+if [[ -n "${API_TEST_CASE_FILE:-}" ]]; then
+  if [[ ! "${API_TEST_CASE_FILE}" =~ ^[0-9][0-9]-[a-z0-9-]+\.sh$ \
+      || ! -f "${CASES_DIR}/${API_TEST_CASE_FILE}" ]]; then
+    echo "Unknown API test case file: ${API_TEST_CASE_FILE}" >&2
+    exit 1
+  fi
+  case_files=("${API_TEST_CASE_FILE}")
+fi
 if [[ "${#case_files[@]}" -eq 0 ]]; then
   echo "No API test case files found in ${CASES_DIR}"
   exit 1

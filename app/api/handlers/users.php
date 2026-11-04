@@ -13,7 +13,7 @@ function handleListUsers(): never
     $result = @pg_query(
         $db,
         'SELECT id, username, email, role, verified, approved_at, deleting, created
-         FROM public."user"
+         FROM public."user" WHERE account_kind = \'human\'
          ORDER BY id'
     );
     if ($result === false) {
@@ -75,7 +75,7 @@ function handleUpdateUserRole(int $targetId): never
     beginAdminMutation($db, (int) $currentUser['id']);
     $result = @pg_query_params(
         $db,
-        'UPDATE public."user" SET role = $1 WHERE id = $2 AND deleting = FALSE
+        'UPDATE public."user" SET role = $1 WHERE id = $2 AND account_kind = \'human\' AND deleting = FALSE
            AND verified = TRUE AND approved_at IS NOT NULL
          RETURNING id, username, email, role, verified, approved_at, created',
         [$role, $targetId]
@@ -156,7 +156,7 @@ function handleDeleteUser(int $targetId): never
     beginAdminMutation($authDb, (int) $currentUser['id']);
     $target = @pg_query_params(
         $authDb,
-        'SELECT id FROM public."user" WHERE id = $1 FOR UPDATE',
+        'SELECT id FROM public."user" WHERE id = $1 AND account_kind = \'human\' FOR UPDATE',
         [$targetId]
     );
     if ($target === false) {
@@ -180,17 +180,33 @@ function handleDeleteUser(int $targetId): never
         respond(500, ['error' => 'Failed to delete user']);
     }
 
+    $serviceRows = @pg_query_params($authDb,
+        'SELECT id FROM public."user" WHERE service_owner_id = $1 ORDER BY id', [$targetId]);
+    if ($serviceRows === false) respond(500, ['error' => 'Failed to find service accounts']);
+    $accountIds = [$targetId];
+    while (($service = pg_fetch_assoc($serviceRows)) !== false) $accountIds[] = (int) $service['id'];
+    $accountIdArray = '{' . implode(',', $accountIds) . '}';
+
     // The account is now blocked. A failure below leaves it visible to admins
     // so the same DELETE can safely retry the remaining cleanup.
     $quizDb = connectQuizDb();
     if (@pg_query($quizDb, 'BEGIN') === false) {
         respond(500, ['error' => 'Failed to delete quiz data']);
     }
-    $quizLock = @pg_query_params($quizDb, 'SELECT pg_advisory_xact_lock($1)', [$targetId]);
-    $quizDelete = $quizLock === false ? false : @pg_query_params(
+    $quizLock = true;
+    foreach ($accountIds as $accountId) {
+        if (@pg_query_params($quizDb, 'SELECT pg_advisory_xact_lock($1)', [$accountId]) === false) {
+            $quizLock = false;
+            break;
+        }
+    }
+    $quizReceipts = !$quizLock ? false : @pg_query_params($quizDb,
+        'DELETE FROM public.quiz_import_receipt WHERE owner_auth_user_id = ANY($1::bigint[])',
+        [$accountIdArray]);
+    $quizDelete = $quizReceipts === false ? false : @pg_query_params(
         $quizDb,
-        'DELETE FROM public."user" WHERE auth_user_id = $1',
-        [$targetId]
+        'DELETE FROM public."user" WHERE auth_user_id = ANY($1::bigint[])',
+        [$accountIdArray]
     );
     if ($quizDelete === false) {
         @pg_query($quizDb, 'ROLLBACK');
@@ -201,12 +217,20 @@ function handleDeleteUser(int $targetId): never
     }
 
     $mediaDb = connectMediaDb();
-    if (@pg_query($mediaDb, 'BEGIN') === false
-        || @pg_query_params($mediaDb, 'SELECT pg_advisory_xact_lock($1)', [$targetId]) === false) {
+    if (@pg_query($mediaDb, 'BEGIN') === false) {
         respond(500, ['error' => 'Failed to delete user images']);
     }
+    foreach ($accountIds as $accountId) {
+        if (@pg_query_params($mediaDb, 'SELECT pg_advisory_xact_lock($1)', [$accountId]) === false) {
+            respond(500, ['error' => 'Failed to delete user images']);
+        }
+    }
+    $mediaRecoveries = @pg_query_params($mediaDb,
+        'DELETE FROM public.quiz_import_recovery WHERE owner_auth_user_id = ANY($1::bigint[])',
+        [$accountIdArray]);
+    if ($mediaRecoveries === false) respond(500, ['error' => 'Failed to clean up import recovery']);
     $mediaDelete = @pg_query_params($mediaDb,
-        'DELETE FROM public.image WHERE owner_auth_user_id = $1', [$targetId]);
+        'DELETE FROM public.image WHERE owner_auth_user_id = ANY($1::bigint[])', [$accountIdArray]);
     if ($mediaDelete === false) {
         respond(500, ['error' => 'Failed to delete user images']);
     }

@@ -12,6 +12,7 @@ require_once __DIR__ . '/handlers/resend.php';
 require_once __DIR__ . '/handlers/verify.php';
 require_once __DIR__ . '/handlers/login.php';
 require_once __DIR__ . '/handlers/users.php';
+require_once __DIR__ . '/handlers/api_tokens.php';
 require_once __DIR__ . '/handlers/backups.php';
 require_once __DIR__ . '/handlers/password_reset.php';
 
@@ -58,6 +59,33 @@ if ($path === '/users') {
         respond(405, ['error' => 'Method not allowed']);
     }
     handleListUsers();
+}
+
+if ($path === '/tokens') {
+    if ($method === 'GET') handleListApiTokens();
+    if ($method === 'POST') handleCreateApiToken();
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/tokens/([1-9][0-9]*)/activity$#D', $path, $tokenMatch)) {
+    $tokenId = filter_var($tokenMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($tokenId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'GET') handleApiTokenActivity($tokenId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/tokens/([1-9][0-9]*)/quiz-access$#D', $path, $tokenMatch)) {
+    $tokenId = filter_var($tokenMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($tokenId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'PATCH') handleUpdateApiTokenQuizAccess($tokenId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/tokens/([1-9][0-9]*)$#D', $path, $tokenMatch)) {
+    $tokenId = filter_var($tokenMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($tokenId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'DELETE') handleRevokeApiToken($tokenId);
+    respond(405, ['error' => 'Method not allowed']);
 }
 
 if ($path === '/backups') {

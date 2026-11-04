@@ -88,6 +88,7 @@ location = /api/quiz.php {
     client_max_body_size 48m;
     include snippets/fastcgi-php.conf;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    fastcgi_param HTTP_AUTHORIZATION $http_authorization;
     fastcgi_pass unix:__PHP_FPM_SOCK__;
 }
 
@@ -97,6 +98,7 @@ location = /api/media.php {
     client_max_body_size 6m;
     include snippets/fastcgi-php.conf;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    fastcgi_param HTTP_AUTHORIZATION $http_authorization;
     fastcgi_pass unix:__PHP_FPM_SOCK__;
 }
 
@@ -105,6 +107,7 @@ location ~ ^/api/(index|auth)\.php$ {
     internal;
     include snippets/fastcgi-php.conf;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    fastcgi_param HTTP_AUTHORIZATION $http_authorization;
     fastcgi_pass unix:__PHP_FPM_SOCK__;
 }
 

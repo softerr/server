@@ -220,12 +220,13 @@ function readQuestionFields(?array $payload): array
 function handleListQuestions(int $quizId): never
 {
     $user = currentSessionUser();
+    $grantOwnerId = quizGrantOwnerId($user, $quizId);
     $db = connectQuizDb();
     $owner = @pg_query_params(
         $db,
         'SELECT q.id FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
-         WHERE q.id = $1 AND u.auth_user_id = $2',
-        [$quizId, $user['id']]
+         WHERE q.id = $1 AND (u.auth_user_id = $2 OR u.auth_user_id = $3)',
+        [$quizId, $user['id'], $grantOwnerId]
     );
     if ($owner === false) {
         respond(500, ['error' => 'Failed to load questions']);
@@ -252,6 +253,7 @@ function handleListQuestions(int $quizId): never
 function handleCreateQuestion(int $quizId): never
 {
     $user = currentSessionUser();
+    $grantOwnerId = quizGrantOwnerId($user, $quizId, true);
     [$template, $prompt, $config, $timeLimit] = readQuestionFields(readJsonBody(QUESTION_BODY_MAX_BYTES));
     $db = connectQuizDb();
     if (@pg_query($db, 'BEGIN') === false) {
@@ -260,12 +262,12 @@ function handleCreateQuestion(int $quizId): never
     if (@pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
         respond(500, ['error' => 'Failed to create question']);
     }
-    verifyQuestionImages((int) $user['id'], $config);
+    verifyQuestionImages($user, $config);
     $owner = @pg_query_params(
         $db,
         'SELECT q.id FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
-         WHERE q.id = $1 AND u.auth_user_id = $2 FOR UPDATE OF q',
-        [$quizId, $user['id']]
+         WHERE q.id = $1 AND (u.auth_user_id = $2 OR u.auth_user_id = $3) FOR UPDATE OF q',
+        [$quizId, $user['id'], $grantOwnerId]
     );
     if ($owner === false) {
         @pg_query($db, 'ROLLBACK');
@@ -306,6 +308,7 @@ function handleCreateQuestion(int $quizId): never
 function handleReorderQuestions(int $quizId): never
 {
     $user = currentSessionUser();
+    $grantOwnerId = quizGrantOwnerId($user, $quizId, true);
     $payload = readJsonBody();
     $ids = $payload['question_ids'] ?? null;
     if (!is_array($ids) || !array_is_list($ids) || count($ids) > 100) {
@@ -327,8 +330,8 @@ function handleReorderQuestions(int $quizId): never
     $owner = @pg_query_params(
         $db,
         'SELECT q.id FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
-         WHERE q.id = $1 AND u.auth_user_id = $2 FOR UPDATE OF q',
-        [$quizId, $user['id']]
+         WHERE q.id = $1 AND (u.auth_user_id = $2 OR u.auth_user_id = $3) FOR UPDATE OF q',
+        [$quizId, $user['id'], $grantOwnerId]
     );
     if ($owner === false) {
         @pg_query($db, 'ROLLBACK');
@@ -374,22 +377,24 @@ function handleReorderQuestions(int $quizId): never
 function handleUpdateQuestion(int $quizId, int $questionId): never
 {
     $user = currentSessionUser();
+    $grantOwnerId = quizGrantOwnerId($user, $quizId, true);
     [$template, $prompt, $config, $timeLimit, $timeLimitProvided] = readQuestionFields(readJsonBody(QUESTION_BODY_MAX_BYTES));
     $db = connectQuizDb();
     if (@pg_query($db, 'BEGIN') === false
         || @pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
         respond(500, ['error' => 'Failed to update question']);
     }
-    verifyQuestionImages((int) $user['id'], $config);
+    verifyQuestionImages($user, $config);
     $result = @pg_query_params(
         $db,
         'UPDATE public.question t SET template = $1, prompt = $2, config = $3::jsonb,
             time_limit_seconds = CASE WHEN $7::boolean THEN $8::integer ELSE t.time_limit_seconds END
          FROM public.quiz q, public."user" u
          WHERE t.id = $4 AND t.quiz_id = q.id AND q.id = $5
-           AND q.user_id = u.id AND u.auth_user_id = $6
+           AND q.user_id = u.id AND (u.auth_user_id = $6 OR u.auth_user_id = $9)
          RETURNING t.id, t.quiz_id, t.template, t.prompt, t.config, t.time_limit_seconds, t.created',
-        [$template, $prompt, $config, $questionId, $quizId, $user['id'], $timeLimitProvided ? 't' : 'f', $timeLimit]
+        [$template, $prompt, $config, $questionId, $quizId, $user['id'],
+         $timeLimitProvided ? 't' : 'f', $timeLimit, $grantOwnerId]
     );
     if ($result === false) {
         respond(500, ['error' => 'Failed to update question']);
@@ -405,14 +410,15 @@ function handleUpdateQuestion(int $quizId, int $questionId): never
 function handleDeleteQuestion(int $quizId, int $questionId): never
 {
     $user = currentSessionUser();
+    $grantOwnerId = quizGrantOwnerId($user, $quizId, true);
     $db = connectQuizDb();
     $result = @pg_query_params(
         $db,
         'DELETE FROM public.question t USING public.quiz q, public."user" u
          WHERE t.id = $1 AND t.quiz_id = q.id AND q.id = $2
-           AND q.user_id = u.id AND u.auth_user_id = $3
+           AND q.user_id = u.id AND (u.auth_user_id = $3 OR u.auth_user_id = $4)
          RETURNING t.id',
-        [$questionId, $quizId, $user['id']]
+        [$questionId, $quizId, $user['id'], $grantOwnerId]
     );
     if ($result === false) {
         respond(500, ['error' => 'Failed to delete question']);

@@ -179,6 +179,7 @@ paths:
       summary: Get the account for the current session
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Verified account in the current session.
@@ -199,8 +200,8 @@ paths:
     get:
       tags: [Administration]
       operationId: listUsers
-      summary: List all auth users
-      description: Requires an approved, verified session whose current account role is admin. Results are ordered by ID and include unverified and pending accounts. Password hashes and tokens are never returned. The response is not cached.
+      summary: List human auth users
+      description: Requires an approved, verified session whose current account role is admin. Results are ordered by ID and include unverified and pending human accounts; service accounts are managed through API tokens. Password hashes and tokens are never returned. The response is not cached.
       security:
         - sessionCookie: []
       responses:
@@ -230,6 +231,170 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
+
+  /auth/tokens:
+    get:
+      tags: [Authentication]
+      operationId: listApiTokens
+      summary: List up to 100 API tokens
+      description: Browser session required. Lists only tokens created by the signed-in user, with active tokens first. Token secrets are never returned.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Token metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens]
+                properties:
+                  tokens:
+                    type: array
+                    items: {$ref: '#/components/schemas/ApiToken'}
+        '401': {description: No active session.}
+        '403': {description: Browser session required.}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      tags: [Authentication]
+      operationId: createApiToken
+      summary: Create a scoped API token
+      description: Browser session required. Creates a separate service account with the supplied name. The token secret is returned once. Quiz access can cover selected creator-owned quizzes or all current and future quizzes. Set `expires_in_days` to null for no expiry.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scopes, expires_in_days]
+              properties:
+                name: {type: string, minLength: 1, maxLength: 100}
+                quiz_access: {$ref: '#/components/schemas/TokenQuizAccess'}
+                scopes:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items: {type: string, enum: ['quiz:read', 'quiz:write', 'media:read', 'media:write']}
+                expires_in_days: {type: [integer, 'null'], minimum: 1, maximum: 365}
+      responses:
+        '201':
+          description: New token secret, shown only in this response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, user_id, token, expires]
+                properties:
+                  id: {type: integer, minimum: 1}
+                  user_id: {type: integer, minimum: 1, description: New service account ID.}
+                  token: {type: string}
+                  expires: {type: [string, 'null'], format: date-time}
+        '400': {description: Invalid token settings.}
+        '401': {description: No active session.}
+        '403': {description: Browser session required or account inactive.}
+        '413': {description: Request body is too large.}
+        '429': {description: At most 100 active tokens and 20 new tokens per account per day.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /auth/tokens/{tokenId}:
+    parameters:
+      - name: tokenId
+        in: path
+        required: true
+        schema: {type: integer, minimum: 1}
+    delete:
+      tags: [Authentication]
+      operationId: revokeApiToken
+      summary: Revoke an API token
+      description: Creator's browser session required. Revocation takes effect on the next request.
+      security:
+        - sessionCookie: []
+      responses:
+        '204': {description: Token revoked.}
+        '401': {description: No active session.}
+        '403': {description: Browser session required.}
+        '404': {description: Token not found.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /auth/tokens/{tokenId}/activity:
+    parameters:
+      - name: tokenId
+        in: path
+        required: true
+        schema: {type: integer, minimum: 1}
+    get:
+      tags: [Authentication]
+      operationId: getApiTokenActivity
+      summary: Get recent successful token actions
+      description: Creator's browser session required. Returns up to 100 recent successful requests, including GET image reads, newest first.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Token activity.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [activity]
+                properties:
+                  activity:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, method, path, status, created]
+                      properties:
+                        id: {type: integer, minimum: 1}
+                        method: {type: string}
+                        path: {type: string}
+                        status: {type: integer}
+                        created: {type: string, format: date-time}
+        '401': {description: No active session.}
+        '403': {description: Browser session required.}
+        '404': {description: Token not found.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /auth/tokens/{tokenId}/quiz-access:
+    parameters:
+      - name: tokenId
+        in: path
+        required: true
+        schema: {type: integer, minimum: 1}
+    patch:
+      tags: [Authentication]
+      operationId: updateApiTokenQuizAccess
+      summary: Change a token's access to the creator's quizzes
+      description: Creator's browser session required. Read grants require quiz:read; edit grants require quiz:read and quiz:write. Edit grants cannot delete the quiz.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quiz_access]
+              properties:
+                quiz_access: {$ref: '#/components/schemas/TokenQuizAccess'}
+      responses:
+        '200':
+          description: Updated quiz access.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [quiz_access]
+                properties:
+                  quiz_access: {$ref: '#/components/schemas/TokenQuizAccess'}
+        '400': {description: Invalid quiz access or scope mismatch.}
+        '401': {description: No active session.}
+        '403': {description: Browser session required.}
+        '404': {description: Token not found.}
+        '409': {description: Token is revoked or expired.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
 
   /auth/backups:
     get:
@@ -698,6 +863,7 @@ paths:
       summary: List personal and published shared images
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Shared images first, then personal images; each group is sorted by filename. Usage and limits cover personal images only.
@@ -735,6 +901,7 @@ paths:
       description: PNG, JPEG, or WebP, at most 6 MiB and 4096 pixels per side. If identical bytes exist in the shared library, returns the shared entry without charging personal quota. Otherwise personal storage is limited to 256 images and 32 MiB across apps.
       security:
         - sessionCookie: []
+        - apiBearer: []
       parameters:
         - name: X-Image-Name
           in: header
@@ -772,6 +939,7 @@ paths:
       description: Returns up to 20 PNG, JPEG, or WebP images within the current upload size and dimension limits. Results contain thumbnails; files are saved only when imported.
       security:
         - sessionCookie: []
+        - apiBearer: []
       parameters:
         - name: q
           in: query
@@ -811,6 +979,7 @@ paths:
       description: Resolves a Commons file ID on the server, validates the image, stores its license and source details, and applies the personal media quota. Identical bytes reuse an existing personal image, but a shared copy does not prevent a personal library entry.
       security:
         - sessionCookie: []
+        - apiBearer: []
       requestBody:
         required: true
         content:
@@ -852,6 +1021,7 @@ paths:
       description: Published images appear in the shared library, not in this list. Usage covers personal images only.
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Uploaded images with personal storage usage and limits.
@@ -890,6 +1060,7 @@ paths:
       summary: List shared images and their folders
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Shared images, including ungrouped images.
@@ -958,6 +1129,7 @@ paths:
       summary: List shared media folders
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Folders sorted by name.
@@ -1207,6 +1379,7 @@ paths:
       description: A signed-in player can read personal images in reached attempt questions. Answer images become available only after an explicit Show answer reveal or a completed review that permits solutions.
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Image bytes.
@@ -1229,6 +1402,7 @@ paths:
       summary: Rename an owned image or, as an admin, a shared image
       security:
         - sessionCookie: []
+        - apiBearer: []
       requestBody:
         required: true
         content:
@@ -1265,6 +1439,7 @@ paths:
       summary: Delete an unused personal image
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '204':
           description: Image deleted.
@@ -1284,6 +1459,7 @@ paths:
       summary: List public quizzes, newest first
       security:
         - sessionCookie: []
+        - apiBearer: []
       parameters:
         - name: before
           in: query
@@ -1319,6 +1495,7 @@ paths:
       summary: List quizzes in the current account's library
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Quizzes, newest first.
@@ -1350,6 +1527,7 @@ paths:
         account can have up to 100 quizzes.
       security:
         - sessionCookie: []
+        - apiBearer: []
       requestBody:
         required: true
         content:
@@ -1443,6 +1621,7 @@ paths:
         ZIP bytes as application/octet-stream. Existing quizzes are unchanged.
       security:
         - sessionCookie: []
+        - apiBearer: []
       requestBody:
         required: true
         content:
@@ -1492,10 +1671,11 @@ paths:
     get:
       tags: [Quizzes]
       operationId: exportQuizZip
-      summary: Export an owned quiz as a ZIP archive
+      summary: Export an owned quiz or one visible through a service account grant
       description: ZIP contains quiz.json and each used image once under images/{imageId}/{filename}. The manifest also preserves each current filename in its name field.
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Portable quiz ZIP archive.
@@ -1522,9 +1702,10 @@ paths:
     get:
       tags: [Quizzes]
       operationId: getQuiz
-      summary: Get an owned or public quiz, or a quiz with a prior attempt
+      summary: Get an owned, granted, or public quiz, or a quiz with a prior attempt
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Quiz metadata.
@@ -1555,6 +1736,7 @@ paths:
         Description is trimmed and limited to 1000 bytes.
       security:
         - sessionCookie: []
+        - apiBearer: []
       requestBody:
         required: true
         content:
@@ -1634,6 +1816,7 @@ paths:
       summary: Delete a quiz owned by the current account
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '204':
           description: Quiz deleted; no response body.
@@ -1669,6 +1852,7 @@ paths:
       summary: List the current player's attempts for an accessible quiz, 100 per page
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Attempt summaries, newest first.
@@ -1698,6 +1882,7 @@ paths:
       description: An active attempt can be resumed after the quiz becomes private. A completed attempt remains available for review, but a new one cannot be started unless the quiz is public or owned by the player.
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Active attempt with its saved question snapshots and answers.
@@ -1728,6 +1913,7 @@ paths:
       summary: Get a saved attempt, its question snapshots, and answers
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Owned attempt.
@@ -1757,6 +1943,7 @@ paths:
       description: In Until finish mode, creates a new appearance. In fixed modes, reveals the next prepared appearance. Retrying with the same after ID returns the same next appearance.
       security:
         - sessionCookie: []
+        - apiBearer: []
       requestBody:
         required: true
         content:
@@ -1804,6 +1991,7 @@ paths:
       summary: Reveal an active Show answer question and save that it was revealed
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Answer text and optional image ID.
@@ -1843,6 +2031,7 @@ paths:
       summary: Start this question's clock once; repeated calls keep the original deadline
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Updated attempt with the question deadline.
@@ -1879,6 +2068,7 @@ paths:
       description: Repeated or out of order writes keep the greatest value. Time is measured by the client and is informational.
       security:
         - sessionCookie: []
+        - apiBearer: []
       requestBody:
         required: true
         content:
@@ -1933,6 +2123,7 @@ paths:
         `values` for blanks, `revealed` for show-answer, or `viewed` for no-answer.
       security:
         - sessionCookie: []
+        - apiBearer: []
       requestBody:
         required: true
         content:
@@ -1980,6 +2171,7 @@ paths:
       summary: Finish an attempt and keep its answers as history
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Completed attempt with saved answers.
@@ -2004,9 +2196,10 @@ paths:
     get:
       tags: [Quizzes]
       operationId: listQuizQuestions
-      summary: List questions in an owned quiz, in saved order
+      summary: List questions in an owned or granted quiz, in saved order
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
           description: Questions in the quiz.
@@ -2041,6 +2234,7 @@ paths:
       description: A quiz can have up to 100 questions. Question create bodies are limited to 32768 bytes.
       security:
         - sessionCookie: []
+        - apiBearer: []
       requestBody:
         required: true
         content:
@@ -2098,6 +2292,7 @@ paths:
       summary: Save the order of all questions in an owned quiz
       security:
         - sessionCookie: []
+        - apiBearer: []
       requestBody:
         required: true
         content:
@@ -2180,6 +2375,7 @@ paths:
       description: Question update bodies are limited to 32768 bytes.
       security:
         - sessionCookie: []
+        - apiBearer: []
       requestBody:
         required: true
         content:
@@ -2221,6 +2417,7 @@ paths:
       summary: Delete a question from an owned quiz
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '204':
           description: Question deleted; no response body.
@@ -2245,6 +2442,10 @@ components:
       type: apiKey
       in: cookie
       name: softerr_session
+    apiBearer:
+      type: http
+      scheme: bearer
+      description: Admin-issued API token. Quiz and media endpoints require matching read or write scopes. Tokens cannot access administrator endpoints.
   parameters:
     XTimezone:
       name: X-Timezone
@@ -2385,7 +2586,7 @@ components:
           default: null
         questions:
           type: array
-          maxItems: 100
+          maxItems: 1000
           items:
             $ref: '#/components/schemas/QuestionInput'
         images:
@@ -2700,8 +2901,10 @@ components:
         username:
           type: string
         email:
-          type: string
+          type: [string, 'null']
           format: email
+        account_kind: {type: string, enum: [human, service]}
+        api_token_id: {type: [integer, 'null'], minimum: 1}
         role:
           type: string
           enum: [admin, mod, user]
@@ -2718,6 +2921,37 @@ components:
             `YYYY-MM-DD HH:MM:SS`. No timezone or UTC guarantee is encoded;
             clients should not parse it as an instant without an agreed timezone.
           example: '2026-10-26 14:30:00'
+    TokenQuizAccess:
+      type: object
+      required: [all, quizzes]
+      properties:
+        all: {type: string, enum: [none, read, edit]}
+        quizzes:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [id, permission]
+            properties:
+              id: {type: integer, minimum: 1}
+              permission: {type: string, enum: [read, edit]}
+      description: When all is read or edit, quizzes must be empty. When all is none, quizzes lists selected creator-owned quizzes.
+    ApiToken:
+      type: object
+      required: [id, name, user_id, username, quiz_access, scopes, created, expires, last_used_at, revoked_at]
+      properties:
+        id: {type: integer, minimum: 1}
+        name: {type: string}
+        user_id: {type: integer, minimum: 1}
+        username: {type: string}
+        quiz_access: {$ref: '#/components/schemas/TokenQuizAccess'}
+        scopes:
+          type: array
+          items: {type: string, enum: ['quiz:read', 'quiz:write', 'media:read', 'media:write']}
+        created: {type: string, format: date-time}
+        expires: {type: [string, 'null'], format: date-time}
+        last_used_at: {type: [string, 'null'], format: date-time}
+        revoked_at: {type: [string, 'null'], format: date-time}
     UsersResponse:
       type: object
       required: [users]

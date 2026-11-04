@@ -29,8 +29,11 @@ function handleListQuizzes(): never
         'SELECT q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.randomize_answers, q.question_limit, q.time_limit_seconds, q.created,
             (SELECT COUNT(*) FROM public.quiz_attempt a WHERE a.quiz_id = q.id) AS play_count
          FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
-         WHERE u.auth_user_id = $1 ORDER BY q.id DESC',
-        [$user['id']]
+         WHERE u.auth_user_id = $1 OR (u.auth_user_id = $2
+            AND ($3::boolean OR q.id = ANY($4::bigint[]))) ORDER BY q.id DESC',
+        [$user['id'], $user['service_owner_id'] ?? null,
+         ($user['quiz_read_owner_id'] ?? null) !== null ? 't' : 'f',
+         '{' . implode(',', readableQuizGrantIds($user)) . '}']
     );
     if ($result === false) {
         respond(500, ['error' => 'Failed to load quizzes']);
@@ -72,16 +75,19 @@ function handleExploreQuizzes(): never
 function handleGetQuiz(int $quizId): never
 {
     $user = currentSessionUser();
+    $grantOwnerId = quizGrantOwnerId($user, $quizId);
     $db = connectQuizDb();
     $result = @pg_query_params(
         $db,
         'SELECT q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.randomize_answers, q.question_limit, q.time_limit_seconds, q.created,
             (SELECT COUNT(*) FROM public.quiz_attempt a WHERE a.quiz_id = q.id) AS play_count
          FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
-         WHERE q.id = $1 AND (u.auth_user_id = $2 OR q.is_public = TRUE OR EXISTS (
+         WHERE q.id = $1 AND (u.auth_user_id = $2 OR u.auth_user_id = $3
+            OR q.is_public = TRUE OR ($4::boolean AND EXISTS (
             SELECT 1 FROM public.quiz_attempt a JOIN public."user" p ON p.id = a.user_id
-            WHERE a.quiz_id = q.id AND p.auth_user_id = $2))',
-        [$quizId, $user['id']]
+            WHERE a.quiz_id = q.id AND p.auth_user_id = $2)))',
+        [$quizId, $user['id'], $grantOwnerId,
+         ($user['account_kind'] ?? 'human') === 'human' ? 't' : 'f']
     );
     if ($result === false) {
         respond(500, ['error' => 'Failed to load quiz']);
@@ -461,11 +467,13 @@ function handleExportQuizZip(int $quizId): never
 {
     if (!class_exists(ZipArchive::class)) respond(500, ['error' => 'ZIP support is unavailable']);
     $user = currentSessionUser();
+    $grantOwnerId = quizGrantOwnerId($user, $quizId);
     $db = connectQuizDb();
     $owner = @pg_query_params($db,
         'SELECT q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.randomize_answers, q.question_limit, q.time_limit_seconds, q.user_id FROM public.quiz q
          JOIN public."user" u ON u.id = q.user_id
-         WHERE q.id = $1 AND u.auth_user_id = $2', [$quizId, $user['id']]);
+         WHERE q.id = $1 AND (u.auth_user_id = $2 OR u.auth_user_id = $3)',
+        [$quizId, $user['id'], $grantOwnerId]);
     if ($owner === false) respond(500, ['error' => 'Failed to export quiz']);
     $quiz = pg_fetch_assoc($owner);
     if ($quiz === false) respond(404, ['error' => 'Quiz not found']);
@@ -508,8 +516,8 @@ function handleExportQuizZip(int $quizId): never
                     s.source_page, s.creator, s.license_name, s.license_url, s.attribution
              FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
              LEFT JOIN public.image_source s ON s.image_id = i.id
-             WHERE i.id = $1 AND (i.owner_auth_user_id = $2 OR i.shared = TRUE)',
-            [$id, $user['id']]);
+             WHERE i.id = $1 AND (i.owner_auth_user_id = $2 OR i.owner_auth_user_id = $3 OR i.shared = TRUE)',
+            [$id, $user['id'], $grantOwnerId]);
         if ($imageResult === false) respond(500, ['error' => 'Failed to export quiz']);
         $image = pg_fetch_assoc($imageResult);
         if ($image === false) respond(500, ['error' => 'Quiz image is missing']);
@@ -543,6 +551,7 @@ function handleExportQuizZip(int $quizId): never
 function handleUpdateQuiz(int $quizId): never
 {
     $user = currentSessionUser();
+    $grantOwnerId = quizGrantOwnerId($user, $quizId, true);
     [$name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $limitProvided, $timeLimit, $timeLimitProvided, $allowGoBack, $isPublic, $randomizeAnswers] = readQuizFields(readJsonBody(), true);
 
     $db = connectQuizDb();
@@ -559,12 +568,12 @@ function handleUpdateQuiz(int $quizId): never
             question_limit = CASE WHEN $8::boolean THEN $9::integer ELSE q.question_limit END,
             time_limit_seconds = CASE WHEN $10::boolean THEN $11::integer ELSE q.time_limit_seconds END
          FROM public."user" u
-         WHERE q.id = $5 AND q.user_id = u.id AND u.auth_user_id = $6
+         WHERE q.id = $5 AND q.user_id = u.id AND (u.auth_user_id = $6 OR u.auth_user_id = $15)
          RETURNING q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.randomize_answers, q.question_limit, q.time_limit_seconds, q.created',
         [$name, $description, $playStyle, $showCorrectAnswers === null ? null : ($showCorrectAnswers ? 't' : 'f'), $quizId, $user['id'],
             $randomize === null ? null : ($randomize ? 't' : 'f'), $limitProvided ? 't' : 'f', $questionLimit, $timeLimitProvided ? 't' : 'f', $timeLimit,
             $allowGoBack === null ? null : ($allowGoBack ? 't' : 'f'), $isPublic === null ? null : ($isPublic ? 't' : 'f'),
-            $randomizeAnswers === null ? null : ($randomizeAnswers ? 't' : 'f')]
+            $randomizeAnswers === null ? null : ($randomizeAnswers ? 't' : 'f'), $grantOwnerId]
     );
     if ($result === false) {
         respond(500, ['error' => 'Failed to update quiz']);

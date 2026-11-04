@@ -95,7 +95,8 @@ case "${MODE}" in
         "${REPO_ROOT}/scripts/lib/apt_locks.sh" \
         "${REPO_ROOT}/scripts/lib/tls_certificate.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
       scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/nginx/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/nginx/"
-      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/postgresql/quiz.sql" \
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/postgresql/auth.sql" \
+        "${REPO_ROOT}/configs/postgresql/quiz.sql" \
         "${REPO_ROOT}/configs/postgresql/media.sql" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/postgresql/"
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/systemd/softerr-recover-quiz-imports.service" \
         "${REPO_ROOT}/configs/systemd/softerr-recover-quiz-imports.timer" \

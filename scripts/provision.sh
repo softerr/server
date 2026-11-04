@@ -37,6 +37,7 @@ run_root_script() {
 
 run_postgresql() {
   run_root_script "${SCRIPT_DIR}/setup_postgresql.sh"
+  AUTH_SCHEMA_APPLIED=1
   QUIZ_SCHEMA_APPLIED=1
   MEDIA_SCHEMA_APPLIED=1
 }
@@ -54,6 +55,15 @@ run_email_worker() {
 }
 
 run_api_deploy() {
+  if [[ "${AUTH_SCHEMA_APPLIED:-0}" != 1 ]]; then
+    local auth_schema="${REPO_ROOT}/configs/postgresql/auth.sql"
+    if [[ ! -f "${auth_schema}" ]]; then
+      echo "Auth schema not found: ${auth_schema}" >&2
+      exit 1
+    fi
+    sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${auth_schema}"
+    AUTH_SCHEMA_APPLIED=1
+  fi
   if [[ "${QUIZ_SCHEMA_APPLIED:-0}" != 1 ]]; then
     local quiz_schema="${REPO_ROOT}/configs/postgresql/quiz.sql"
     if [[ ! -f "${quiz_schema}" ]]; then

@@ -23,19 +23,26 @@ function imageIdsFromConfig(array $config): array
     return array_values(array_unique($ids));
 }
 
-function verifyQuestionImages(int $authUserId, string $config): void
+function verifyQuestionImages(array $user, string $config): void
 {
     $ids = imageIdsFromConfig(json_decode($config, true, 512, JSON_THROW_ON_ERROR));
     if (!$ids) return;
     $db = connectMediaDb();
     $result = @pg_query_params($db,
-        'SELECT id FROM public.image
-         WHERE (owner_auth_user_id = $1 OR shared = TRUE)
-           AND id = ANY($2::bigint[])',
-        [$authUserId, '{' . implode(',', $ids) . '}']);
+        'SELECT id, owner_auth_user_id, shared FROM public.image
+         WHERE id = ANY($1::bigint[])',
+        ['{' . implode(',', $ids) . '}']);
     if ($result === false) respond(500, ['error' => 'Failed to check images']);
     if (pg_num_rows($result) !== count($ids)) {
         respond(400, ['error' => 'Choose images from your image library']);
+    }
+    while (($row = pg_fetch_assoc($result)) !== false) {
+        if ($row['shared'] === 't' || (int) $row['owner_auth_user_id'] === (int) $user['id']) continue;
+        if (($user['service_owner_id'] ?? null) === null
+            || (int) $row['owner_auth_user_id'] !== (int) $user['service_owner_id']
+            || !imageUsedByReadableOwnerQuiz((int) $row['id'], $user)) {
+            respond(400, ['error' => 'Choose images from your image library']);
+        }
     }
 }
 
@@ -343,7 +350,7 @@ function handlePublishImage(int $imageId): never
     respond(200, publicMediaImage($row));
 }
 
-function imageUsedByAccessibleQuiz(int $imageId, int $authUserId): bool
+function imageUsedByAccessibleQuiz(int $imageId, array $user): bool
 {
     $quizDb = connectQuizDb();
     $result = @pg_query_params($quizDb,
@@ -353,16 +360,42 @@ function imageUsedByAccessibleQuiz(int $imageId, int $authUserId): bool
             JOIN public.quiz_attempt_source b ON b.attempt_id = s.attempt_id AND b.question_id = s.source_question_id
             JOIN public."user" u ON u.id = a.user_id
             JOIN public.quiz q ON q.id = a.quiz_id
+            JOIN public."user" owner ON owner.id = q.user_id
             LEFT JOIN public.quiz_answer r ON r.attempt_id = s.attempt_id AND r.question_id = s.id
             WHERE u.auth_user_id = $4 AND (a.completed IS NOT NULL OR s.position <= GREATEST(1, a.furthest_position))
+              AND ($5::boolean OR q.is_public = TRUE OR owner.auth_user_id = $4
+                OR (owner.auth_user_id = $6 AND ($7::boolean OR q.id = ANY($8::bigint[]))))
               AND (jsonb_path_exists(b.config, $1::jsonpath, jsonb_build_object(\'id\', $3::bigint))
                 OR ((a.completed IS NOT NULL AND q.show_correct_answers = TRUE
                     OR b.template = \'show_answer\' AND r.answer->>\'revealed\' = \'true\')
                   AND jsonb_path_exists(b.config, $2::jsonpath, jsonb_build_object(\'id\', $3::bigint))))
          ) AS visible',
-        [QUIZ_VISIBLE_IMAGE_REFERENCE_PATH, QUIZ_ANSWER_IMAGE_REFERENCE_PATH, $imageId, $authUserId]);
+        [QUIZ_VISIBLE_IMAGE_REFERENCE_PATH, QUIZ_ANSWER_IMAGE_REFERENCE_PATH, $imageId,
+         $user['id'], ($user['account_kind'] ?? 'human') === 'human' ? 't' : 'f',
+         $user['service_owner_id'] ?? null, ($user['quiz_read_owner_id'] ?? null) !== null ? 't' : 'f',
+         '{' . implode(',', readableQuizGrantIds($user)) . '}']);
     if ($result === false) respond(500, ['error' => 'Failed to check quiz image']);
     return pg_fetch_result($result, 0, 'visible') === 't';
+}
+
+function imageUsedByReadableOwnerQuiz(int $imageId, array $user): bool
+{
+    $ownerAuthUserId = $user['service_owner_id'] ?? null;
+    if ($ownerAuthUserId === null) return false;
+    $quizDb = connectQuizDb();
+    $result = @pg_query_params($quizDb,
+        'SELECT DISTINCT quiz.id FROM public.question question
+            JOIN public.quiz quiz ON quiz.id = question.quiz_id
+            JOIN public."user" owner ON owner.id = quiz.user_id
+            WHERE owner.auth_user_id = $1
+              AND jsonb_path_exists(question.config, $2::jsonpath,
+                  jsonb_build_object(\'id\', $3::bigint))',
+        [$ownerAuthUserId, QUIZ_IMAGE_REFERENCE_PATH, $imageId]);
+    if ($result === false) respond(500, ['error' => 'Failed to check quiz image']);
+    while (($row = pg_fetch_assoc($result)) !== false) {
+        if (quizGrantOwnerId($user, (int) $row['id']) !== null) return true;
+    }
+    return false;
 }
 
 function handleGetImage(int $imageId): never
@@ -377,13 +410,16 @@ function handleGetImage(int $imageId): never
     if ($result === false) respond(500, ['error' => 'Failed to load image']);
     $row = pg_fetch_assoc($result);
     if ($row === false) {
-        if (!imageUsedByAccessibleQuiz($imageId, (int) $user['id'])) {
+        $readOwnerId = $user['service_owner_id'] ?? null;
+        $ownerImage = imageUsedByReadableOwnerQuiz($imageId, $user);
+        if (!$ownerImage && !imageUsedByAccessibleQuiz($imageId, $user)) {
             respond(404, ['error' => 'Image not found']);
         }
         $result = @pg_query_params($db,
             'SELECT i.original_name, b.mime_type, b.content
-             FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id WHERE i.id = $1',
-            [$imageId]);
+             FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
+             WHERE i.id = $1 AND ($2::boolean = FALSE OR i.owner_auth_user_id = $3)',
+            [$imageId, $ownerImage ? 't' : 'f', $readOwnerId]);
         if ($result === false) respond(500, ['error' => 'Failed to load image']);
         $row = pg_fetch_assoc($result);
         if ($row === false) respond(404, ['error' => 'Image not found']);

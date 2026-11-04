@@ -13,12 +13,60 @@ auth app, `/api/quiz/*` by the quiz app, `/api/media/*` by the shared media app,
 and `/api/` by the readiness endpoint.
 The PHP files are internal to Nginx and are not public API URLs.
 
+## API tokens
+
+Every signed-in user can create and revoke API tokens from **Home → API tokens**
+or through `GET`/`POST /api/auth/tokens` and `DELETE /api/auth/tokens/{tokenId}`
+using a browser session. Each token creates a separate service account named
+after the token. The token secret is returned once; the server stores its SHA-256
+hash. A token has a 1–365 day expiry or no expiry, and one or more scopes:
+
+| Scope | Allowed requests |
+| --- | --- |
+| `quiz:read` | GET requests under `/api/quiz/`, except image aliases |
+| `quiz:write` | Mutating requests under `/api/quiz/`, except image aliases |
+| `media:read` | GET requests under `/api/media/` and `/api/quiz/images` |
+| `media:write` | Mutating requests under `/api/media/` and `/api/quiz/images` |
+
+Send the token as `Authorization: Bearer sat_...`. A valid token can also read
+`GET /api/auth/me`, which returns the service account name and token ID. Token
+actions are recorded under that service account; the last 100 successful
+requests, including image reads, can be viewed in Home → API tokens or with
+`GET /api/auth/tokens/{tokenId}/activity`. Tokens cannot access auth management,
+backups, or admin-only media actions. A malformed or revoked bearer token is
+rejected even when the request also carries a valid session cookie. Deleting
+the human owner blocks and removes its service accounts and tokens.
+
+By default, a service account sees only its own quizzes and public quizzes.
+Set `quiz_access` to grant access to the creator's quizzes. Use
+`{"all":"read","quizzes":[]}` or `{"all":"edit","quizzes":[]}` for every
+current and future quiz. To choose individual quizzes, use
+`{"all":"none","quizzes":[{"id":123,"permission":"read"},{"id":456,"permission":"edit"}]}`.
+Selected quizzes must belong to the token creator. Read access requires
+`quiz:read`; edit access requires both `quiz:read` and `quiz:write`. Edit grants
+allow changing quiz settings and questions, but not deleting the quiz. Quiz
+grants do not expose the creator's other private data. Existing token grants
+can be changed with `PATCH /api/auth/tokens/{tokenId}/quiz-access` using the
+same `quiz_access` object. Set `expires_in_days` to `null` for no expiry.
+
+Example for a signed-in user whose session is saved in a cookie jar:
+
+```bash
+curl -b cookies.txt -H 'Content-Type: application/json' \
+  -d '{"name":"Quiz automation","scopes":["quiz:read","quiz:write"],"quiz_access":{"all":"read","quizzes":[]},"expires_in_days":30}' \
+  https://YOUR_HOST/api/auth/tokens
+```
+
+Keep the returned token in a secret store. Use a separate token for each bot so
+it can be revoked without affecting others.
+
 ## Quiz library
 
 Quiz app routes use `/api/quiz/`; shared account routes use `/api/auth/`.
 
-These routes require the `softerr_session` cookie from a successful login. The
-quiz app sends it automatically on same-origin requests. Account identities
+These routes require the `softerr_session` cookie from a successful login or an
+API token with the matching scope. The quiz app sends its cookie automatically
+on same-origin requests. Account identities
 live in the shared `auth` database. The `quiz` database has its own `user`
 table, whose `auth_user_id` maps to the shared account. Each quiz has a foreign
 key to its local user. The API creates the local user on the first quiz create.

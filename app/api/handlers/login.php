@@ -8,6 +8,8 @@ function publicUser(array $user): array
         'username' => $user['username'],
         'email' => $user['email'],
         'role' => $user['role'],
+        'account_kind' => $user['account_kind'] ?? 'human',
+        'api_token_id' => $user['api_token_id'] ?? null,
         'verified' => $user['verified'] === 't',
         'approved' => $user['approved_at'] !== null,
         'created' => $user['created'],
@@ -33,7 +35,7 @@ function handleLogin(): never
     $result = @pg_query_params(
         $db,
         'SELECT id, username, email, role, password, verified, approved_at, deleting, created
-         FROM public."user" WHERE email = $1 LIMIT 1',
+         FROM public."user" WHERE email = $1 AND account_kind = \'human\' LIMIT 1',
         [$email]
     );
     if ($result === false) {
