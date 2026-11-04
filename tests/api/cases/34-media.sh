@@ -4,7 +4,7 @@ test_shared_media_across_users_and_quizzes() (
   set -e
   # Earlier login cases may have exhausted the per-IP Nginx bucket.
   sudo -n systemctl restart nginx
-  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file answer_file direct_file folder_file large_file response status shared_id private_id answer_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id public_attempt_id archive manifest count
+  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file answer_file direct_file folder_file large_file thumbnail_file response status shared_id private_id answer_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id public_attempt_id archive manifest count
   admin_cookie="$(mktemp)"
   user_cookie="$(mktemp)"
   png_file="$(mktemp)"
@@ -13,8 +13,9 @@ test_shared_media_across_users_and_quizzes() (
   direct_file="$(mktemp)"
   folder_file="$(mktemp)"
   large_file="$(mktemp)"
+  thumbnail_file="$(mktemp)"
   archive="$(mktemp)"
-  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$private_file" "$answer_file" "$direct_file" "$folder_file" "$large_file" "$archive"' EXIT
+  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$private_file" "$answer_file" "$direct_file" "$folder_file" "$large_file" "$thumbnail_file" "$archive"' EXIT
 
   create_test_identity
   admin_email="$TEST_EMAIL"
@@ -175,6 +176,9 @@ test_shared_media_across_users_and_quizzes() (
   response="$(curl -sS -b "$user_cookie" -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"
   [[ "${response##*$'\n'}" == 404 ]] || { fail_test "another user's image was readable"; return 1; }
+  [[ "$(curl -sS -b "$user_cookie" -o /dev/null -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${private_id}/thumbnail")" == 404 ]] \
+    || { fail_test "another user's thumbnail was readable"; return 1; }
 
   response="$(curl -sS -b "$user_cookie" -H 'Content-Type: application/json' \
     --data '{"name":"Not allowed"}' -w $'\n%{http_code}' \
@@ -247,6 +251,7 @@ test_shared_media_across_users_and_quizzes() (
   response="$(curl -sS -b "$admin_cookie" "${API_TEST_BASE_URL%/}/api/media/shared-images")"
   jq -e --argjson id "$shared_id" '.images | any(.id == $id and .group_id == null)' <<<"$response" >/dev/null \
     || { fail_test "group deletion did not ungroup image: ${response}"; return 1; }
+  test_psql auth "UPDATE public.\"user\" SET role = 'user' WHERE id = ${user_id};" >/dev/null
 
   response="$(curl -sS -b "$user_cookie" -H 'Content-Type: application/json' \
     --data '{"name":"Shared media test"}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes")"
@@ -256,9 +261,9 @@ test_shared_media_across_users_and_quizzes() (
     --data "$(jq -nc --argjson id "$private_id" '{template:"no_answer",prompt:"Private?",config:{image_id:$id}}')" \
     -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}/questions")"
   [[ "${response##*$'\n'}" == 400 ]] || { fail_test "another user's image was accepted: ${response}"; return 1; }
-  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+  response="$(curl -sS -b "$user_cookie" -X DELETE -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${shared_id}")"
-  [[ "${response##*$'\n'}" == 404 ]] || { fail_test "shared image could be deleted as personal: ${response}"; return 1; }
+  [[ "${response##*$'\n'}" == 403 ]] || { fail_test "non-admin deleted shared image: ${response}"; return 1; }
   response="$(curl -sS -b "$admin_cookie" -H 'Content-Type: application/json' \
     --data '{"name":"Image attempt history"}' "${API_TEST_BASE_URL%/}/api/quiz/quizzes")"
   history_quiz_id="$(jq -r '.id // empty' <<<"$response")"
@@ -292,6 +297,9 @@ test_shared_media_across_users_and_quizzes() (
   response="$(curl -sS -b "$user_cookie" -o /dev/null -w '%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${answer_id}")"
   [[ "$response" == 404 ]] || { fail_test "player could load an answer image before starting: HTTP ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -o /dev/null -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${answer_id}/thumbnail")"
+  [[ "$response" == 404 ]] || { fail_test "player could load an answer thumbnail before starting: HTTP ${response}"; return 1; }
   response="$(curl -sS -b "$user_cookie" -X PATCH -H 'Content-Type: application/json' \
     --data '{"name":"Hijacked"}' -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}")"
@@ -345,6 +353,12 @@ test_shared_media_across_users_and_quizzes() (
   response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"
   [[ "${response##*$'\n'}" == 409 ]] || { fail_test "image used by attempt could be deleted: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --argjson id "$private_id" '{image_ids:[$id]}')" \
+    "${API_TEST_BASE_URL%/}/api/media/images/usage")"
+  jq -e --argjson id "$history_quiz_id" \
+    '.images[0].uses | any(.kind == "attempt" and .quiz_id == $id)' <<<"$response" >/dev/null \
+    || { fail_test "saved attempt missing from image usage: ${response}"; return 1; }
   response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${history_quiz_id}")"
   [[ "${response##*$'\n'}" == 204 ]] || { fail_test "history quiz deletion failed: ${response}"; return 1; }
@@ -371,8 +385,33 @@ test_shared_media_across_users_and_quizzes() (
   [[ "${response##*$'\n'}" == 201 ]] || { fail_test "ZIP import failed: ${response}"; return 1; }
   count="$(test_psql media "SELECT count(*) FROM public.image WHERE owner_auth_user_id = ${user_id};")"
   [[ "$count" == 0 ]] || { fail_test "shared ZIP import charged user storage: ${count}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --argjson id "$shared_id" '{image_ids:[$id]}')" \
+    "${API_TEST_BASE_URL%/}/api/media/images/usage")"
+  jq -e --argjson id "$quiz_id" \
+    '.images[0].uses | any(.kind == "question" and .quiz_id == $id and .question_prompt == "Shared?")' \
+    <<<"$response" >/dev/null || { fail_test "quiz question missing from image usage: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${shared_id}")"
+  [[ "${response##*$'\n'}" == 409 ]] || { fail_test "shared image in a quiz was deleted: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${shared_id}?force=1")"
+  [[ "${response##*$'\n'}" == 204 ]] || { fail_test "force delete of referenced shared image failed: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" "${API_TEST_BASE_URL%/}/api/quiz/quizzes/${quiz_id}/questions")"
+  jq -e --argjson id "$shared_id" '.questions | any(.config.image_id == $id)' <<<"$response" >/dev/null \
+    || { fail_test "force delete removed the quiz image reference: ${response}"; return 1; }
+  [[ "$(curl -sS -b "$user_cookie" -o /dev/null -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${shared_id}")" == 404 ]] \
+    || { fail_test 'force-deleted shared image was still served'; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${direct_id}")"
+  [[ "${response##*$'\n'}" == 204 ]] || { fail_test "unused shared image deletion failed: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" "${API_TEST_BASE_URL%/}/api/media/shared-images")"
+  jq -e --argjson id "$direct_id" '.images | all(.id != $id)' <<<"$response" >/dev/null \
+    || { fail_test "deleted shared image remained listed: ${response}"; return 1; }
 
-  cp "$png_file" "$large_file"
+  php -r '$image = imagecreatetruecolor(640, 480); imagefilledrectangle($image, 0, 0,
+    639, 479, imagecolorallocate($image, 30, 60, 90)); imagepng($image, $argv[1]);' "$large_file"
   truncate -s 6291456 "$large_file"
   response="$(curl -sS -b "$admin_cookie" --data-binary @"$large_file" \
     -H "X-Image-Name: api_test_${API_TEST_RUN_ID}_large.png" -w $'\n%{http_code}' \
@@ -383,6 +422,26 @@ test_shared_media_across_users_and_quizzes() (
     || { fail_test "6 MiB image upload failed: ${response}"; return 1; }
   jq -e '.size_bytes == 6291456' <<<"${response%$'\n'*}" >/dev/null \
     || { fail_test "6 MiB image size was not stored: ${response}"; return 1; }
+  status="$(curl -sS -b "$admin_cookie" -o "$thumbnail_file" -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${large_id}/thumbnail")"
+  [[ "$status" == 200 && "$(wc -c < "$thumbnail_file")" -lt 32768 ]] \
+    || { fail_test "large image thumbnail was not compact: HTTP ${status}"; return 1; }
+  php -r '$size = getimagesize($argv[1]); if (!$size || $size[0] !== 320 || $size[1] !== 240) exit(1);' "$thumbnail_file" \
+    || { fail_test 'thumbnail was not scaled to 320 by 240 pixels'; return 1; }
+  [[ "$(curl -sS -o /dev/null -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${large_id}/thumbnail")" == 401 ]] \
+    || { fail_test 'thumbnail was available without authentication'; return 1; }
+  test_psql media "UPDATE public.image_blob SET thumbnail_content = NULL, thumbnail_mime_type = NULL
+    WHERE id = (SELECT blob_id FROM public.image WHERE id = ${large_id});" >/dev/null
+  [[ "$(test_psql media "SELECT has_column_privilege('auth_api', 'public.image_blob',
+    'thumbnail_content', 'UPDATE') AND has_column_privilege('auth_api', 'public.image_blob',
+    'thumbnail_mime_type', 'UPDATE');")" == t ]] \
+    || { fail_test 'API role cannot update thumbnail columns'; return 1; }
+  status="$(curl -sS -b "$admin_cookie" -o "$thumbnail_file" -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${large_id}/thumbnail")"
+  [[ "$status" == 200 && "$(test_psql media "SELECT thumbnail_content IS NOT NULL
+    FROM public.image_blob WHERE id = (SELECT blob_id FROM public.image WHERE id = ${large_id});")" == t ]] \
+    || { fail_test "existing image thumbnail was not generated: HTTP ${status}"; return 1; }
   truncate -s 6291457 "$large_file"
   status="$(curl -sS -b "$admin_cookie" -o /dev/null -w '%{http_code}' --data-binary @"$large_file" \
     -H "X-Image-Name: api_test_${API_TEST_RUN_ID}_too-large.png" \

@@ -1,9 +1,11 @@
 const imageUrl = (id) => `/api/media/images/${id}`
+const thumbnailUrl = (id) => `${imageUrl(id)}/thumbnail`
 import { renderSharedMedia, renameIcon } from './shared-media.js'
 import { formatBytes, formatImageDetails, mediaImageIcon } from './media-format.js'
 import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
 import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
 import { createPageNotice } from '../../shared/page-notice.js'
+import { createMediaDeletion } from './media-delete.js'
 
 const viewOptions = [
   ['list', 'List', '<rect x="3" y="4" width="4" height="4"/><path d="M10 6h11"/><rect x="3" y="10" width="4" height="4"/><path d="M10 12h11"/><rect x="3" y="16" width="4" height="4"/><path d="M10 18h11"/>'],
@@ -19,11 +21,19 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
     <main class="media-page">
       <div class="media-header">
         <h1 class="section-title">Media</h1>
-        <div class="media-view-control" role="group" aria-label="Media view">${viewButtonsMarkup}</div>
       </div>
-      <div class="media-tabs" role="tablist" aria-label="Media libraries">
-        <button id="media-tab-personal" class="media-tab" type="button" role="tab" aria-controls="media-personal" aria-selected="true">My library</button>
-        <button id="media-tab-shared" class="media-tab" type="button" role="tab" aria-controls="shared-media" aria-selected="false" tabindex="-1">Shared library</button>
+      <div class="media-toolbar">
+        <div class="media-tabs" role="tablist" aria-label="Media libraries">
+          <button id="media-tab-personal" class="media-tab" type="button" role="tab" aria-controls="media-personal" aria-selected="true">My library</button>
+          <button id="media-tab-shared" class="media-tab" type="button" role="tab" aria-controls="shared-media" aria-selected="false" tabindex="-1">Shared library</button>
+        </div>
+        <div class="media-tools">
+          <label class="media-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+            <input id="media-search" type="search" aria-label="Search images by name" placeholder="Search images" autocomplete="off">
+          </label>
+          <div class="media-view-control" role="group" aria-label="Media view">${viewButtonsMarkup}</div>
+        </div>
       </div>
       <section id="media-personal" class="media-panel" role="tabpanel" aria-labelledby="media-tab-personal" tabindex="0">
         <div class="media-personal-header">
@@ -42,7 +52,10 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
           <input id="media-file" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
         </div>
         <div id="media-grid" class="media-grid"></div>
-        ${currentUser.role === 'admin' ? '<button id="media-publish" type="button" class="auth-button auth-button-primary" disabled>Make selected shared</button>' : ''}
+        <div class="media-selection-actions">
+          ${currentUser.role === 'admin' ? '<button id="media-publish" type="button" class="auth-button auth-button-primary" disabled>Make selected shared</button>' : ''}
+          <button id="media-delete" type="button" class="auth-button auth-button-secondary" disabled>Delete selected</button>
+        </div>
         <p id="media-status" class="form-status" role="status" aria-live="polite">Loading images…</p>
       </section>
       <section id="shared-media" class="shared-media media-panel" role="tabpanel" aria-labelledby="media-tab-shared" tabindex="0" hidden></section>
@@ -50,6 +63,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
     </main>
   `
   const page = app.querySelector('.media-page')
+  const search = page.querySelector('#media-search')
   const viewButtons = [...page.querySelectorAll('.media-view-button')]
   const viewStorageKey = 'softerr-media-view'
   let savedView = null
@@ -78,13 +92,22 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
   const fileInput = page.querySelector('#media-file')
   const upload = page.querySelector('#media-upload')
   const publish = page.querySelector('#media-publish')
+  const deleteButton = page.querySelector('#media-delete')
   const renameDialog = page.querySelector('#media-rename-dialog')
   const renameForm = page.querySelector('#media-rename-form')
   const renameStatus = page.querySelector('#media-rename-status')
   const selected = new Set()
   const selectionAnchor = { id: null }
+  const mediaDeletion = createMediaDeletion(page, { requestJson, responseError, notify: notice.show })
   const sharedMedia = renderSharedMedia(page.querySelector('#shared-media'), {
-    currentUser, requestJson, responseError, setStatus, notify: notice.show, renameImage: openRename,
+    currentUser, requestJson, responseError, setStatus, notify: notice.show,
+    renameImage: openRename, openDeleteDialog: mediaDeletion.open,
+  })
+  search.addEventListener('input', () => {
+    selected.clear()
+    selectionAnchor.id = null
+    sharedMedia.setSearch(search.value)
+    render()
   })
   const tabs = [...page.querySelectorAll('.media-tab')]
   const personalPanel = page.querySelector('#media-personal')
@@ -160,24 +183,32 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
   })
 
   function updatePublishButton() {
-    if (!publish) return
-    publish.disabled = busy || selected.size === 0
-    publish.textContent = selected.size ? `Make ${selected.size} selected shared` : 'Make selected shared'
+    if (publish) {
+      publish.disabled = busy || selected.size === 0
+      publish.textContent = selected.size ? `Make ${selected.size} selected shared` : 'Make selected shared'
+    }
+    deleteButton.disabled = busy || selected.size === 0
+    deleteButton.textContent = selected.size ? `Delete ${selected.size} selected` : 'Delete selected'
   }
 
   function render() {
+    const query = search.value.trim().toLocaleLowerCase()
+    const visible = query
+      ? images.filter((image) => image.name.toLocaleLowerCase().includes(query))
+      : images
+    for (const preview of grid.querySelectorAll('img')) preview.removeAttribute('src')
     grid.replaceChildren()
-    if (!images.length) {
+    if (!visible.length) {
       const empty = document.createElement('p')
       empty.className = 'media-empty'
-      empty.textContent = 'You have not uploaded any images yet.'
+      empty.textContent = query ? 'No images match your search.' : 'You have not uploaded any images yet.'
       grid.append(empty)
     }
-    for (const image of images) {
+    for (const image of visible) {
       const card = document.createElement('article')
       card.className = 'media-card'
       const preview = document.createElement('img')
-      preview.dataset.src = imageUrl(image.id)
+      preview.dataset.src = thumbnailUrl(image.id)
       if (page.dataset.mediaLayout !== 'list') preview.src = preview.dataset.src
       preview.alt = image.name
       preview.loading = 'lazy'
@@ -207,8 +238,8 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
       title.append(name, rename)
       details.append(title, metadata)
       card.append(preview, listIcon, details)
-      if (publish && image.scope === 'personal') bindMediaCardSelection(card, image, {
-        grid, selected, anchor: selectionAnchor, visibleIds: () => images.map((item) => item.id),
+      if (image.scope === 'personal') bindMediaCardSelection(card, image, {
+        grid, selected, anchor: selectionAnchor, visibleIds: () => visible.map((item) => item.id),
         busy: () => busy, changed: updatePublishButton,
       })
       grid.append(card)
@@ -333,6 +364,13 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
     notice.show(error ? `${completed} published. ${error}` : `${completed} image${completed === 1 ? '' : 's'} made shared.`,
       error ? (completed ? 'warning' : 'error') : 'success')
     if (!error) setStatus(status, '')
+  })
+  deleteButton.addEventListener('click', () => {
+    if (busy) return
+    mediaDeletion.open([...selected], {
+      selected, refresh,
+      setBusy(value) { busy = value; render() },
+    })
   })
 
   refresh().then((ok) => {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 const MEDIA_IMAGE_MAX_BYTES = 6291456;
 const MEDIA_PERSONAL_MAX_BYTES = 33554432;
 const MEDIA_PERSONAL_MAX_COUNT = 256;
+const MEDIA_THUMBNAIL_MAX_SIDE = 320;
 const QUIZ_IMPORT_MAX_BYTES = 50331648;
 const QUIZ_IMPORT_MAX_IMAGES = 4096;
 const QUIZ_IMAGE_REFERENCE_PATH = '$.** ? (@.image_id == $id || @.answer_image_id == $id || @.keyword_image_id == $id || @.definition_image_id == $id || @.name_image_id == $id)';
@@ -23,10 +24,16 @@ function imageIdsFromConfig(array $config): array
     return array_values(array_unique($ids));
 }
 
-function verifyQuestionImages(array $user, string $config): void
+function verifyQuestionImages($quizDb, array $user, string $config): void
 {
     $ids = imageIdsFromConfig(json_decode($config, true, 512, JSON_THROW_ON_ERROR));
     if (!$ids) return;
+    sort($ids, SORT_NUMERIC);
+    foreach ($ids as $id) {
+        if (@pg_query_params($quizDb, 'SELECT pg_advisory_xact_lock($1::bigint)', [-$id]) === false) {
+            respond(500, ['error' => 'Failed to check images']);
+        }
+    }
     $db = connectMediaDb();
     $result = @pg_query_params($db,
         'SELECT id, owner_auth_user_id, shared FROM public.image
@@ -157,15 +164,57 @@ function mediaImageByHash($db, int $authUserId, string $hash, bool $reuseShared 
 
 function mediaBlobId($db, string $hash, string $bytes, string $mime, int $width, int $height): string
 {
+    $existing = @pg_query_params($db,
+        'SELECT id FROM public.image_blob WHERE sha256 = $1', [$hash]);
+    if ($existing === false) respond(500, ['error' => 'Failed to save image']);
+    if (pg_num_rows($existing) > 0) return pg_fetch_result($existing, 0, 'id');
+
+    [$thumbnailMime, $thumbnailBytes] = mediaThumbnail($bytes, $mime, $width, $height);
     $insert = @pg_query_params($db,
-        'INSERT INTO public.image_blob (sha256, mime_type, width, height, content)
-         VALUES ($1, $2, $3, $4, $5::bytea) ON CONFLICT (sha256) DO NOTHING',
-        [$hash, $mime, $width, $height, '\\x' . bin2hex($bytes)]);
+        'INSERT INTO public.image_blob (sha256, mime_type, width, height, content,
+                                        thumbnail_mime_type, thumbnail_content)
+         VALUES ($1, $2, $3, $4, $5::bytea, $6, $7::bytea)
+         ON CONFLICT (sha256) DO NOTHING',
+        [$hash, $mime, $width, $height, '\\x' . bin2hex($bytes),
+         $thumbnailMime, '\\x' . bin2hex($thumbnailBytes)]);
     $blob = $insert === false ? false : @pg_query_params($db,
         'SELECT id FROM public.image_blob WHERE sha256 = $1', [$hash]);
     $blobId = $blob === false ? false : pg_fetch_result($blob, 0, 'id');
     if ($blobId === false) respond(500, ['error' => 'Failed to save image']);
     return $blobId;
+}
+
+function mediaThumbnail(string $bytes, string $mime, int $width, int $height): array
+{
+    if ($width <= MEDIA_THUMBNAIL_MAX_SIDE && $height <= MEDIA_THUMBNAIL_MAX_SIDE
+        && strlen($bytes) <= 32768) {
+        return [$mime, $bytes];
+    }
+    if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) {
+        respond(500, ['error' => 'Image thumbnails are unavailable']);
+    }
+    $source = @imagecreatefromstring($bytes);
+    if ($source === false) respond(400, ['error' => 'Could not decode image']);
+    $scale = min(1, MEDIA_THUMBNAIL_MAX_SIDE / max($width, $height));
+    $targetWidth = max(1, (int) round($width * $scale));
+    $targetHeight = max(1, (int) round($height * $scale));
+    $target = imagecreatetruecolor($targetWidth, $targetHeight);
+    if ($target === false) respond(500, ['error' => 'Could not create image thumbnail']);
+    imagealphablending($target, false);
+    imagesavealpha($target, true);
+    $transparent = imagecolorallocatealpha($target, 0, 0, 0, 127);
+    imagefill($target, 0, 0, $transparent);
+    if (!imagecopyresampled($target, $source, 0, 0, 0, 0,
+        $targetWidth, $targetHeight, $width, $height)) {
+        respond(500, ['error' => 'Could not create image thumbnail']);
+    }
+    ob_start();
+    $encoded = @imagewebp($target, null, 75);
+    $thumbnail = ob_get_clean();
+    if (!$encoded || !is_string($thumbnail) || $thumbnail === '') {
+        respond(500, ['error' => 'Could not encode image thumbnail']);
+    }
+    return ['image/webp', $thumbnail];
 }
 
 function saveMediaImage($db, int $authUserId, string $name, string $bytes,
@@ -398,12 +447,16 @@ function imageUsedByReadableOwnerQuiz(int $imageId, array $user): bool
     return false;
 }
 
-function handleGetImage(int $imageId): never
+function handleGetImage(int $imageId, bool $thumbnail = false): never
 {
     $user = currentSessionUser();
     $db = connectMediaDb();
+    $columns = $thumbnail
+        ? 'b.id AS blob_id, b.mime_type, b.width, b.height, b.thumbnail_mime_type,
+           b.thumbnail_content, CASE WHEN b.thumbnail_content IS NULL THEN b.content ELSE NULL END AS content'
+        : 'b.mime_type, b.content';
     $result = @pg_query_params($db,
-        'SELECT i.original_name, b.mime_type, b.content
+        'SELECT i.original_name, ' . $columns . '
          FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
          WHERE i.id = $1 AND (i.owner_auth_user_id = $2 OR i.shared = TRUE)',
         [$imageId, $user['id']]);
@@ -416,7 +469,7 @@ function handleGetImage(int $imageId): never
             respond(404, ['error' => 'Image not found']);
         }
         $result = @pg_query_params($db,
-            'SELECT i.original_name, b.mime_type, b.content
+            'SELECT i.original_name, ' . $columns . '
              FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
              WHERE i.id = $1 AND ($2::boolean = FALSE OR i.owner_auth_user_id = $3)',
             [$imageId, $ownerImage ? 't' : 'f', $readOwnerId]);
@@ -424,11 +477,27 @@ function handleGetImage(int $imageId): never
         $row = pg_fetch_assoc($result);
         if ($row === false) respond(404, ['error' => 'Image not found']);
     }
-    header('Content-Type: ' . $row['mime_type']);
-    header("Content-Disposition: inline; filename*=UTF-8''" . rawurlencode($row['original_name']));
+    if ($thumbnail && $row['thumbnail_content'] === null) {
+        $original = pg_unescape_bytea($row['content']);
+        [$mime, $bytes] = mediaThumbnail($original, $row['mime_type'],
+            (int) $row['width'], (int) $row['height']);
+        $saved = @pg_query_params($db,
+            'UPDATE public.image_blob SET thumbnail_mime_type = $2, thumbnail_content = $3::bytea
+             WHERE id = $1 AND thumbnail_content IS NULL',
+            [$row['blob_id'], $mime, '\\x' . bin2hex($bytes)]);
+        if ($saved === false) respond(500, ['error' => 'Could not save image thumbnail']);
+    } elseif ($thumbnail) {
+        $mime = $row['thumbnail_mime_type'];
+        $bytes = pg_unescape_bytea($row['thumbnail_content']);
+    } else {
+        $mime = $row['mime_type'];
+        $bytes = pg_unescape_bytea($row['content']);
+        header("Content-Disposition: inline; filename*=UTF-8''" . rawurlencode($row['original_name']));
+    }
+    header('Content-Type: ' . $mime);
     header('X-Content-Type-Options: nosniff');
     header('Cache-Control: private, no-store');
-    echo pg_unescape_bytea($row['content']);
+    echo $bytes;
     exit;
 }
 
@@ -457,43 +526,144 @@ function handleRenameImage(int $imageId): never
     respond(200, publicMediaImage($row));
 }
 
+function requestedMediaImageIds(): array
+{
+    $payload = readJsonBody(131072);
+    $ids = $payload['image_ids'] ?? null;
+    if (!is_array($ids) || !array_is_list($ids) || $ids === [] || count($ids) > 5000) {
+        respond(400, ['error' => 'Choose images to delete']);
+    }
+    foreach ($ids as $id) {
+        if (!is_int($id) || $id < 1) respond(400, ['error' => 'Invalid image ID']);
+    }
+    if (count(array_unique($ids)) !== count($ids)) {
+        respond(400, ['error' => 'Duplicate image ID']);
+    }
+    return $ids;
+}
+
+function authorizedMediaImageRows($db, array $user, array $ids): array
+{
+    $result = @pg_query_params($db,
+        'SELECT id, original_name, shared, owner_auth_user_id FROM public.image
+         WHERE id = ANY($1::bigint[])', ['{' . implode(',', $ids) . '}']);
+    if ($result === false) respond(500, ['error' => 'Failed to check images']);
+    $rows = [];
+    while (($row = pg_fetch_assoc($result)) !== false) $rows[(int) $row['id']] = $row;
+    foreach ($ids as $id) {
+        $row = $rows[$id] ?? null;
+        if ($row === null || ($row['shared'] !== 't'
+            && (int) $row['owner_auth_user_id'] !== (int) $user['id'])) {
+            respond(404, ['error' => 'Image not found']);
+        }
+        if ($row['shared'] === 't' && $user['role'] !== 'admin') {
+            respond(403, ['error' => 'Admin access required']);
+        }
+    }
+    return $rows;
+}
+
+function imageUsageRows($quizDb, array $user, int $imageId, bool $shared): array
+{
+    $result = @pg_query_params($quizDb,
+        'SELECT \'question\' AS kind, q.id AS quiz_id, q.name AS quiz_name,
+                t.id AS question_id, t.prompt, NULL::bigint AS attempt_id
+         FROM public.question t JOIN public.quiz q ON q.id = t.quiz_id
+         JOIN public."user" u ON u.id = q.user_id
+         WHERE ($3::boolean OR u.auth_user_id = $4)
+           AND jsonb_path_exists(t.config, $1::jsonpath, jsonb_build_object(\'id\', $2::bigint))
+         UNION ALL
+         SELECT \'attempt\' AS kind, q.id AS quiz_id, q.name AS quiz_name,
+                s.question_id, s.prompt, s.attempt_id
+         FROM public.quiz_attempt_source s
+         JOIN public.quiz_attempt a ON a.id = s.attempt_id
+         JOIN public.quiz q ON q.id = a.quiz_id
+         JOIN public."user" u ON u.id = q.user_id
+         WHERE ($3::boolean OR u.auth_user_id = $4)
+           AND jsonb_path_exists(s.config, $1::jsonpath, jsonb_build_object(\'id\', $2::bigint))
+         ORDER BY quiz_id, kind, attempt_id, question_id',
+        [QUIZ_IMAGE_REFERENCE_PATH, $imageId, $shared ? 't' : 'f', $user['id']]);
+    if ($result === false) respond(500, ['error' => 'Failed to check image usage']);
+    $uses = [];
+    while (($row = pg_fetch_assoc($result)) !== false) {
+        $uses[] = [
+            'kind' => $row['kind'], 'quiz_id' => (int) $row['quiz_id'],
+            'quiz_name' => $row['quiz_name'], 'question_id' => (int) $row['question_id'],
+            'question_prompt' => $row['prompt'],
+            'attempt_id' => $row['attempt_id'] === null ? null : (int) $row['attempt_id'],
+        ];
+    }
+    return $uses;
+}
+
+function handleImageUsage(): never
+{
+    $user = currentSessionUser();
+    $ids = requestedMediaImageIds();
+    $db = connectMediaDb();
+    $rows = authorizedMediaImageRows($db, $user, $ids);
+    $quizDb = connectQuizDb();
+    $images = [];
+    foreach ($ids as $id) {
+        $row = $rows[$id];
+        $images[] = [
+            'id' => $id, 'name' => $row['original_name'],
+            'scope' => $row['shared'] === 't' ? 'shared' : 'personal',
+            'uses' => imageUsageRows($quizDb, $user, $id, $row['shared'] === 't'),
+        ];
+    }
+    respond(200, ['images' => $images]);
+}
+
 function handleDeleteImage(int $imageId): never
 {
     $user = currentSessionUser();
-    // A quiz write takes this lock before checking image access. It prevents a
-    // quiz from acquiring a reference between this check and the deletion.
+    $force = $_GET['force'] ?? null;
+    if ($force !== null && $force !== '1') respond(400, ['error' => 'Invalid force option']);
+    $db = connectMediaDb();
+    $image = @pg_query_params($db,
+        'SELECT shared, owner_auth_user_id FROM public.image WHERE id = $1', [$imageId]);
+    if ($image === false) respond(500, ['error' => 'Failed to delete image']);
+    $row = pg_fetch_assoc($image);
+    if ($row === false || ($row['shared'] !== 't' && (int) $row['owner_auth_user_id'] !== (int) $user['id'])) {
+        respond(404, ['error' => 'Image not found']);
+    }
+    $shared = $row['shared'] === 't';
+    if ($shared && $user['role'] !== 'admin') respond(403, ['error' => 'Admin access required']);
+    // Question writes take an image lock before checking image access. A
+    // personal image also uses its owner's lock for existing import flows.
     $quizDb = connectQuizDb();
     if (@pg_query($quizDb, 'BEGIN') === false
-        || @pg_query_params($quizDb, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
+        || @pg_query_params($quizDb, 'SELECT pg_advisory_xact_lock($1::bigint)', [$shared ? -$imageId : $user['id']]) === false) {
         respond(500, ['error' => 'Failed to delete image']);
     }
     $used = @pg_query_params($quizDb,
         'SELECT EXISTS (
             SELECT 1 FROM public.question t JOIN public.quiz q ON q.id = t.quiz_id
             JOIN public."user" u ON u.id = q.user_id
-            WHERE u.auth_user_id = $1 AND jsonb_path_exists(t.config, $2::jsonpath,
+            WHERE ($4::boolean OR u.auth_user_id = $1) AND jsonb_path_exists(t.config, $2::jsonpath,
               jsonb_build_object(\'id\', $3::bigint))
          ) OR EXISTS (
             SELECT 1 FROM public.quiz_attempt_source s
             JOIN public.quiz_attempt a ON a.id = s.attempt_id
             JOIN public.quiz q ON q.id = a.quiz_id
             JOIN public."user" u ON u.id = q.user_id
-            WHERE u.auth_user_id = $1 AND jsonb_path_exists(s.config, $2::jsonpath,
+            WHERE ($4::boolean OR u.auth_user_id = $1) AND jsonb_path_exists(s.config, $2::jsonpath,
               jsonb_build_object(\'id\', $3::bigint))
          ) AS used',
         [$user['id'],
          QUIZ_IMAGE_REFERENCE_PATH,
-         $imageId]);
+         $imageId, $shared ? 't' : 'f']);
     if ($used === false) respond(500, ['error' => 'Failed to delete image']);
-    if (pg_fetch_result($used, 0, 'used') === 't') {
+    if ($force !== '1' && pg_fetch_result($used, 0, 'used') === 't') {
         respond(409, ['error' => 'Image is used by a quiz or saved attempt']);
     }
 
-    $db = connectMediaDb();
     if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to delete image']);
     $deleted = @pg_query_params($db,
-        'DELETE FROM public.image WHERE id = $1 AND owner_auth_user_id = $2
-         RETURNING blob_id', [$imageId, $user['id']]);
+        'DELETE FROM public.image WHERE id = $1 AND (owner_auth_user_id = $2
+           OR (shared = TRUE AND $3::boolean)) RETURNING blob_id',
+        [$imageId, $user['id'], $shared && $user['role'] === 'admin' ? 't' : 'f']);
     if ($deleted === false) respond(500, ['error' => 'Failed to delete image']);
     $imageRow = pg_fetch_assoc($deleted);
     if ($imageRow === false) respond(404, ['error' => 'Image not found']);

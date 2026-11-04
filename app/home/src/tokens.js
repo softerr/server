@@ -58,9 +58,11 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
       </dialog>
       <dialog class="user-dialog token-dialog" data-reveal-dialog aria-labelledby="reveal-token-title">
         <h2 id="reveal-token-title">Copy API token</h2>
-        <p>Copy this token now. It will not be shown again.</p>
-        <label class="field"><span>Token</span><input data-revealed-token readonly></label>
-        <p class="form-status" data-copy-status role="status" aria-live="polite"></p>
+        <div class="token-reveal-content">
+          <p>Copy this token now. It will not be shown again.</p>
+          <label class="field"><span>Token</span><input data-revealed-token readonly></label>
+          <p class="form-status" data-copy-status role="status" aria-live="polite"></p>
+        </div>
         <div class="user-dialog-actions">
           <button type="button" class="auth-button auth-button-secondary" data-copy-token>Copy</button>
           <button type="button" class="auth-button auth-button-primary" data-done-token>Done</button>
@@ -68,11 +70,13 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
       </dialog>
       <dialog class="user-dialog token-dialog" data-activity-dialog aria-labelledby="token-activity-title">
         <h2 id="token-activity-title">Recent token actions</h2>
-        <p class="form-status" data-activity-status role="status"></p>
-        <div class="tokens-table-wrap"><table class="tokens-table">
-          <thead><tr><th>When</th><th>Method</th><th>Path</th><th>Status</th></tr></thead>
-          <tbody data-activity-body></tbody>
-        </table></div>
+        <div class="token-activity-content">
+          <p class="form-status" data-activity-status role="status"></p>
+          <div class="tokens-table-wrap"><table class="tokens-table">
+            <thead><tr><th>When</th><th>Method</th><th>Path</th><th>Status</th></tr></thead>
+            <tbody data-activity-body></tbody>
+          </table></div>
+        </div>
         <div class="user-dialog-actions"><button type="button" class="auth-button auth-button-secondary" data-close-activity>Close</button></div>
       </dialog>
     </main>

@@ -6,6 +6,9 @@ function handleReadiness(): never
     if (!class_exists(ZipArchive::class)) {
         respond(503, ['status' => 'unavailable', 'error' => 'ZIP support is not ready']);
     }
+    if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Image thumbnail support is not ready']);
+    }
     if (appBaseUrl() === null) {
         respond(503, ['status' => 'unavailable', 'error' => 'Verification email is not configured']);
     }
@@ -57,7 +60,8 @@ function handleReadiness(): never
         respond(503, ['status' => 'unavailable', 'error' => $mediaError]);
     }
     $mediaSchema = @pg_query($mediaDb, 'SELECT i.id, i.blob_id, i.owner_auth_user_id, i.uploaded_by_auth_user_id, i.group_id,
-            i.shared, i.original_name, b.sha256, b.mime_type, b.content
+            i.shared, i.original_name, b.sha256, b.mime_type, b.content,
+            b.thumbnail_content, b.thumbnail_mime_type
         FROM public.image i, public.image_blob b LIMIT 0');
     if ($mediaSchema === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media database schema is not ready']);

@@ -19,6 +19,11 @@ if ($path === '/images') {
     respond(405, ['error' => 'Method not allowed']);
 }
 
+if ($path === '/images/usage') {
+    if ($method === 'POST') handleImageUsage();
+    respond(405, ['error' => 'Method not allowed']);
+}
+
 if ($path === '/online-search') {
     if ($method === 'GET') handleSearchOnlineImages();
     respond(405, ['error' => 'Method not allowed']);
@@ -72,6 +77,13 @@ if (is_string($path) && preg_match('#^/images/([1-9][0-9]*)/publish$#', $path, $
     $imageId = filter_var($match[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($imageId === false) respond(404, ['error' => 'Not found']);
     if ($method === 'POST') handlePublishImage($imageId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
+if (is_string($path) && preg_match('#^/images/([1-9][0-9]*)/thumbnail$#', $path, $match)) {
+    $imageId = filter_var($match[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($imageId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'GET') handleGetImage($imageId, true);
     respond(405, ['error' => 'Method not allowed']);
 }
 

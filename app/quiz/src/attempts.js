@@ -1,4 +1,5 @@
 import { buildQuestion } from './play.js'
+import { showMissingImageWhenUnavailable } from './missing-image.js'
 
 function element(tag, className = '', text) {
   const node = document.createElement(tag)
@@ -36,6 +37,7 @@ function answerContent(text, imageId) {
   if (text) content.append(element('span', '', text))
   if (imageId) {
     const image = element('img', 'review-answer-image')
+    showMissingImageWhenUnavailable(image)
     image.src = `/api/media/images/${imageId}`
     image.alt = text || 'Answer image'
     content.append(image)

@@ -1,5 +1,6 @@
 import { moveDownIcon, moveUpIcon } from './icons.js'
 import { submitAttempt } from './submit-attempt.js'
+import { showMissingImageWhenUnavailable } from './missing-image.js'
 
 const templateNames = {
   multiple_choice: 'Multiple choice', one_choice: 'One choice', number: 'Number',
@@ -22,6 +23,7 @@ function rich(text, imageId) {
   const content = element('span', 'play-rich')
   if (imageId) {
     const image = element('img', 'play-image')
+    showMissingImageWhenUnavailable(image)
     image.src = imageUrl(imageId)
     image.alt = text ? '' : 'Image'
     image.loading = 'lazy'

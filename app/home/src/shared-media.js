@@ -3,13 +3,14 @@ import { bindMediaCardSelection, updateMediaCardSelection } from './media-select
 import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
 
 const imageUrl = (id) => `/api/media/images/${id}`
+const thumbnailUrl = (id) => `${imageUrl(id)}/thumbnail`
 export const renameIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4.5-1 11-11a2.12 2.12 0 0 0-3-3l-11 11L4 20Z" /></svg>'
 const deleteIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>'
 const folderIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'
 const ungroupedIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m5 20 14-14"/></svg>'
 const createFolderIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v6m-3-3h6"/></svg>'
 
-export function renderSharedMedia(section, { currentUser, requestJson, responseError, setStatus, notify, renameImage }) {
+export function renderSharedMedia(section, { currentUser, requestJson, responseError, setStatus, notify, renameImage, openDeleteDialog }) {
   const admin = currentUser.role === 'admin'
   section.innerHTML = `
     <div id="shared-toolbar" class="shared-toolbar" ${admin ? '' : 'hidden'}>
@@ -23,7 +24,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
     </div>
     <div id="shared-folders" class="media-grid"></div>
     <div id="shared-images" class="media-grid"></div>
-    ${admin ? '<div class="shared-move"><button id="shared-move-button" class="auth-button auth-button-secondary" type="button" disabled>Move selected</button></div>' : ''}
+    ${admin ? '<div class="shared-move"><button id="shared-move-button" class="auth-button auth-button-secondary" type="button" disabled>Move selected</button><button id="shared-delete-button" class="auth-button auth-button-secondary" type="button" disabled>Delete selected</button></div>' : ''}
     <p id="shared-status" class="form-status" role="status" aria-live="polite">Loading shared library…</p>
     ${admin ? '<dialog id="shared-group-dialog" class="user-dialog" aria-labelledby="shared-group-dialog-title"><form id="shared-group-form"><h2 id="shared-group-dialog-title">Create folder</h2><label class="field"><span>Name</span><input name="name" maxlength="100" required></label><p id="shared-group-dialog-status" class="form-status" role="status" aria-live="polite"></p><div class="user-dialog-actions"><button type="button" class="auth-button auth-button-secondary" data-cancel>Cancel</button><button type="submit" class="auth-button auth-button-primary">Create folder</button></div></form></dialog>' : ''}
     ${admin ? '<dialog id="shared-move-dialog" class="user-dialog" aria-labelledby="shared-move-title"><form id="shared-move-form"><h2 id="shared-move-title">Move images</h2><p id="shared-move-count"></p><fieldset class="media-destination-fieldset"><legend>Destination</legend><div id="shared-destinations" class="media-destinations"></div></fieldset><p id="shared-move-status" class="form-status" role="status" aria-live="polite"></p><div class="user-dialog-actions"><button type="button" class="auth-button auth-button-secondary" data-cancel>Cancel</button><button type="submit" class="auth-button auth-button-primary" disabled>Move images</button></div></form></dialog>' : ''}
@@ -42,6 +43,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
   const groupDialog = section.querySelector('#shared-group-dialog')
   const groupStatus = section.querySelector('#shared-group-dialog-status')
   const moveButton = section.querySelector('#shared-move-button')
+  const deleteButton = section.querySelector('#shared-delete-button')
   const moveDialog = section.querySelector('#shared-move-dialog')
   const moveForm = section.querySelector('#shared-move-form')
   const moveCount = section.querySelector('#shared-move-count')
@@ -52,6 +54,8 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
   let groups = []
   let images = []
   let activeGroupId = null
+  let searchReturnGroupId = null
+  let searchQuery = ''
   let editingGroupId = null
   let busy = false
   const selected = new Set()
@@ -78,7 +82,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
     pathRename.hidden = activeGroupId === null || !admin
     pathRename.replaceChildren()
     toolbar.hidden = !admin && activeGroupId === null
-    if (activeGroupId === null) {
+    if (activeGroupId === null && !searchQuery) {
       if (admin) {
         const card = document.createElement('div')
         card.className = 'media-folder media-folder-create'
@@ -118,7 +122,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
         if (admin) card.append(folderActions(group))
         folderGrid.append(card)
       }
-    } else {
+    } else if (!searchQuery) {
       const back = document.createElement('button')
       back.type = 'button'
       back.className = 'text-button'
@@ -128,19 +132,22 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
       folderTitle.textContent = activeGroup.name
       if (admin) pathRename.append(folderRenameButton(activeGroup))
     }
+    for (const preview of imageGrid.querySelectorAll('img')) preview.removeAttribute('src')
     imageGrid.replaceChildren()
-    const visible = images.filter((image) => image.group_id === activeGroupId)
-    if (!visible.length && activeGroupId !== null) {
+    const visible = searchQuery
+      ? images.filter((image) => image.name.toLocaleLowerCase().includes(searchQuery))
+      : images.filter((image) => image.group_id === activeGroupId)
+    if (!visible.length && (activeGroupId !== null || searchQuery)) {
       const empty = document.createElement('p')
       empty.className = 'media-empty'
-      empty.textContent = 'This folder is empty.'
+      empty.textContent = searchQuery ? 'No images match your search.' : 'This folder is empty.'
       imageGrid.append(empty)
     }
     for (const image of visible) {
       const card = document.createElement('article')
       card.className = 'media-card'
       const preview = document.createElement('img')
-      preview.dataset.src = imageUrl(image.id)
+      preview.dataset.src = thumbnailUrl(image.id)
       if (section.closest('.media-page').dataset.mediaLayout !== 'list') preview.src = preview.dataset.src
       preview.alt = image.name
       preview.loading = 'lazy'
@@ -156,7 +163,9 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
       name.title = image.name
       const metadata = document.createElement('span')
       metadata.className = 'media-card-meta'
-      metadata.textContent = formatImageDetails(image)
+      const groupName = image.group_id === null ? 'Ungrouped'
+        : groups.find((group) => group.id === image.group_id)?.name || 'Folder'
+      metadata.textContent = searchQuery ? `${formatImageDetails(image)} · ${groupName}` : formatImageDetails(image)
       const title = document.createElement('div')
       title.className = 'media-card-title'
       title.append(name)
@@ -226,9 +235,30 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
   }
 
   function updateMoveButton() {
-    if (!moveButton) return
-    moveButton.disabled = busy || !selected.size
-    moveButton.textContent = selected.size ? `Move ${selected.size} selected` : 'Move selected'
+    if (moveButton) {
+      moveButton.disabled = busy || !selected.size
+      moveButton.textContent = selected.size ? `Move ${selected.size} selected` : 'Move selected'
+    }
+    if (deleteButton) {
+      deleteButton.disabled = busy || !selected.size
+      deleteButton.textContent = selected.size ? `Delete ${selected.size} selected` : 'Delete selected'
+    }
+  }
+
+  function setSearch(value) {
+    const next = value.trim().toLocaleLowerCase()
+    if (next === searchQuery) return
+    if (!searchQuery && next) {
+      searchReturnGroupId = activeGroupId
+      activeGroupId = null
+    } else if (searchQuery && !next) {
+      activeGroupId = searchReturnGroupId
+      searchReturnGroupId = null
+    }
+    searchQuery = next
+    selected.clear()
+    selectionAnchor.id = null
+    render()
   }
 
   function renderDestinations() {
@@ -375,6 +405,13 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
     moveConfirm.disabled = true
     moveDialog.showModal()
   })
+  deleteButton?.addEventListener('click', () => {
+    if (busy) return
+    openDeleteDialog([...selected], {
+      selected, refresh,
+      setBusy(value) { busy = value; render() },
+    })
+  })
   moveForm?.addEventListener('change', () => { moveConfirm.disabled = busy })
   moveForm?.addEventListener('submit', async (event) => {
     event.preventDefault()
@@ -415,5 +452,5 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
   moveCancel?.addEventListener('click', () => { if (!busy) moveDialog.close() })
   refresh().then((ok) => { if (ok && section.isConnected) setStatus(status, '') })
     .catch(() => { if (section.isConnected) setStatus(status, 'Could not load shared library.', true) })
-  return { refresh }
+  return { refresh, setSearch }
 }

@@ -971,6 +971,66 @@ paths:
         '503':
           description: Wikimedia Commons is unavailable.
 
+  /media/images/usage:
+    post:
+      tags: [Media]
+      operationId: inspectImageUsage
+      summary: List quiz questions and saved attempts that use selected images
+      description: Only owners can inspect personal images. Only admins can inspect shared images for deletion.
+      security:
+        - sessionCookie: []
+        - apiBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image_ids]
+              properties:
+                image_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 5000
+                  uniqueItems: true
+                  items: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: Selected images and all current quiz and attempt references.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [images]
+                properties:
+                  images:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, scope, uses]
+                      properties:
+                        id: {type: integer, minimum: 1}
+                        name: {type: string}
+                        scope: {type: string, enum: [personal, shared]}
+                        uses:
+                          type: array
+                          items:
+                            type: object
+                            required: [kind, quiz_id, quiz_name, question_id, question_prompt, attempt_id]
+                            properties:
+                              kind: {type: string, enum: [question, attempt]}
+                              quiz_id: {type: integer, minimum: 1}
+                              quiz_name: {type: string}
+                              question_id: {type: integer, minimum: 1}
+                              question_prompt: {type: string}
+                              attempt_id: {type: [integer, 'null'], minimum: 1}
+        '400': {description: Invalid image IDs.}
+        '401': {description: No active session.}
+        '403': {description: Admin access required for shared images.}
+        '404': {description: An image does not exist or belongs to another account.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
   /media/images/import:
     post:
       tags: [Media]
@@ -1366,6 +1426,37 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /media/images/{imageId}/thumbnail:
+    parameters:
+      - name: imageId
+        in: path
+        required: true
+        schema: {type: integer, format: int64}
+    get:
+      tags: [Media]
+      operationId: getImageThumbnail
+      summary: Read a thumbnail of a personal, shared, or accessible quiz image
+      description: Uses the same access rules as the original image. The preview is at most 320 pixels per side; small images may be returned unchanged.
+      security:
+        - sessionCookie: []
+        - apiBearer: []
+      responses:
+        '200':
+          description: Thumbnail bytes.
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+        '401':
+          description: No active session.
+        '404':
+          description: Image does not exist or is not accessible to this account.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /media/images/{imageId}:
     parameters:
       - name: imageId
@@ -1436,15 +1527,25 @@ paths:
     delete:
       tags: [Media]
       operationId: deleteImage
-      summary: Delete an unused personal image
+      summary: Delete an unused personal image or, as an admin, a shared image
+      description: With force=1, delete the image even when current questions or saved attempts still reference it. Those references remain and clients show a missing-image icon.
       security:
         - sessionCookie: []
         - apiBearer: []
+      parameters:
+        - name: force
+          in: query
+          schema: {type: string, enum: ['1']}
+          description: Delete after reviewing usage, even when referenced.
       responses:
         '204':
           description: Image deleted.
+        '400':
+          description: Invalid force option.
         '401':
           description: No active session.
+        '403':
+          description: Admin access required to delete a shared image.
         '404':
           description: Image does not exist or belongs to another account.
         '409':

@@ -2,6 +2,7 @@ import { imageIcon, noImageIcon, removeIcon, uploadImageIcon } from './icons.js'
 import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
 
 const imageUrl = (id) => `/api/media/images/${id}`
+const thumbnailUrl = (id) => `${imageUrl(id)}/thumbnail`
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`
@@ -99,7 +100,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     const load = { controller: new AbortController(), url: null }
     imageLoads.set(id, load)
     try {
-      const response = await fetch(imageUrl(id), { signal: load.controller.signal })
+      const response = await fetch(thumbnailUrl(id), { signal: load.controller.signal })
       if (!response.ok) return
       const blob = await response.blob()
       if (load.controller.signal.aborted || imageLoads.get(id) !== load) return
@@ -276,11 +277,13 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     const button = picker.querySelector('[data-choose-image]')
     const preview = button.querySelector('img')
     const icon = button.querySelector('svg')
+    const missing = button.querySelector('[data-missing-image]')
     const label = picker.dataset.imageLabel
     const name = images.find((image) => image.id === id)?.name
     preview.hidden = !id
+    missing.hidden = true
     icon.toggleAttribute('hidden', Boolean(id))
-    if (id) preview.src = imageUrl(id)
+    if (id) preview.src = thumbnailUrl(id)
     else preview.removeAttribute('src')
     button.setAttribute('aria-label', `${id ? 'Change' : 'Choose'} ${label.toLowerCase()}`)
     button.title = name || `${id ? 'Change' : 'Choose'} ${label.toLowerCase()}`
@@ -301,6 +304,10 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     const preview = document.createElement('img')
     preview.alt = ''
     preview.loading = 'lazy'
+    const missing = document.createElement('span')
+    missing.dataset.missingImage = ''
+    missing.hidden = true
+    missing.innerHTML = noImageIcon
     const field = document.createElement('input')
     field.type = 'hidden'
     field.dataset.imageId = ''
@@ -310,7 +317,14 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     choose.className = 'image-picker-button'
     choose.dataset.chooseImage = ''
     choose.innerHTML = imageIcon
-    choose.append(preview)
+    choose.append(missing, preview)
+    preview.addEventListener('error', () => {
+      preview.hidden = true
+      choose.querySelector('svg').hidden = true
+      missing.hidden = false
+      choose.title = 'This image was deleted. Choose a replacement.'
+      choose.setAttribute('aria-label', 'Missing image. Choose a replacement.')
+    })
     choose.addEventListener('click', () => openLibrary(picker))
     picker.append(field, choose)
     pickers.add(picker)

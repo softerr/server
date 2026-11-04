@@ -414,6 +414,21 @@ function handleImportQuiz(): never
             saveMediaSource($mediaDb, $stored['id'], $source);
         }
     }
+    $imageLocks = array_values(array_unique($imageIds));
+    sort($imageLocks, SORT_NUMERIC);
+    foreach ($imageLocks as $imageId) {
+        if (@pg_query_params($db, 'SELECT pg_advisory_xact_lock($1::bigint)', [-$imageId]) === false) {
+            respond(500, ['error' => $error]);
+        }
+    }
+    if ($imageLocks !== []) {
+        $available = @pg_query_params($mediaDb,
+            'SELECT id FROM public.image WHERE id = ANY($1::bigint[])',
+            ['{' . implode(',', $imageLocks) . '}']);
+        if ($available === false || pg_num_rows($available) !== count($imageLocks)) {
+            respond(409, ['error' => 'An imported image is no longer available']);
+        }
+    }
     $quiz = insertQuizRow($db, $localUserId, $name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $timeLimit, $allowGoBack, $isPublic, $randomizeAnswers, $error);
     foreach ($questions as $position => [$template, $prompt, $config, $questionTimeLimit]) {
         $details = json_decode($config, true, 512, JSON_THROW_ON_ERROR);

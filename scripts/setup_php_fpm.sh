@@ -21,7 +21,7 @@ wait_for_apt_locks
 echo "Installing PHP runtime..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y php-fpm php-cli php-pgsql php-zip curl
+apt-get install -y php-fpm php-cli php-pgsql php-gd php-zip curl
 
 echo "Discovering php-fpm service..."
 PHP_FPM_SERVICE=""

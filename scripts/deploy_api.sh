@@ -37,6 +37,21 @@ WEB_USER="${WEB_USER:-www-data}"
 WEB_GROUP="${WEB_GROUP:-www-data}"
 source "${SCRIPT_DIR}/lib/atomic_deploy.sh"
 source "${SCRIPT_DIR}/lib/deploy_checks.sh"
+source "${SCRIPT_DIR}/lib/apt_locks.sh"
+
+routes_file=/etc/nginx/snippets/softerr-routes.conf
+socket="$(sed -nE 's/^[[:space:]]*fastcgi_pass unix:([^;]+);/\1/p' "${routes_file}" | head -n 1)"
+if [[ ! "${socket}" =~ ^/run/php/php([0-9.]+)-fpm\.sock$ ]]; then
+  echo "Could not identify the PHP-FPM service from ${routes_file}." >&2
+  exit 1
+fi
+php_version="${BASH_REMATCH[1]}"
+if ! "php${php_version}" -m | grep -Fxiq gd; then
+  wait_for_apt_locks
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y "php${php_version}-gd"
+fi
 
 RECOVERY_SERVICE_FILE="${SCRIPT_DIR}/../configs/systemd/softerr-recover-quiz-imports.service"
 RECOVERY_TIMER_FILE="${SCRIPT_DIR}/../configs/systemd/softerr-recover-quiz-imports.timer"
@@ -53,14 +68,7 @@ systemctl enable --now softerr-recover-quiz-imports.timer
 
 echo "Deploying API from: ${SOURCE_DIR}"
 restart_api_fpm() {
-  local routes_file=/etc/nginx/snippets/softerr-routes.conf
-  local socket
-  socket="$(sed -nE 's/^[[:space:]]*fastcgi_pass unix:([^;]+);/\1/p' "${routes_file}" | head -n 1)"
-  if [[ ! "${socket}" =~ ^/run/php/php([0-9.]+)-fpm\.sock$ ]]; then
-    echo "Could not identify the PHP-FPM service from ${routes_file}." >&2
-    return 1
-  fi
-  systemctl restart "php${BASH_REMATCH[1]}-fpm.service"
+  systemctl restart "php${php_version}-fpm.service"
 }
 verify_api_release() {
   restart_api_fpm || return 1

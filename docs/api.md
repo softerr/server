@@ -192,10 +192,17 @@ key to its local user. The API creates the local user on the first quiz create.
   already shared.
 - `GET /api/media/images/{imageId}` returns original bytes to the owner or any
   authenticated user for a shared image.
-- `DELETE /api/media/images/{imageId}` deletes only a personal image. It returns
-  `204` if unused, or
-  `409` if a saved question still references it. Removing an image from one
-  question does not remove it from another.
+- `GET /api/media/images/{imageId}/thumbnail` uses the same access rules and
+  returns a preview of at most 320 pixels per side. Small images may be served
+  unchanged. The preview is generated when uploaded; existing images receive
+  one on their first thumbnail request.
+- `POST /api/media/images/usage` with `{ "image_ids": [12, 13] }` lists every
+  current question and saved attempt that references the selected images.
+- `DELETE /api/media/images/{imageId}` deletes an owned personal image or, for
+  admins, a shared image. It returns `204` if unused, or `409` if any current
+  question or saved attempt still references it. After reviewing the usage,
+  `DELETE /api/media/images/{imageId}?force=1` deletes it even when referenced.
+  Those quizzes and attempts retain the image ID and show a missing-image icon.
 
 The legacy `/api/quiz/images` routes continue to serve the same media library
 for clients deployed before this change. New clients should use `/api/media/images`.

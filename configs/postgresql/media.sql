@@ -5,8 +5,14 @@ CREATE TABLE IF NOT EXISTS public.image_blob (
     width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 4096),
     height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 4096),
     content BYTEA NOT NULL CONSTRAINT image_blob_content_size_check
-        CHECK (octet_length(content) BETWEEN 1 AND 6291456)
+        CHECK (octet_length(content) BETWEEN 1 AND 6291456),
+    thumbnail_content BYTEA,
+    thumbnail_mime_type VARCHAR(16)
 );
+
+-- Existing image blobs are filled when their thumbnail is first requested.
+ALTER TABLE public.image_blob ADD COLUMN IF NOT EXISTS thumbnail_content BYTEA;
+ALTER TABLE public.image_blob ADD COLUMN IF NOT EXISTS thumbnail_mime_type VARCHAR(16);
 
 CREATE TABLE IF NOT EXISTS public.media_group (
     id BIGSERIAL PRIMARY KEY,
@@ -63,6 +69,7 @@ CREATE INDEX IF NOT EXISTS quiz_import_recovery_created_idx
 GRANT CONNECT ON DATABASE media TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.image_blob TO auth_api;
+GRANT UPDATE (thumbnail_content, thumbnail_mime_type) ON TABLE public.image_blob TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.image TO auth_api;
 GRANT UPDATE (owner_auth_user_id, shared, group_id, original_name) ON TABLE public.image TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.media_group TO auth_api;
