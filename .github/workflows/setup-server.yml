@@ -25,6 +25,7 @@ jobs:
           cache-dependency-path: |
             app/home/package-lock.json
             app/quiz/package-lock.json
+            app/musico/package-lock.json
 
       - name: Build home
         working-directory: app/home
@@ -35,6 +36,13 @@ jobs:
 
       - name: Build quiz
         working-directory: app/quiz
+        run: |
+          npm ci
+          npm run build
+          test -f dist/index.html
+
+      - name: Build Musico
+        working-directory: app/musico
         run: |
           npm ci
           npm run build

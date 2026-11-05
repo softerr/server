@@ -353,6 +353,21 @@ check_quiz_routes() {
   echo "Quiz routes /quiz and /quiz/ returned HTTP 200."
 }
 
+check_musico_routes() {
+  local route status
+  for route in /musico /musico/; do
+    if ! status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 10 "http://127.0.0.1:${HTTP_PORT}${route}")"; then
+      echo "Musico route check failed: ${route} is unreachable."
+      return 1
+    fi
+    if [[ "${status}" != "200" ]]; then
+      echo "Musico route check failed: ${route} returned HTTP ${status}, expected 200."
+      return 1
+    fi
+  done
+  echo "Musico routes /musico and /musico/ returned HTTP 200."
+}
+
 sync_repo_to_vm() {
   echo "Syncing project into VM..."
   # rsync accepts its remote shell as one command string rather than an argv array.
@@ -375,6 +390,7 @@ sync_repo_to_vm() {
     --exclude=".qemu" \
     --exclude="app/home/node_modules" \
     --exclude="app/quiz/node_modules" \
+    --exclude="app/musico/node_modules" \
     -e "${rsync_ssh}" \
     "${REPO_ROOT}/" "${SSH_TARGET}:${REMOTE_APP_DIR}/"
 }
@@ -474,6 +490,9 @@ provision_vm() {
   if provision_includes_app quiz; then
     build_app_dist quiz
   fi
+  if provision_includes_app musico; then
+    build_app_dist musico
+  fi
   sync_repo_to_vm
 
   echo "Running server setup scripts inside VM..."
@@ -484,15 +503,18 @@ provision_vm() {
   if provision_includes_app quiz; then
     check_quiz_routes
   fi
+  if provision_includes_app musico; then
+    check_musico_routes
+  fi
 }
 
 apply_component_vm() {
   local component="$1"
   case "${component}" in
-    all|postgresql|php-fpm|email-worker|nginx|api|home|quiz|apps) ;;
+    all|postgresql|php-fpm|email-worker|nginx|api|home|quiz|musico|apps) ;;
     *)
       echo "Unknown provisioning component: ${component}" >&2
-      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, home, quiz, apps" >&2
+      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, home, quiz, musico, apps" >&2
       return 1
       ;;
   esac
@@ -503,6 +525,8 @@ apply_component_vm() {
   local PROVISION_COMPONENTS="${component}"
   if [[ "${component}" == api ]]; then
     PROVISION_COMPONENTS="nginx,api"
+  elif [[ "${component}" == musico ]]; then
+    PROVISION_COMPONENTS="nginx,musico"
   fi
 
   if ! qemu_running; then
@@ -520,6 +544,9 @@ apply_component_vm() {
   if provision_includes_app quiz; then
     build_app_dist quiz
   fi
+  if provision_includes_app musico; then
+    build_app_dist musico
+  fi
 
   sync_repo_to_vm
   run_remote_script "scripts/provision.sh"
@@ -528,6 +555,9 @@ apply_component_vm() {
   fi
   if provision_includes_app quiz || [[ "${component}" == nginx ]]; then
     check_quiz_routes
+  fi
+  if provision_includes_app musico || [[ "${component}" == nginx ]]; then
+    check_musico_routes
   fi
   echo "Applied ${component} in VM."
 }
@@ -582,7 +612,7 @@ Environment variables:
   API_TEST_REQUIRE_EMAIL       Default: 1 (require signup email delivery checks)
   API_TEST_MAILPIT_URL         Optional Mailpit API URL for resend delivery test
   PROVISION_COMPONENTS         Components to run during start (default: all)
-  APP_LIST                     all|api|home|quiz when applying apps (default: all)
+  APP_LIST                     all|api|home|quiz|musico when applying apps (default: all)
   VM_NAME                      Default: server-clone
   VM_USER                      Default: ubuntu (repo syncs to /home/<VM_USER>/server)
   VM_DIR                       Default: ./.qemu/<VM_NAME>

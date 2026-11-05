@@ -23,6 +23,8 @@ cleanup() {
   if [[ "${auth_user_id}" =~ ^[1-9][0-9]*$ ]]; then
     sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -q -d quiz \
       -c "DELETE FROM public.\"user\" WHERE auth_user_id = ${auth_user_id}" >/dev/null || result=1
+    sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -q -d musico \
+      -c "DELETE FROM public.\"user\" WHERE auth_user_id = ${auth_user_id}" >/dev/null || result=1
     sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -q -d media \
       -c "DELETE FROM public.image WHERE owner_auth_user_id = ${auth_user_id};
           DELETE FROM public.image_blob b WHERE NOT EXISTS

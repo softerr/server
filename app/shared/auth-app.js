@@ -37,10 +37,10 @@ export function startAuthApp(config) {
     element.classList.toggle('success', isSuccess)
   }
 
-  async function requestJson(method, path, data) {
-    const options = { method }
+  async function requestJson(method, path, data, headers = {}) {
+    const options = { method, headers: { ...headers } }
     if (data !== undefined) {
-      options.headers = { 'Content-Type': 'application/json' }
+      options.headers['Content-Type'] = 'application/json'
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
       if (timezone) options.headers['X-Timezone'] = timezone
       options.body = JSON.stringify(data)
@@ -328,6 +328,7 @@ export function startAuthApp(config) {
       postJson('/api/auth/logout', {}).then(([response]) => {
         if (response.ok) {
           currentUser = null
+          config.onLogout?.()
           navigate('home')
         }
       }).catch(() => {})

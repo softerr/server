@@ -83,7 +83,14 @@ if ! PGPASSWORD="${API_DB_PASSWORD}" PGCONNECT_TIMEOUT=5 psql -X -v ON_ERROR_STO
   echo "Media database is not reachable with the API credentials." >&2
   exit 1
 fi
-PROVISION_COMPONENTS=php-fpm,email-worker,nginx,api,home,quiz bash "${SCRIPT_DIR}/provision.sh"
+if ! PGPASSWORD="${API_DB_PASSWORD}" PGCONNECT_TIMEOUT=5 psql -X -v ON_ERROR_STOP=1 \
+  -h "${API_DB_HOST:-127.0.0.1}" -p "${API_DB_PORT:-5432}" \
+  -U "${API_DB_USER:-auth_api}" -d musico \
+  -Atqc 'SELECT 1 FROM public."user" LIMIT 0' >/dev/null; then
+  echo "Musico database is not reachable with the API credentials." >&2
+  exit 1
+fi
+PROVISION_COMPONENTS=php-fpm,email-worker,nginx,api,home,quiz,musico bash "${SCRIPT_DIR}/provision.sh"
 
 systemctl is-active --quiet nginx
 systemctl is-active --quiet postgresql
@@ -96,7 +103,9 @@ verify_local_app_route /api/ api
 verify_local_app_route /api/auth/me auth-required
 verify_local_app_route /api/quiz/quizzes auth-required
 verify_local_app_route /api/media/images auth-required
+verify_local_app_route /api/musico/me auth-required
 verify_local_app_route / file /var/www/home/index.html
 verify_local_app_route /quiz/ file /var/www/quiz/index.html
+verify_local_app_route /musico/ file /var/www/musico/index.html
 
 echo "First-time setup is complete: ${API_APP_BASE_URL%/}"

@@ -14,6 +14,7 @@ INIT_SQL_FILE="${REPO_ROOT}/configs/postgresql/init.sql"
 AUTH_SQL_FILE="${REPO_ROOT}/configs/postgresql/auth.sql"
 QUIZ_SQL_FILE="${REPO_ROOT}/configs/postgresql/quiz.sql"
 MEDIA_SQL_FILE="${REPO_ROOT}/configs/postgresql/media.sql"
+MUSICO_SQL_FILE="${REPO_ROOT}/configs/postgresql/musico.sql"
 PRUNE_SQL_FILE="${REPO_ROOT}/configs/postgresql/prune_user_tokens.sql"
 PRUNE_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.service"
 PRUNE_TIMER_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.timer"
@@ -26,7 +27,7 @@ if ! command -v apt-get >/dev/null 2>&1; then
   exit 1
 fi
 
-for config_file in "${INIT_SQL_FILE}" "${AUTH_SQL_FILE}" "${QUIZ_SQL_FILE}" "${MEDIA_SQL_FILE}" \
+for config_file in "${INIT_SQL_FILE}" "${AUTH_SQL_FILE}" "${QUIZ_SQL_FILE}" "${MEDIA_SQL_FILE}" "${MUSICO_SQL_FILE}" \
   "${PRUNE_SQL_FILE}" "${PRUNE_SERVICE_FILE}" "${PRUNE_TIMER_FILE}" \
   "${BACKUP_SCRIPT_FILE}" "${BACKUP_SERVICE_FILE}" "${BACKUP_TIMER_FILE}"; do
   if [[ ! -f "${config_file}" ]]; then
@@ -70,6 +71,9 @@ sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d quiz < "${QUIZ_SQL_FILE}"
 echo "Applying shared media database schema: ${MEDIA_SQL_FILE}"
 sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d media < "${MEDIA_SQL_FILE}"
 
+echo "Applying Musico database schema: ${MUSICO_SQL_FILE}"
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d musico < "${MUSICO_SQL_FILE}"
+
 echo "Pruning expired verification tokens..."
 sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${PRUNE_SQL_FILE}"
 
@@ -96,4 +100,4 @@ systemctl start softerr-backup-postgresql.service
 systemctl enable --now softerr-backup-postgresql.timer
 
 echo "Done."
-echo "PostgreSQL is installed and auth, quiz, and media database schemas are initialized."
+echo "PostgreSQL is installed and auth, quiz, media, and Musico database schemas are initialized."

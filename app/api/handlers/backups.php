@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 const BACKUP_DIRECTORY = '/var/backups/softerr';
-const BACKUP_DATABASES = ['auth', 'quiz', 'media'];
+const BACKUP_DATABASES = ['auth', 'quiz', 'media', 'musico'];
 
 function authorizeBackupDownload(): void
 {
@@ -18,7 +18,7 @@ function availableBackupSets(): array
     if ($names === false) respond(503, ['error' => 'Backup storage is unavailable']);
     $candidates = [];
     foreach ($names as $name) {
-        if (!preg_match('/^(auth|quiz|media)-(\d{8}T\d{6}Z)\.[A-Za-z0-9]{8}\.dump$/D', $name, $match)) continue;
+        if (!preg_match('/^(auth|quiz|media|musico)-(\d{8}T\d{6}Z)\.[A-Za-z0-9]{8}\.dump$/D', $name, $match)) continue;
         $path = BACKUP_DIRECTORY . '/' . $name;
         if (is_link($path) || !is_file($path)) continue;
         $candidates[$match[2]][$match[1]][] = $path;

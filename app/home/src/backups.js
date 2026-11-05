@@ -9,7 +9,7 @@ export function renderBackups(app, { requestJson, responseError, setStatus }) {
   page.innerHTML = `
     <main class="backups-page">
       <h1 class="section-title">Backups</h1>
-      <p class="backups-description">Each download contains the verified auth, quiz, and media database archives.</p>
+      <p class="backups-description">Each download contains the verified auth, quiz, media, and Musico database archives.</p>
       <p id="backups-status" class="form-status" role="status" aria-live="polite">Loading backups…</p>
       <div id="backups-table-wrap" class="backups-table-wrap" hidden>
         <table class="backups-table">

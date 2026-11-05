@@ -16,9 +16,8 @@ function publicUser(array $user): array
     ];
 }
 
-function handleLogin(): never
+function authenticateLoginCredentials(?array $payload): array
 {
-    $payload = readJsonBody();
     if ($payload === null || !is_string($payload['email'] ?? null)
         || !is_string($payload['password'] ?? null)) {
         respond(400, ['error' => 'email and password are required']);
@@ -59,6 +58,13 @@ function handleLogin(): never
     if ($user['approved_at'] === null) {
         respond(403, ['error' => 'Your account is awaiting admin approval']);
     }
+
+    return $user;
+}
+
+function handleLogin(): never
+{
+    $user = authenticateLoginCredentials(readJsonBody());
 
     startAuthSession();
     $_SESSION = [];

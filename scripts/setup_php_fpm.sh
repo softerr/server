@@ -59,6 +59,7 @@ if [[ -n "${PHP_VERSION}" ]]; then
 [www]
 php_admin_value[memory_limit] = 256M
 php_admin_value[post_max_size] = 48M
+php_admin_value[upload_max_filesize] = 24M
 env[DB_HOST] = "$(escape_api_env_value "${API_DB_HOST}")"
 env[DB_PORT] = "$(escape_api_env_value "${API_DB_PORT}")"
 env[DB_NAME] = "$(escape_api_env_value "${API_DB_NAME}")"

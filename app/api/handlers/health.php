@@ -23,9 +23,13 @@ function handleReadiness(): never
             t.hash, t.email_attempted_at, o.token_id, o.available_at, o.claimed_until, o.claim_id,
             a.applicant_id, a.recipient_id, a.available_at, a.claim_id,
             api.token_hash, api.read_owner_quizzes, api.edit_owner_quizzes,
-            api.quiz_permissions, activity.token_id, activity.status
+            api.quiz_permissions, activity.token_id, activity.status,
+            mobile.access_hash, mobile.refresh_hash, mobile.previous_refresh_hash,
+            mobile.previous_refresh_until, mobile.rotation_nonce, mobile.password_fingerprint,
+            mobile.access_expires, mobile.refresh_expires, mobile.revoked_at
         FROM public."user" u, public.user_token t, public.verification_email_outbox o,
-             public.approval_email_outbox a, public.api_token api, public.api_token_activity activity
+             public.approval_email_outbox a, public.api_token api, public.api_token_activity activity,
+             public.mobile_session mobile
         LIMIT 0');
     if ($schema === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Database schema is not ready']);
@@ -53,6 +57,29 @@ function handleReadiness(): never
     }
     if (@pg_query($quizDb, 'SELECT id, quiz_id FROM public.quiz_import_receipt LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
+    }
+
+    [$musicoDb, $musicoError] = openMusicoDb();
+    if ($musicoDb === false) {
+        respond(503, ['status' => 'unavailable', 'error' => $musicoError]);
+    }
+    if (@pg_query($musicoDb,
+        'SELECT u.id, u.auth_user_id, t.id, t.user_id, t.content, t.size_bytes, t.content_sha256,
+            t.version, t.stats_version,
+            t.duration_ms, t.bit_rate, t.sample_rate_hz, t.bit_depth, t.channels, t.codec,
+            t.estimated_bpm, t.estimated_key, t.peak_db, t.average_db,
+            t.dynamic_range_db, t.analysis_saved_at,
+            p.id, p.user_id, p.version, pt.playlist_id, pt.track_id, pt.position,
+            upload.request_id, upload.request_sha256, upload.track_id,
+            stat_request.request_id, stat_request.request_sha256, stat_request.track_id,
+            stat_request.play_count, stat_request.listen_ms, stat_request.stats_version,
+            changes.id, changes.cursor_token, changes.user_id, changes.resource, changes.resource_id, changes.action,
+            playlist_create_request.user_id, playlist_create_request.request_id,
+            playlist_create_request.request_name, playlist_create_request.playlist_id
+         FROM public."user" u, public.track t, public.playlist p, public.playlist_track pt,
+              public.track_upload_request upload, public.track_stat_request stat_request,
+              public.change_log changes, public.playlist_create_request playlist_create_request LIMIT 0') === false) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Musico database schema is not ready']);
     }
 
     [$mediaDb, $mediaError] = openMediaDb();

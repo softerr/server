@@ -26,8 +26,8 @@ export function createMediaDeletion(page, { requestJson, responseError, notify }
     const affected = images.filter((image) => image.uses.length)
     const totalUses = affected.reduce((count, image) => count + image.uses.length, 0)
     summary.textContent = affected.length
-      ? `${affected.length} of ${images.length} selected images are used in ${totalUses} places. Deleting them will show a missing-image icon in those quizzes and attempts.`
-      : `None of the ${images.length} selected images are used in a quiz or saved attempt.`
+      ? `${affected.length} of ${images.length} selected images are used in ${totalUses} places. Deleting them will show a missing-image icon there.`
+      : `None of the ${images.length} selected images are in use.`
     for (const image of affected) {
       const group = document.createElement('section')
       const title = document.createElement('h3')
@@ -35,7 +35,9 @@ export function createMediaDeletion(page, { requestJson, responseError, notify }
       const list = document.createElement('ul')
       for (const place of image.uses) {
         const item = document.createElement('li')
-        item.textContent = `${place.quiz_name} · ${place.kind === 'attempt' ? `Saved attempt #${place.attempt_id}` : 'Current question'} · ${place.question_prompt} (question #${place.question_id})`
+        item.textContent = place.kind === 'musico_track'
+          ? `Musico · ${place.track_name} (song #${place.track_id})`
+          : `${place.quiz_name} · ${place.kind === 'attempt' ? `Saved attempt #${place.attempt_id}` : 'Current question'} · ${place.question_prompt} (question #${place.question_id})`
         list.append(item)
       }
       group.append(title, list)

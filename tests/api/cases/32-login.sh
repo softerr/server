@@ -44,6 +44,8 @@ test_quiz_library_requires_login() {
   assert_status 401 || return 1
   api_request GET /api/media/images
   assert_status 401 || return 1
+  api_request PUT /api/musico/me
+  assert_status 401 || return 1
   api_request GET /api/quiz/images/1
   assert_status 401 || return 1
   api_request DELETE /api/quiz/images/1
@@ -127,6 +129,22 @@ test_auth_login_session_lifecycle() {
   if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --arg email "${TEST_EMAIL}" '.email == $email and .role == "user"' <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}"
     fail_test 'session did not authenticate /api/auth/me'
+    return 1
+  fi
+
+  response="$(curl -sS -b "${cookie_file}" -X PUT -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/musico/me")"
+  local musico_id
+  musico_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  if [[ "${response##*$'\n'}" != 200 || ! "${musico_id}" =~ ^[1-9][0-9]*$ ]] \
+    || ! jq -e --argjson auth_id "${current_id}" '.auth_user_id == $auth_id' <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "Musico did not create a linked account: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X PUT -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/musico/me")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --argjson musico_id "${musico_id}" '.id == $musico_id' <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}"
+    fail_test "Musico account was not reused: ${response}"
     return 1
   fi
 
@@ -235,7 +253,7 @@ test_auth_login_session_lifecycle() {
             $names[] = $entry["name"];
           }
           sort($names);
-          exit($names === ["auth.dump", "media.dump", "quiz.dump"] ? 0 : 1);
+          exit($names === ["auth.dump", "media.dump", "musico.dump", "quiz.dump"] ? 0 : 1);
         ' "${backup_zip}"; then
           rm -f "${backup_zip}" "${cookie_file}"
           fail_test "admin backup download was incomplete: HTTP ${backup_status}"
@@ -346,6 +364,13 @@ test_auth_login_session_lifecycle() {
           fail_test "role target could not create question: ${response}"
           return 1
         fi
+        response="$(curl -sS -b "${target_cookie}" -X PUT -w $'\n%{http_code}' \
+          "${API_TEST_BASE_URL%/}/api/musico/me")"
+        if [[ "${response##*$'\n'}" != 200 ]]; then
+          rm -f "${cookie_file}" "${target_cookie}"
+          fail_test "role target could not initialize Musico account: ${response}"
+          return 1
+        fi
         if ! sudo -n -u "${API_TEST_DB_SUPERUSER}" psql -X -v ON_ERROR_STOP=1 -d quiz \
           -c 'REVOKE DELETE ON TABLE public."user" FROM auth_api' >/dev/null; then
           rm -f "${cookie_file}" "${target_cookie}"
@@ -395,7 +420,7 @@ test_auth_login_session_lifecycle() {
           fail_test "deleted user's session remains active: ${response}"
           return 1
         fi
-        local auth_count quiz_count quiz_user_count question_count
+        local auth_count quiz_count quiz_user_count question_count musico_user_count
         auth_count="$(sudo -n -u "${API_TEST_DB_SUPERUSER}" psql -X -d "${API_TEST_DB_NAME}" -Atqc \
           "SELECT COUNT(*) FROM public.\"user\" WHERE id = ${target_id}")"
         quiz_count="$(sudo -n -u "${API_TEST_DB_SUPERUSER}" psql -X -d quiz -Atqc \
@@ -404,9 +429,12 @@ test_auth_login_session_lifecycle() {
           "SELECT COUNT(*) FROM public.\"user\" WHERE auth_user_id = ${target_id}")"
         question_count="$(sudo -n -u "${API_TEST_DB_SUPERUSER}" psql -X -d quiz -Atqc \
           "SELECT COUNT(*) FROM public.question WHERE id = ${target_question_id}")"
-        if [[ "${auth_count}" != 0 || "${quiz_count}" != 0 || "${quiz_user_count}" != 0 || "${question_count}" != 0 ]]; then
+        musico_user_count="$(sudo -n -u "${API_TEST_DB_SUPERUSER}" psql -X -d musico -Atqc \
+          "SELECT COUNT(*) FROM public.\"user\" WHERE auth_user_id = ${target_id}")"
+        if [[ "${auth_count}" != 0 || "${quiz_count}" != 0 || "${quiz_user_count}" != 0 \
+          || "${question_count}" != 0 || "${musico_user_count}" != 0 ]]; then
           rm -f "${cookie_file}"
-          fail_test "deleted user or quiz data remains: auth=${auth_count}, quiz=${quiz_count}, quiz_user=${quiz_user_count}, question=${question_count}"
+          fail_test "deleted user or app data remains: auth=${auth_count}, quiz=${quiz_count}, quiz_user=${quiz_user_count}, musico_user=${musico_user_count}, question=${question_count}"
           return 1
         fi
       elif [[ "${response##*$'\n'}" != 403 ]]; then

@@ -14,6 +14,15 @@ location /quiz/ {
     try_files $uri $uri/ /quiz/index.html;
 }
 
+location = /musico {
+    rewrite ^ /musico/index.html last;
+}
+
+location /musico/ {
+    alias /var/www/musico/;
+    try_files $uri $uri/ /musico/index.html;
+}
+
 location = /api {
     return 301 /api/;
 }
@@ -33,6 +42,13 @@ location ~ ^/api/auth/resend-verification/*$ {
 }
 
 location ~ ^/api/auth/login/*$ {
+    client_max_body_size 4k;
+    limit_req zone=softerr_login burst=10 nodelay;
+    limit_req_status 429;
+    try_files $uri /api/auth.php?$query_string;
+}
+
+location ~ ^/api/auth/mobile/login/*$ {
     client_max_body_size 4k;
     limit_req zone=softerr_login burst=10 nodelay;
     limit_req_status 429;
@@ -70,6 +86,12 @@ location /api/quiz/ {
     try_files $uri /api/quiz.php?$query_string;
 }
 
+location /api/musico/ {
+    root /var/www;
+    client_max_body_size 26m;
+    try_files $uri /api/musico.php?$query_string;
+}
+
 location /api/media/ {
     root /var/www;
     client_max_body_size 6m;
@@ -96,6 +118,16 @@ location = /api/media.php {
     root /var/www;
     internal;
     client_max_body_size 6m;
+    include snippets/fastcgi-php.conf;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+    fastcgi_pass unix:__PHP_FPM_SOCK__;
+}
+
+location = /api/musico.php {
+    root /var/www;
+    internal;
+    client_max_body_size 26m;
     include snippets/fastcgi-php.conf;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
     fastcgi_param HTTP_AUTHORIZATION $http_authorization;

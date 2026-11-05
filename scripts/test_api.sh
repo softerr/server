@@ -67,8 +67,11 @@ quiz_cleanup_access="$(test_psql quiz \
 media_cleanup_access="$(test_psql media \
   "SELECT has_table_privilege(current_user, 'public.image', 'DELETE')
     AND has_table_privilege(current_user, 'public.media_group', 'DELETE');")" || media_cleanup_access=''
-if [[ "${auth_cleanup_access}" != t || "${quiz_cleanup_access}" != t || "${media_cleanup_access}" != t ]]; then
-  echo 'API tests need auth, quiz, and media cleanup access.' >&2
+musico_cleanup_access="$(test_psql musico \
+  "SELECT has_table_privilege(current_user, 'public.\"user\"', 'DELETE');")" || musico_cleanup_access=''
+if [[ "${auth_cleanup_access}" != t || "${quiz_cleanup_access}" != t || "${media_cleanup_access}" != t \
+  || "${musico_cleanup_access}" != t ]]; then
+  echo 'API tests need auth, quiz, media, and Musico cleanup access.' >&2
   exit 1
 fi
 
@@ -97,6 +100,7 @@ cleanup_test_users() {
   fi
   test_psql quiz "DELETE FROM public.quiz_import_receipt WHERE owner_auth_user_id IN (${ids});
     DELETE FROM public.\"user\" WHERE auth_user_id IN (${ids});" >/dev/null || return 1
+  test_psql musico "DELETE FROM public.\"user\" WHERE auth_user_id IN (${ids});" >/dev/null || return 1
   test_psql media "DELETE FROM public.image WHERE owner_auth_user_id IN (${ids})
     OR (shared = TRUE AND left(original_name, length('${auth_prefix}')) = '${auth_prefix}');
     DELETE FROM public.quiz_import_recovery WHERE owner_auth_user_id IN (${ids});

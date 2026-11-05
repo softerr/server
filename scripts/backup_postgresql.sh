@@ -76,3 +76,8 @@ backup_database quiz \
   'SELECT q.id, q.user_id, q.name, q.created, u.auth_user_id FROM public.quiz q, public."user" u LIMIT 0'
 backup_database media \
   'SELECT i.id, i.blob_id, b.sha256 FROM public.image i, public.image_blob b LIMIT 0'
+backup_database musico \
+  'SELECT u.id, u.auth_user_id, t.id, p.id, pt.playlist_id, pt.track_id,
+          changes.id, changes.cursor_token
+   FROM public."user" u, public.track t, public.playlist p, public.playlist_track pt,
+        public.change_log changes LIMIT 0'

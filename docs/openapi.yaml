@@ -16,6 +16,7 @@ tags:
   - name: Authentication
   - name: Administration
   - name: Quizzes
+  - name: Musico
 paths:
   /:
     get:
@@ -23,7 +24,7 @@ paths:
       operationId: getReadiness
       summary: Check API readiness
       description: |
-        Checks the verification URL configuration, ZIP support, both PostgreSQL
+        Checks the verification URL configuration, ZIP support, all four PostgreSQL
         databases, and their required schemas. It does not check email delivery.
         Use `/api/`; Nginx redirects `/api` to `/api/`.
       responses:
@@ -45,6 +46,623 @@ paths:
               example:
                 status: unavailable
                 error: Database connection failed
+
+  /musico/me:
+    put:
+      tags: [Musico]
+      operationId: ensureMusicoUser
+      summary: Get or create the current user's Musico account
+      description: The Musico user is stored in the Musico database and linked to the shared auth user ID. Repeated requests return the same app-local ID.
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      responses:
+        '200':
+          description: The current Musico account.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, auth_user_id]
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  auth_user_id:
+                    type: integer
+                    format: int64
+        '401':
+          description: No active session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '405':
+          description: Method not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /musico/changes:
+    get:
+      tags: [Musico]
+      operationId: getMusicoChanges
+      summary: Get an initial library snapshot or changes after a cursor
+      description: Without `after`, returns a consistent snapshot of track metadata, playlists with ordered track IDs, and an opaque cursor. Save that cursor after applying the snapshot. With `after`, returns up to `limit` changes; advance to `next_cursor` only after applying the page, then repeat while `has_more` is true. A cursor that no longer identifies the same change-log entry returns 409 with `reset_required`; discard the cursor and fetch a new snapshot. Upsert entries identify objects to fetch from the track or playlist detail endpoint. Delete entries are tombstones. Audio bytes are fetched separately.
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema: {$ref: '#/components/schemas/MusicoCursor'}
+        - name: limit
+          in: query
+          required: false
+          description: Available only with `after`.
+          schema: {type: integer, minimum: 1, maximum: 200, default: 100}
+      responses:
+        '200':
+          description: Initial snapshot when `after` is omitted; otherwise a page of changes.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - {$ref: '#/components/schemas/MusicoSnapshot'}
+                  - {$ref: '#/components/schemas/MusicoChangePage'}
+        '400': {description: Invalid cursor or limit.}
+        '401': {description: No active session.}
+        '409':
+          description: Cursor no longer matches the change history; fetch a fresh snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, reset_required]
+                properties:
+                  error: {type: string}
+                  reset_required: {type: boolean, const: true}
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /musico/tracks:
+    get:
+      tags: [Musico]
+      operationId: listMusicoTracks
+      summary: List your uploaded tracks
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      responses:
+        '200':
+          description: Tracks ordered newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tracks, usage, limits]
+                properties:
+                  tracks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MusicoTrack'
+                  usage:
+                    type: object
+                    required: [bytes]
+                    properties:
+                      bytes: { type: integer, minimum: 0 }
+                  limits:
+                    type: object
+                    required: [bytes, per_file_bytes]
+                    properties:
+                      bytes: { type: integer, minimum: 1 }
+                      per_file_bytes: { type: integer, minimum: 1 }
+        '401': {description: No active session.}
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Musico]
+      operationId: uploadMusicoTrack
+      summary: Upload one audio file
+      description: MP3, Ogg, WAV, FLAC, and M4A are accepted. Each file is at most 24 MiB; each user's library is limited to 256 MiB. The server computes SHA-256 from the file bytes. Reuploading identical bytes for the same account returns the existing track without changing its metadata or consuming quota. Clients should send a new UUID in Idempotency-Key for each intended upload and reuse it when retrying that upload. Keys are retained for 30 days, including when the uploaded track is deleted.
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: UUID identifying one intended upload. Reuse it only with the same file, filename, and metadata when retrying.
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+                title: {type: string, maxLength: 200}
+                artist: {type: string, maxLength: 200}
+                album: {type: string, maxLength: 200}
+                genre: {type: string, maxLength: 200}
+                year: {type: integer, minimum: 1800, maximum: 2100}
+                track_number: {type: integer, minimum: 1, maximum: 999}
+      responses:
+        '201':
+          description: Uploaded track.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MusicoTrack' }
+        '200':
+          description: A retry or an identical audio file already exists on this account; returns the existing track.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MusicoTrack' }
+        '400': {description: Invalid file or metadata.}
+        '401': {description: No active session.}
+        '409': {description: Idempotency-Key was reused for a different upload, or the original track was deleted.}
+        '413': {description: File or user storage limit exceeded.}
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /musico/tracks/{trackId}:
+    parameters:
+      - name: trackId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    get:
+      tags: [Musico]
+      operationId: getMusicoTrack
+      summary: Get one of your tracks by ID
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      responses:
+        '200':
+          description: Current track metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MusicoTrack' }
+        '401': {description: No active session.}
+        '404': {description: Track not found or belongs to another account.}
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Musico]
+      operationId: updateMusicoTrack
+      summary: Edit a song's metadata and rating
+      parameters:
+        - {$ref: '#/components/parameters/MusicoVersion'}
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, artist, album, genre]
+              properties:
+                title: {type: string, maxLength: 200, minLength: 1}
+                artist: {type: string, maxLength: 200}
+                album: {type: string, maxLength: 200}
+                genre: {type: string, maxLength: 200}
+                year: {type: [integer, 'null'], minimum: 1800, maximum: 2100}
+                track_number: {type: [integer, 'null'], minimum: 1, maximum: 999}
+                rating: {type: [integer, 'null'], minimum: 0, maximum: 10}
+                art_image_id: {type: [integer, 'null'], minimum: 1}
+      responses:
+        '200':
+          description: Updated song.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MusicoTrack'}
+        '400': {description: Invalid metadata.}
+        '401': {description: No active session.}
+        '404': {description: Track not found in your library.}
+        '412': {description: Track version changed; reload before retrying.}
+        '428': {description: If-Match is required.}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      tags: [Musico]
+      operationId: deleteMusicoTrack
+      summary: Delete a track from your library and all playlists
+      parameters:
+        - {$ref: '#/components/parameters/MusicoVersion'}
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      responses:
+        '204': {description: Track deleted.}
+        '400': {description: Invalid If-Match.}
+        '401': {description: No active session.}
+        '404': {description: Track not found in your library.}
+        '412': {description: Track version changed; reload before retrying.}
+        '428': {description: If-Match is required.}
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /musico/tracks/{trackId}/listen:
+    parameters:
+      - name: trackId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    post:
+      tags: [Musico]
+      operationId: recordMusicoListen
+      summary: Record a play or listening time for an owned track
+      description: Send a fresh UUID for each listening event. Reuse it for retries. Receipts are retained for the account lifetime, and a replay returns the original totals without adding the event again.
+      parameters:
+        - {$ref: '#/components/parameters/MusicoStatisticRequestId'}
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                started: {type: boolean}
+                milliseconds: {type: integer, minimum: 0, maximum: 60000}
+      responses:
+        '200':
+          description: Updated listening totals.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [play_count, listen_ms, stats_version]
+                properties:
+                  play_count: {type: integer, minimum: 0}
+                  listen_ms: {type: integer, minimum: 0}
+                  stats_version: {type: integer, format: int64, minimum: 1}
+        '400': {description: Invalid listening activity.}
+        '401': {description: No active session.}
+        '404': {description: Track not found in your library.}
+        '409': {description: Idempotency-Key was used for a different statistic request.}
+        '428': {description: Idempotency-Key is required.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /musico/tracks/{trackId}/analysis:
+    parameters:
+      - name: trackId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    put:
+      tags: [Musico]
+      operationId: saveMusicoTrackAnalysis
+      summary: Save measured audio properties for an owned track
+      parameters:
+        - {$ref: '#/components/parameters/MusicoVersion'}
+      description: Replaces the track's stored analysis. Values may be null when the browser cannot determine them.
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MusicoAnalysis'}
+      responses:
+        '200':
+          description: Saved analysis.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [analysis, version]
+                properties:
+                  analysis: {$ref: '#/components/schemas/MusicoAnalysis'}
+                  version: {type: integer, format: int64, minimum: 1}
+        '400': {description: Invalid analysis.}
+        '401': {description: No active session.}
+        '404': {description: Track not found in your library.}
+        '412': {description: Track version changed; reload before retrying.}
+        '413': {description: Request body is too large.}
+        '428': {description: If-Match is required.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /musico/tracks/{trackId}/restore-stats:
+    parameters:
+      - name: trackId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    post:
+      tags: [Musico]
+      operationId: restoreMusicoTrackStats
+      summary: Restore listening totals from a library export
+      parameters:
+        - {$ref: '#/components/parameters/MusicoStatsVersion'}
+        - {$ref: '#/components/parameters/MusicoStatisticRequestId'}
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [play_count, listen_ms]
+              properties:
+                play_count: {type: integer, minimum: 0, maximum: 1000000000}
+                listen_ms: {type: integer, minimum: 0, maximum: 1000000000000000}
+      responses:
+        '200':
+          description: Restored listening totals.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [play_count, listen_ms, stats_version]
+                properties:
+                  play_count: {type: integer, minimum: 0}
+                  listen_ms: {type: integer, minimum: 0}
+                  stats_version: {type: integer, format: int64, minimum: 1}
+        '400': {description: Invalid statistics.}
+        '401': {description: No active session.}
+        '409': {description: Idempotency-Key was used for a different statistic request.}
+        '404': {description: Track not found in your library.}
+        '412': {description: Statistics changed; reload before retrying.}
+        '428': {description: If-Match or Idempotency-Key is required.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /musico/tracks/{trackId}/file:
+    parameters:
+      - name: trackId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    get:
+      tags: [Musico]
+      operationId: streamMusicoTrack
+      summary: Stream an owned track
+      description: Supports one byte range through the Range header and returns 206 with Content-Range for partial content.
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      responses:
+        '200':
+          description: Complete audio file.
+          content:
+            audio/mpeg: {schema: {type: string, format: binary}}
+            audio/ogg: {schema: {type: string, format: binary}}
+            audio/wav: {schema: {type: string, format: binary}}
+            audio/flac: {schema: {type: string, format: binary}}
+            audio/mp4: {schema: {type: string, format: binary}}
+        '206':
+          description: Requested byte range.
+          content:
+            audio/mpeg: {schema: {type: string, format: binary}}
+            audio/ogg: {schema: {type: string, format: binary}}
+            audio/wav: {schema: {type: string, format: binary}}
+            audio/flac: {schema: {type: string, format: binary}}
+            audio/mp4: {schema: {type: string, format: binary}}
+        '401': {description: No active session.}
+        '404': {description: Track not found in your library.}
+        '416': {description: Invalid or unsatisfiable range.}
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /musico/playlists:
+    get:
+      tags: [Musico]
+      operationId: listMusicoPlaylists
+      summary: List your playlists
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      responses:
+        '200':
+          description: Playlists ordered newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [playlists]
+                properties:
+                  playlists:
+                    type: array
+                    items: { $ref: '#/components/schemas/MusicoPlaylist' }
+        '401': {description: No active session.}
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Musico]
+      operationId: createMusicoPlaylist
+      summary: Create a playlist
+      description: Send a new UUID in Idempotency-Key for each intended playlist and reuse it for retries. A repeated key and name returns the original playlist ID with its current state, even if it was later renamed. A key cannot be reused for a different name or after the playlist is deleted. Creation receipts last for the account's lifetime.
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: UUID identifying one intended playlist creation. Reuse with the same name when retrying.
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, minLength: 1, maxLength: 100}
+      responses:
+        '200':
+          description: A retry of an earlier creation; returns the original playlist in its current state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MusicoPlaylist' }
+        '201':
+          description: New playlist.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MusicoPlaylist' }
+        '400': {description: Invalid name.}
+        '401': {description: No active session.}
+        '409': {description: Idempotency-Key was used for a different name or the original playlist was deleted.}
+        '413': {description: Request body is too large.}
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /musico/playlists/{playlistId}:
+    parameters:
+      - name: playlistId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    get:
+      tags: [Musico]
+      operationId: getMusicoPlaylist
+      summary: Get a playlist and its tracks
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      responses:
+        '200':
+          description: Playlist with ordered tracks.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [playlist, tracks]
+                properties:
+                  playlist: { $ref: '#/components/schemas/MusicoPlaylist' }
+                  tracks:
+                    type: array
+                    items: { $ref: '#/components/schemas/MusicoTrack' }
+        '401': {description: No active session.}
+        '404': {description: Playlist not found.}
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Musico]
+      operationId: renameMusicoPlaylist
+      summary: Rename a playlist
+      parameters:
+        - {$ref: '#/components/parameters/MusicoVersion'}
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, minLength: 1, maxLength: 100}
+      responses:
+        '200':
+          description: Renamed playlist.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MusicoPlaylist' }
+        '400': {description: Invalid name.}
+        '401': {description: No active session.}
+        '404': {description: Playlist not found.}
+        '412': {description: Playlist version changed; reload before retrying.}
+        '413': {description: Request body is too large.}
+        '428': {description: If-Match is required.}
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Musico]
+      operationId: deleteMusicoPlaylist
+      summary: Delete a playlist while keeping its tracks
+      parameters:
+        - {$ref: '#/components/parameters/MusicoVersion'}
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      responses:
+        '204': {description: Playlist deleted.}
+        '400': {description: Invalid If-Match.}
+        '401': {description: No active session.}
+        '404': {description: Playlist not found.}
+        '412': {description: Playlist version changed; reload before retrying.}
+        '428': {description: If-Match is required.}
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /musico/playlists/{playlistId}/tracks:
+    parameters:
+      - name: playlistId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    post:
+      tags: [Musico]
+      operationId: addMusicoPlaylistTrack
+      summary: Add an owned track to a playlist
+      parameters:
+        - {$ref: '#/components/parameters/MusicoVersion'}
+      description: The same track can be in several playlists, once per playlist.
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [track_id]
+              properties:
+                track_id: {type: integer, format: int64, minimum: 1}
+      responses:
+        '201':
+          description: Track added to playlist.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [track_id, version]
+                properties:
+                  track_id: {type: integer, format: int64}
+                  version: {type: integer, format: int64, minimum: 1}
+        '400': {description: Invalid track ID.}
+        '401': {description: No active session.}
+        '404': {description: Playlist or track not found in your library.}
+        '409': {description: Track is already in this playlist.}
+        '412': {description: Playlist version changed; reload before retrying.}
+        '413': {description: Request body is too large.}
+        '428': {description: If-Match is required.}
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /musico/playlists/{playlistId}/tracks/{trackId}:
+    parameters:
+      - name: playlistId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+      - name: trackId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    delete:
+      tags: [Musico]
+      operationId: removeMusicoPlaylistTrack
+      summary: Remove a track from this playlist only
+      parameters:
+        - {$ref: '#/components/parameters/MusicoVersion'}
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      responses:
+        '204': {description: Track removed from playlist.}
+        '400': {description: Invalid If-Match.}
+        '401': {description: No active session.}
+        '404': {description: Playlist track not found.}
+        '412': {description: Playlist version changed; reload before retrying.}
+        '428': {description: If-Match is required.}
+        '500': { $ref: '#/components/responses/InternalError' }
 
   /auth/signup:
     post:
@@ -172,6 +790,82 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /auth/mobile/login:
+    post:
+      tags: [Authentication]
+      operationId: mobileLogin
+      summary: Start a mobile session
+      description: Uses the same verified and approved account credentials as browser login. Returns tokens in JSON and sets no cookie. Rate limited like browser login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/LoginRequest'}
+                - type: object
+                  properties:
+                    device_name: {type: string, minLength: 1, maxLength: 100}
+      responses:
+        '200':
+          description: Mobile session created.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MobileTokens'}
+        '400': {description: Invalid credentials or device name.}
+        '401': {description: Invalid email or password.}
+        '403': {description: Verification or approval required.}
+        '413': {description: Request body is too large.}
+        '429': {description: Login rate limit exceeded.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /auth/mobile/refresh:
+    post:
+      tags: [Authentication]
+      operationId: mobileRefresh
+      summary: Rotate a mobile session's access and refresh tokens
+      description: Store the new tokens before discarding the old ones. The old access token stops working immediately. If the response is lost, retry with the same old refresh token within 60 seconds to receive the identical new pair and its remaining lifetimes. A later refresh or logout closes that retry window. Refresh expires after 30 days of inactivity; a password change or account deactivation also invalidates it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: {type: string, pattern: '^mrt_[A-Za-z0-9_-]{43}$'}
+      responses:
+        '200':
+          description: Tokens rotated, or the same pair returned for a retry within 60 seconds.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MobileTokens'}
+        '400': {description: Invalid refresh token format.}
+        '401': {description: Refresh token expired, rotated, or revoked.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /auth/mobile/logout:
+    post:
+      tags: [Authentication]
+      operationId: mobileLogout
+      summary: End one mobile session
+      description: Revokes the session identified by its refresh token, including its current access token. Repeating logout succeeds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: {type: string, pattern: '^mrt_[A-Za-z0-9_-]{43}$'}
+      responses:
+        '200': {description: Logged out.}
+        '400': {description: Invalid refresh token format.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
   /auth/me:
     get:
       tags: [Authentication]
@@ -180,6 +874,7 @@ paths:
       security:
         - sessionCookie: []
         - apiBearer: []
+        - mobileBearer: []
       responses:
         '200':
           description: Verified account in the current session.
@@ -914,6 +1609,7 @@ paths:
       security:
         - sessionCookie: []
         - apiBearer: []
+        - mobileBearer: []
       responses:
         '200':
           description: Shared images first, then personal images; each group is sorted by filename. Usage and limits cover personal images only.
@@ -948,10 +1644,11 @@ paths:
       tags: [Media]
       operationId: uploadImage
       summary: Upload or reuse a personal image
-      description: PNG, JPEG, or WebP, at most 6 MiB and 4096 pixels per side. If identical bytes exist in the shared library, returns the shared entry without charging personal quota. Otherwise personal storage is limited to 256 images and 32 MiB across apps.
+      description: PNG, JPEG, or WebP, at most 6 MiB and 4096 pixels per side. A mobile access token can upload to its owner's personal library. If identical bytes exist in the shared library, returns the shared entry without charging personal quota. Otherwise personal storage is limited to 256 images and 32 MiB across apps.
       security:
         - sessionCookie: []
         - apiBearer: []
+        - mobileBearer: []
       parameters:
         - name: X-Image-Name
           in: header
@@ -974,6 +1671,8 @@ paths:
           description: Unsupported or invalid image.
         '401':
           description: No active session.
+        '403':
+          description: Authenticated token is not permitted to upload images.
         '409':
           description: Personal image library is full.
         '413':
@@ -1065,15 +1764,22 @@ paths:
                         uses:
                           type: array
                           items:
-                            type: object
-                            required: [kind, quiz_id, quiz_name, question_id, question_prompt, attempt_id]
-                            properties:
-                              kind: {type: string, enum: [question, attempt]}
-                              quiz_id: {type: integer, minimum: 1}
-                              quiz_name: {type: string}
-                              question_id: {type: integer, minimum: 1}
-                              question_prompt: {type: string}
-                              attempt_id: {type: [integer, 'null'], minimum: 1}
+                            oneOf:
+                              - type: object
+                                required: [kind, quiz_id, quiz_name, question_id, question_prompt, attempt_id]
+                                properties:
+                                  kind: {type: string, enum: [question, attempt]}
+                                  quiz_id: {type: integer, minimum: 1}
+                                  quiz_name: {type: string}
+                                  question_id: {type: integer, minimum: 1}
+                                  question_prompt: {type: string}
+                                  attempt_id: {type: [integer, 'null'], minimum: 1}
+                              - type: object
+                                required: [kind, track_id, track_name]
+                                properties:
+                                  kind: {type: string, const: musico_track}
+                                  track_id: {type: integer, minimum: 1}
+                                  track_name: {type: string}
         '400': {description: Invalid image IDs.}
         '401': {description: No active session.}
         '403': {description: Admin access required for shared images.}
@@ -1490,6 +2196,7 @@ paths:
       security:
         - sessionCookie: []
         - apiBearer: []
+        - mobileBearer: []
       responses:
         '200':
           description: Thumbnail bytes.
@@ -1521,6 +2228,7 @@ paths:
       security:
         - sessionCookie: []
         - apiBearer: []
+        - mobileBearer: []
       responses:
         '200':
           description: Image bytes.
@@ -2597,7 +3305,29 @@ components:
       type: http
       scheme: bearer
       description: Admin-issued API token. Quiz and media endpoints require matching read or write scopes. Tokens cannot access administrator endpoints.
+    mobileBearer:
+      type: http
+      scheme: bearer
+      description: Short lived mobile access token from /auth/mobile/login or /auth/mobile/refresh. Accepted by Musico endpoints, GET /auth/me, GET /media/images routes, and POST /media/images for personal artwork uploads.
   parameters:
+    MusicoVersion:
+      name: If-Match
+      in: header
+      required: true
+      description: Strong version tag from the current track or playlist, for example `"v3"`.
+      schema: {type: string, pattern: '^"v[1-9][0-9]*"$'}
+    MusicoStatsVersion:
+      name: If-Match
+      in: header
+      required: true
+      description: Strong listening statistics tag from the current track, for example `"s3"`.
+      schema: {type: string, pattern: '^"s[1-9][0-9]*"$'}
+    MusicoStatisticRequestId:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: New UUID for each intended statistic update; reuse the same key and request when retrying.
+      schema: {type: string, format: uuid}
     XTimezone:
       name: X-Timezone
       in: header
@@ -2641,6 +3371,100 @@ components:
             error: Verification email is not configured
 
   schemas:
+    MusicoCursor:
+      type: string
+      description: Opaque change-feed cursor. `0` denotes an empty history; other values identify a specific change-log entry and must be sent back unchanged.
+      pattern: '^(0|[1-9][0-9]*\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$'
+    MusicoSnapshot:
+      type: object
+      required: [cursor, tracks, playlists]
+      properties:
+        cursor: {$ref: '#/components/schemas/MusicoCursor'}
+        tracks:
+          type: array
+          items: {$ref: '#/components/schemas/MusicoTrack'}
+        playlists:
+          type: array
+          items:
+            allOf:
+              - {$ref: '#/components/schemas/MusicoPlaylist'}
+              - type: object
+                required: [track_ids]
+                properties:
+                  track_ids:
+                    type: array
+                    items: {type: integer, format: int64, minimum: 1}
+    MusicoChangePage:
+      type: object
+      required: [changes, next_cursor, has_more]
+      properties:
+        changes:
+          type: array
+          items:
+            type: object
+            required: [cursor, resource, id, action, created]
+            properties:
+              cursor: {$ref: '#/components/schemas/MusicoCursor'}
+              resource: {type: string, enum: [track, playlist]}
+              id: {type: integer, format: int64, minimum: 1}
+              action: {type: string, enum: [upsert, delete]}
+              created: {type: string}
+        next_cursor: {$ref: '#/components/schemas/MusicoCursor'}
+        has_more: {type: boolean}
+    MusicoTrack:
+      type: object
+      required: [id, title, artist, original_name, mime_type, size_bytes, content_sha256, version, stats_version, album, genre, year, track_number, rating, play_count, listen_ms, art_image_id, analysis, created]
+      properties:
+        id: {type: integer, format: int64}
+        title: {type: string}
+        artist: {type: string}
+        original_name: {type: string}
+        mime_type: {type: string}
+        size_bytes: {type: integer}
+        content_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 of the original audio bytes. Stable across uploads of the same file, including uploads from different devices on this account.
+        version: {type: integer, format: int64, minimum: 1}
+        stats_version: {type: integer, format: int64, minimum: 1}
+        album: {type: string}
+        genre: {type: string}
+        year: {type: [integer, 'null']}
+        track_number: {type: [integer, 'null']}
+        rating: {type: [integer, 'null']}
+        play_count: {type: integer, minimum: 0}
+        listen_ms: {type: integer, minimum: 0}
+        art_image_id: {type: [integer, 'null'], minimum: 1}
+        analysis:
+          oneOf:
+            - {$ref: '#/components/schemas/MusicoAnalysis'}
+            - {type: 'null'}
+        created: {type: string}
+    MusicoAnalysis:
+      type: object
+      additionalProperties: false
+      required: [duration_ms, bit_rate, sample_rate_hz, bit_depth, channels, codec, estimated_bpm, estimated_key, peak_db, average_db, dynamic_range_db]
+      properties:
+        duration_ms: {type: [integer, 'null'], minimum: 0, maximum: 86400000}
+        bit_rate: {type: [integer, 'null'], minimum: 1, maximum: 1000000000}
+        sample_rate_hz: {type: [integer, 'null'], minimum: 1, maximum: 1000000}
+        bit_depth: {type: [integer, 'null'], minimum: 1, maximum: 64}
+        channels: {type: [integer, 'null'], minimum: 1, maximum: 64}
+        codec: {type: [string, 'null'], minLength: 1, maxLength: 100}
+        estimated_bpm: {type: [integer, 'null'], minimum: 30, maximum: 300}
+        estimated_key: {type: [string, 'null'], minLength: 1, maxLength: 32}
+        peak_db: {type: [number, 'null'], minimum: -200, maximum: 20}
+        average_db: {type: [number, 'null'], minimum: -200, maximum: 20}
+        dynamic_range_db: {type: [number, 'null'], minimum: 0, maximum: 220}
+    MusicoPlaylist:
+      type: object
+      required: [id, name, track_count, version, created]
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string}
+        track_count: {type: integer}
+        version: {type: integer, format: int64, minimum: 1}
+        created: {type: string}
     Quiz:
       type: object
       required: [id, name, description, play_style, show_correct_answers, is_public, allow_go_back, randomize_questions, randomize_answers, question_limit, time_limit_seconds, play_count, created]
@@ -2975,6 +3799,16 @@ components:
           writeOnly: true
           minLength: 1
           description: At most 1024 bytes.
+    MobileTokens:
+      type: object
+      required: [token_type, access_token, expires_in, refresh_token, refresh_expires_in, user]
+      properties:
+        token_type: {type: string, const: Bearer}
+        access_token: {type: string, pattern: '^mat_[A-Za-z0-9_-]{43}$'}
+        expires_in: {type: integer, minimum: 1, maximum: 900}
+        refresh_token: {type: string, pattern: '^mrt_[A-Za-z0-9_-]{43}$'}
+        refresh_expires_in: {type: integer, minimum: 1, maximum: 2592000}
+        user: {$ref: '#/components/schemas/User'}
     LogoutResponse:
       type: object
       required: [message]

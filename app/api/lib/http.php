@@ -64,3 +64,12 @@ function connectMediaDb()
     return $conn;
 }
 
+function connectMusicoDb()
+{
+    [$conn, $error] = openMusicoDb();
+    if ($conn === false) {
+        respond(500, ['error' => $error]);
+    }
+    return $conn;
+}
+

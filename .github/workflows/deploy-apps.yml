@@ -10,6 +10,7 @@ on:
           - all
           - home
           - quiz
+          - musico
           - api
         required: false
         default: all
@@ -38,6 +39,7 @@ jobs:
           cache-dependency-path: |
             app/home/package-lock.json
             app/quiz/package-lock.json
+            app/musico/package-lock.json
 
       - name: Build home app on GitHub runner
         if: ${{ inputs.apps == 'all' || inputs.apps == 'home' }}
@@ -64,6 +66,15 @@ jobs:
             echo "Missing app/quiz in repository."
             exit 1
           fi
+
+      - name: Build Musico app on GitHub runner
+        if: ${{ inputs.apps == 'all' || inputs.apps == 'musico' }}
+        working-directory: app/musico
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          test -f dist/index.html
 
       - name: Configure SSH
         env:
@@ -92,7 +103,7 @@ jobs:
         run: |
           set -euo pipefail
           APP_LIST="${APP_LIST:-all}"
-          if [[ "${APP_LIST}" == all || "${APP_LIST}" == api ]]; then
+          if [[ "${APP_LIST}" == all || "${APP_LIST}" == api || "${APP_LIST}" == musico ]]; then
             PROVISION_COMPONENTS=nginx,apps
           else
             PROVISION_COMPONENTS=apps

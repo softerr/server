@@ -47,6 +47,24 @@ CREATE TABLE IF NOT EXISTS public.api_token (
 );
 CREATE INDEX IF NOT EXISTS api_token_user_id_idx ON public.api_token (user_id, id DESC);
 
+CREATE TABLE IF NOT EXISTS public.mobile_session (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES public."user"(id) ON DELETE CASCADE,
+    device_name VARCHAR(100),
+    access_hash CHAR(64) NOT NULL UNIQUE,
+    refresh_hash CHAR(64) NOT NULL UNIQUE,
+    previous_refresh_hash CHAR(64) UNIQUE,
+    previous_refresh_until TIMESTAMPTZ,
+    rotation_nonce CHAR(64),
+    password_fingerprint CHAR(64) NOT NULL,
+    access_expires TIMESTAMPTZ NOT NULL,
+    refresh_expires TIMESTAMPTZ NOT NULL,
+    created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS mobile_session_user_id_idx ON public.mobile_session (user_id, id DESC);
+
 CREATE TABLE IF NOT EXISTS public.api_token_activity (
     id BIGSERIAL PRIMARY KEY,
     token_id BIGINT NOT NULL REFERENCES public.api_token(id) ON DELETE CASCADE,
@@ -105,11 +123,15 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_token TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.api_token TO auth_api;
 GRANT UPDATE (last_used_at, revoked_at, read_owner_quizzes, edit_owner_quizzes, quiz_permissions) ON TABLE public.api_token TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.api_token_activity TO auth_api;
+GRANT SELECT, INSERT, UPDATE (access_hash, refresh_hash, previous_refresh_hash, previous_refresh_until,
+    rotation_nonce, access_expires, refresh_expires, last_used_at, revoked_at)
+    ON TABLE public.mobile_session TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.verification_email_outbox TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.approval_email_outbox TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.user_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.user_token_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.api_token_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.api_token_activity_id_seq TO auth_api;
+GRANT USAGE, SELECT ON SEQUENCE public.mobile_session_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.verification_email_outbox_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.approval_email_outbox_id_seq TO auth_api;

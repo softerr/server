@@ -634,6 +634,20 @@ function imageUsageRows($quizDb, array $user, int $imageId, bool $shared): array
     return $uses;
 }
 
+function musicoImageUsageRows($musicoDb, array $user, int $imageId, bool $shared): array
+{
+    $result = @pg_query_params($musicoDb,
+        'SELECT t.id, t.title FROM public.track t JOIN public."user" u ON u.id = t.user_id
+         WHERE t.art_image_id = $1 AND ($2::boolean OR u.auth_user_id = $3)
+         ORDER BY t.id', [$imageId, $shared ? 't' : 'f', $user['id']]);
+    if ($result === false) respond(500, ['error' => 'Failed to check image usage']);
+    $uses = [];
+    while (($row = pg_fetch_assoc($result)) !== false) {
+        $uses[] = ['kind' => 'musico_track', 'track_id' => (int) $row['id'], 'track_name' => $row['title']];
+    }
+    return $uses;
+}
+
 function handleImageUsage(): never
 {
     $user = currentSessionUser();
@@ -641,13 +655,17 @@ function handleImageUsage(): never
     $db = connectMediaDb();
     $rows = authorizedMediaImageRows($db, $user, $ids);
     $quizDb = connectQuizDb();
+    $musicoDb = connectMusicoDb();
     $images = [];
     foreach ($ids as $id) {
         $row = $rows[$id];
         $images[] = [
             'id' => $id, 'name' => $row['original_name'],
             'scope' => $row['shared'] === 't' ? 'shared' : 'personal',
-            'uses' => imageUsageRows($quizDb, $user, $id, $row['shared'] === 't'),
+            'uses' => array_merge(
+                imageUsageRows($quizDb, $user, $id, $row['shared'] === 't'),
+                musicoImageUsageRows($musicoDb, $user, $id, $row['shared'] === 't')
+            ),
         ];
     }
     respond(200, ['images' => $images]);
@@ -693,8 +711,20 @@ function handleDeleteImage(int $imageId): never
          QUIZ_IMAGE_REFERENCE_PATH,
          $imageId, $shared ? 't' : 'f']);
     if ($used === false) respond(500, ['error' => 'Failed to delete image']);
-    if ($force !== '1' && pg_fetch_result($used, 0, 'used') === 't') {
-        respond(409, ['error' => 'Image is used by a quiz or saved attempt']);
+    $musicoDb = connectMusicoDb();
+    if (@pg_query($musicoDb, 'BEGIN') === false
+        || (!$shared && @pg_query_params($musicoDb, 'SELECT pg_advisory_xact_lock($1::bigint)', [$user['id']]) === false)
+        || @pg_query_params($musicoDb, 'SELECT pg_advisory_xact_lock($1::bigint)', [-$imageId]) === false) {
+        respond(500, ['error' => 'Failed to delete image']);
+    }
+    $musicoUsed = @pg_query_params($musicoDb,
+        'SELECT EXISTS (SELECT 1 FROM public.track t JOIN public."user" u ON u.id = t.user_id
+          WHERE t.art_image_id = $1 AND ($2::boolean OR u.auth_user_id = $3)) AS used',
+        [$imageId, $shared ? 't' : 'f', $user['id']]);
+    if ($musicoUsed === false) respond(500, ['error' => 'Failed to delete image']);
+    if ($force !== '1' && (pg_fetch_result($used, 0, 'used') === 't'
+        || pg_fetch_result($musicoUsed, 0, 'used') === 't')) {
+        respond(409, ['error' => 'Image is used by a quiz, saved attempt, or song']);
     }
 
     if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to delete image']);
@@ -710,7 +740,8 @@ function handleDeleteImage(int $imageId): never
              AND NOT EXISTS (SELECT 1 FROM public.image i WHERE i.blob_id = b.id)',
             [$imageRow['blob_id']]) === false
         || @pg_query($db, 'COMMIT') === false
-        || @pg_query($quizDb, 'COMMIT') === false) {
+        || @pg_query($quizDb, 'COMMIT') === false
+        || @pg_query($musicoDb, 'COMMIT') === false) {
         respond(500, ['error' => 'Failed to delete image']);
     }
     header_remove('Content-Type');

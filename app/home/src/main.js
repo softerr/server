@@ -274,6 +274,10 @@ startAuthApp({
             <span class="app-card-title">Quiz</span>
             <span class="app-card-description">Open your quizzes</span>
           </a>
+          <a class="app-card" href="/musico/">
+            <span class="app-card-title">Musico</span>
+            <span class="app-card-description">Open Musico</span>
+          </a>
         </div>
       </main>
     `

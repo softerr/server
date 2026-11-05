@@ -10,8 +10,147 @@ Content type:
 
 The API uses separate PHP entrypoints: `/api/auth/*` is handled by the shared
 auth app, `/api/quiz/*` by the quiz app, `/api/media/*` by the shared media app,
+`/api/musico/*` by Musico,
 and `/api/` by the readiness endpoint.
 The PHP files are internal to Nginx and are not public API URLs.
+
+## Mobile login
+
+Android clients can call `POST /api/auth/mobile/login` with `email`,
+`password`, and optional `device_name`. A verified, approved account receives
+an access token (`mat_...`, valid for 15 minutes) and refresh token (`mrt_...`,
+valid for 30 days). The response also contains the user and durations in
+seconds. Store the refresh token in Android's protected credential storage;
+send only the access token as `Authorization: Bearer <access_token>` to
+`/api/musico/*`, `GET /api/auth/me`, or image reads. To upload album artwork,
+`POST /api/media/images` with the image bytes as `application/octet-stream`
+and a percent-encoded filename in `X-Image-Name`. The response returns an
+image `id`; send it as `art_image_id` in a versioned Musico track edit.
+Mobile tokens cannot publish or manage shared media.
+
+Call `POST /api/auth/mobile/refresh` with `{"refresh_token":"mrt_..."}`
+before access expiry or after a 401. It returns a new access token **and** a
+new refresh token. Replace both stored tokens together; the previous pair
+stops working for normal requests immediately. If the response is lost, retry
+the same old refresh token within 60 seconds: the server returns the same new
+pair with its remaining lifetimes. A later successful refresh or logout closes
+that retry window. If refresh returns 401, prompt for login again.
+Call `POST /api/auth/mobile/logout` with the current refresh token to revoke
+that device's session, even if its access token expired. Logout is repeatable.
+Password changes, account deletion, and account deactivation invalidate both
+tokens. These endpoints do not use browser cookies.
+
+`PUT /api/musico/me` requires an approved session. It creates the app-local
+Musico user on first use and returns `{ "id": ..., "auth_user_id": ... }`.
+Musico stores its users in its own database, linked by `auth_user_id` to the
+shared auth account. Repeated requests return the same Musico user ID.
+
+## Musico library
+
+Musico routes require an approved browser session or mobile access token. Uploaded audio is private
+to its owner. Each track is stored once in the `musico` database; a playlist
+stores references to tracks, so the same track can belong to several playlists.
+Deleting a playlist keeps its tracks. Deleting a track removes it from all
+playlists.
+
+- `GET /api/musico/tracks` lists your tracks. `POST /api/musico/tracks` accepts
+  `multipart/form-data` with a `file` field and optional title, artist, album,
+  genre, year, and track number. The web uploader reads embedded tags where
+  available and sends them with the file.
+  Accepted formats are MP3, Ogg, WAV, FLAC, and M4A. The maximum is 24 MiB per
+  file and 256 MiB per account.
+- Each track returns `content_sha256`, the SHA-256 hash of the uploaded audio
+  bytes. Clients can compute the same hash for a local file to match it to a
+  server track. Uploading the same bytes again for the same account returns
+  `200` with the existing track ID and leaves its metadata unchanged; a new
+  file returns `201`. The hash identifies identical files, while `id` remains
+  the identifier for playlists and track API routes.
+- For retryable uploads, send `Idempotency-Key: <UUID>` with `POST /api/musico/tracks`.
+  Generate one UUID per intended upload and reuse it with the same file,
+  filename, and metadata after a timeout or lost response. A repeated request
+  returns `200` with the existing track, even if its metadata was edited later.
+  Reusing a key for different input returns `409`; retrying after that track
+  was deleted also returns `409`. Keys are scoped to the account and retained
+  for 30 days. Uploads without a key still deduplicate identical audio bytes.
+- The track list also returns `usage.bytes` and `limits.bytes` /
+  `limits.per_file_bytes` for the web storage meter. Tracks include album,
+  genre, year, track number, rating, play count, listening time, and saved
+  `analysis` (or `null` before a song is analyzed).
+- Track and playlist responses include a `version` for edits. Track responses
+  also include `stats_version` for listening totals. To edit or delete a track,
+  save analysis, rename or delete a playlist, or change playlist membership,
+  send the latest version as `If-Match: "v3"` (using its actual number). To
+  restore listening totals, send `If-Match: "s3"` using `stats_version`.
+  Missing headers return `428`; stale versions return `412` with
+  `current_version`. Fetch the current track or playlist and resolve the
+  conflict before retrying. A successful edit increments its version.
+  Recording a listen increments only `stats_version`, so playback does not
+  conflict with metadata edits. Deleting a track also increments the version
+  of every playlist it leaves.
+- `PATCH /api/musico/tracks/{trackId}` updates title, artist, album, genre,
+  year, track number, rating, and an optional `art_image_id` from the user's
+  media library or shared media. Image usage checks include Musico album art.
+  `POST /api/musico/tracks/{trackId}/listen`
+  records a play (`started: true`) or up to 60 seconds of listening time
+  (`milliseconds`). `POST /api/musico/tracks/{trackId}/restore-stats` restores
+  exported play and listening totals. Both statistic routes require a fresh
+  `Idempotency-Key: <UUID>` for each intended update. Reuse the same key,
+  body, track ID, and `If-Match` (for restore) when retrying. A replay returns
+  the original totals without applying the update again. Reusing a key for a
+  different statistic request returns `409`; missing keys return `428`.
+  Statistic request receipts are kept until the account is deleted, so a
+  delayed offline retry cannot add listening time twice. All three routes
+  require ownership.
+- `PUT /api/musico/tracks/{trackId}/analysis` saves measured duration (ms),
+  bit rate (bps), sample rate (Hz), bit depth, channels, codec, estimated BPM
+  and key, and peak, average, and dynamic-range levels (dB). It replaces the
+  full analysis; any unavailable value is sent as `null`. The web song-details
+  view saves these values when Analyze audio is pressed and shows them on later
+  visits without reprocessing the file. Each measurement is stored in its own
+  column in the Musico `track` table.
+- `GET /api/musico/tracks/{trackId}/file` streams audio and accepts a single
+  byte range in the `Range` header. `DELETE /api/musico/tracks/{trackId}` deletes
+  the track and removes its playlist memberships.
+- `GET /api/musico/playlists` lists playlists; `POST` with `{ "name": "Favorites" }`
+  creates one. Send a new UUID in `Idempotency-Key` and reuse it when retrying
+  a lost response. The retry returns HTTP 200 and the original playlist ID;
+  reusing the key with a different name or after deleting the playlist returns
+  HTTP 409. `GET /api/musico/playlists/{playlistId}` returns the playlist
+  and its ordered tracks. `PATCH` with a `name` renames it; `DELETE` removes it.
+- `POST /api/musico/playlists/{playlistId}/tracks` with `{ "track_id": 123 }`
+  adds an owned track. The same track can appear in multiple playlists, once
+  per playlist. `DELETE /api/musico/playlists/{playlistId}/tracks/{trackId}`
+  removes it from that playlist only.
+
+### Musico change feed
+
+`GET /api/musico/changes` returns a consistent initial snapshot:
+`{ "cursor": "42.550e8400-e29b-41d4-a716-446655440000", "tracks": [...], "playlists": [...] }`. Each playlist has
+`track_ids` in playback order. Save the cursor after applying the snapshot.
+Audio bytes are not in the snapshot; download them from each track's `/file`
+route when needed.
+
+Afterwards call `GET /api/musico/changes?after=<saved-cursor>&limit=100`.
+The response is `{ "changes": [...], "next_cursor": "57.550e8400-e29b-41d4-a716-446655440001", "has_more": false }`. Each change
+contains its own `cursor`, `resource` (`track` or `playlist`), `id`, `action`
+(`upsert` or `delete`), and `created`. Fetch an upserted track with
+`GET /api/musico/tracks/{trackId}` or an upserted playlist with
+`GET /api/musico/playlists/{playlistId}`. Delete entries are tombstones. A
+track deletion also emits playlist upserts for playlists from which it was
+removed. If an upserted object returns `404` while processing the feed, a later
+change deleted it; remove that local object and continue. Apply a page before
+saving `next_cursor`; repeat while `has_more` is true. The default page size is
+100, and the maximum is 200. A duplicate audio
+upload emits no change because it leaves the library unchanged.
+Treat cursors as opaque strings; an empty history uses `"0"`. If an incremental
+request returns `409` with `reset_required: true`, the saved cursor no longer
+matches the server's change history (for example, after a database restore).
+Fetch a new snapshot, reconcile it with local state, and save its cursor only
+after that reconciliation succeeds. Do not advance or reuse the rejected cursor.
+
+The web Stats page exports and imports version 1 JSON containing metadata,
+listening statistics, and playlist membership. Audio bytes are not included;
+upload matching audio files before importing.
 
 ## API tokens
 

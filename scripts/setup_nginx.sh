@@ -44,9 +44,9 @@ if ! command -v nginx >/dev/null 2>&1; then
 fi
 
 echo "Creating web directories..."
-mkdir -p /var/www/home /var/www/quiz /var/www/api
-chown -R www-data:www-data /var/www/home /var/www/quiz /var/www/api
-find /var/www/home /var/www/quiz /var/www/api -type d -exec chmod 755 {} \;
+mkdir -p /var/www/home /var/www/quiz /var/www/musico /var/www/api
+chown -R www-data:www-data /var/www/home /var/www/quiz /var/www/musico /var/www/api
+find /var/www/home /var/www/quiz /var/www/musico /var/www/api -type d -exec chmod 755 {} \;
 
 if [[ ! -f /var/www/home/index.html ]]; then
   cat > /var/www/home/index.html <<'EOF'
@@ -73,6 +73,21 @@ if [[ ! -f /var/www/quiz/index.html ]]; then
   </head>
   <body>
     <h1>Quiz page is working</h1>
+  </body>
+</html>
+EOF
+fi
+
+if [[ ! -f /var/www/musico/index.html ]]; then
+  cat > /var/www/musico/index.html <<'EOF'
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Musico</title>
+  </head>
+  <body>
+    <h1>Musico page is working</h1>
   </body>
 </html>
 EOF
@@ -216,4 +231,5 @@ echo "Done."
 echo "Mapped routes:"
 echo "  /      -> /var/www/home"
 echo "  /quiz  -> /var/www/quiz"
+echo "  /musico -> /var/www/musico"
 echo "  /api   -> /var/www/api (PHP)"

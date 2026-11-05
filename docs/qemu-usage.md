@@ -58,7 +58,7 @@ Default access:
 - rebuilds home and quiz from current source when provisioning includes those apps
 - syncs repo into VM (`/home/<VM_USER>/server`; default `/home/ubuntu/server`)
 - runs `scripts/provision.sh` with default `PROVISION_COMPONENTS=all`
-- checks that `/` returns HTTP 200 after home deployment and `/quiz` and `/quiz/` return HTTP 200 after quiz deployment
+- checks that `/` returns HTTP 200 after home deployment, `/quiz` and `/quiz/` after quiz deployment, and `/musico` and `/musico/` after Musico deployment
 
 ## 4. Apply a component to the running VM
 

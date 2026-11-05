@@ -93,6 +93,46 @@ function currentApiTokenUser(string $authorization): array
     return $user;
 }
 
+function currentMobileTokenUser(string $authorization): array
+{
+    if (preg_match('/^Bearer (mat_[A-Za-z0-9_-]{43})$/D', $authorization, $match) !== 1) {
+        respond(401, ['error' => 'Invalid mobile access token']);
+    }
+    $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+    if (is_string($path)) $path = rtrim($path, '/') ?: '/';
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    $mediaImage = is_string($path) && ($path === '/api/media/images'
+        || preg_match('#^/api/media/images/[1-9][0-9]*(?:/thumbnail)?$#D', $path) === 1);
+    $allowed = is_string($path) && (
+        str_starts_with($path, '/api/musico/')
+        || ($path === '/api/auth/me' && $method === 'GET')
+        || ($method === 'GET' && $mediaImage)
+        || ($method === 'POST' && $path === '/api/media/images')
+    );
+    if (!$allowed) respond(403, ['error' => 'Mobile token cannot access this endpoint']);
+    $db = connectDb();
+    $result = @pg_query_params($db,
+        'SELECT u.id, u.username, u.email, u.role, u.password, u.verified,
+                u.approved_at, u.deleting, u.created, u.account_kind
+         FROM public.mobile_session s JOIN public."user" u ON u.id = s.user_id
+         WHERE s.access_hash = $1 AND s.revoked_at IS NULL
+           AND s.access_expires > CURRENT_TIMESTAMP AND s.refresh_expires > CURRENT_TIMESTAMP
+           AND u.account_kind = \'human\' AND u.verified = TRUE
+           AND u.approved_at IS NOT NULL AND u.deleting = FALSE
+           AND s.password_fingerprint = encode(digest(u.password, \'sha256\'), \'hex\')',
+        [hash('sha256', $match[1])]);
+    if ($result === false) respond(500, ['error' => 'Failed to authenticate mobile session']);
+    $user = pg_fetch_assoc($result);
+    if ($user === false) respond(401, ['error' => 'Mobile session expired']);
+    @pg_query_params($db,
+        'UPDATE public.mobile_session SET last_used_at = CURRENT_TIMESTAMP
+         WHERE access_hash = $1 AND (last_used_at IS NULL
+             OR last_used_at < CURRENT_TIMESTAMP - INTERVAL \'5 minutes\')',
+        [hash('sha256', $match[1])]);
+    header('Cache-Control: private, no-store');
+    return $user;
+}
+
 function startAuthSession(): void
 {
     ini_set('session.use_strict_mode', '1');
@@ -116,7 +156,9 @@ function startAuthSession(): void
 function currentSessionUser(): array
 {
     if (isset($_SERVER['HTTP_AUTHORIZATION']) && $_SERVER['HTTP_AUTHORIZATION'] !== '') {
-        return currentApiTokenUser((string) $_SERVER['HTTP_AUTHORIZATION']);
+        $authorization = (string) $_SERVER['HTTP_AUTHORIZATION'];
+        return str_starts_with($authorization, 'Bearer mat_')
+            ? currentMobileTokenUser($authorization) : currentApiTokenUser($authorization);
     }
     if (!isset($_COOKIE['softerr_session'])) {
         respond(401, ['error' => 'Not authenticated']);

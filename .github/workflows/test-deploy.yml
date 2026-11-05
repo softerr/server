@@ -6,6 +6,7 @@ on:
       - "app/api/**"
       - "app/home/**"
       - "app/quiz/**"
+      - "app/musico/**"
       - "app/shared/**"
       - "configs/nginx/**"
       - "configs/postgresql/**"
@@ -37,6 +38,7 @@ on:
       - "app/api/**"
       - "app/home/**"
       - "app/quiz/**"
+      - "app/musico/**"
       - "app/shared/**"
       - "configs/nginx/**"
       - "configs/postgresql/**"
@@ -94,6 +96,7 @@ jobs:
           cache-dependency-path: |
             app/home/package-lock.json
             app/quiz/package-lock.json
+            app/musico/package-lock.json
 
       - name: Build home
         working-directory: app/home
@@ -107,6 +110,13 @@ jobs:
 
       - name: Build quiz
         working-directory: app/quiz
+        run: |
+          npm ci
+          npm run build
+          test -f dist/index.html
+
+      - name: Build Musico
+        working-directory: app/musico
         run: |
           npm ci
           npm run build
@@ -134,12 +144,17 @@ jobs:
 
           tls_dir = Path(os.environ['TLS_TEST_DIR'])
           routes = Path('configs/nginx/softerr-routes.conf.template').read_text()
+          assert 'location = /musico {' in routes
+          assert 'location /musico/ {' in routes
           assert 'location = /api/quiz.php {' in routes
           assert 'location = /api/media.php {' in routes
+          assert 'location = /api/musico.php {' in routes
           assert 'location ~ ^/api/(index|auth)\\.php$ {' in routes
           assert 'location /api/auth/' in routes
           assert 'location /api/quiz/' in routes
           assert 'location /api/media/' in routes
+          assert 'location /api/musico/' in routes
+          assert routes.count('client_max_body_size 26m;') == 2
           assert 'location ~ ^/api/quiz/quizzes/import/*$ {' in routes
           assert 'client_max_body_size 48m;' in routes
           assert 'client_max_body_size 2m;' in routes

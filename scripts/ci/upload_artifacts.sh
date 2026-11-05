@@ -21,19 +21,20 @@ source "${REPO_ROOT}/scripts/lib/app_selection.sh"
 case "${MODE}" in
   server)
     if [[ ! -f "${REPO_ROOT}/app/api/index.php" || ! -f "${REPO_ROOT}/app/api/auth.php" \
-      || ! -f "${REPO_ROOT}/app/api/quiz.php" || ! -f "${REPO_ROOT}/app/api/media.php" || ! -f "${REPO_ROOT}/app/home/dist/index.html" \
-      || ! -f "${REPO_ROOT}/app/quiz/dist/index.html" ]]; then
-      echo "Build home and quiz and include the API before first-time setup."
+      || ! -f "${REPO_ROOT}/app/api/quiz.php" || ! -f "${REPO_ROOT}/app/api/media.php" \
+      || ! -f "${REPO_ROOT}/app/api/musico.php" || ! -f "${REPO_ROOT}/app/home/dist/index.html" \
+      || ! -f "${REPO_ROOT}/app/quiz/dist/index.html" || ! -f "${REPO_ROOT}/app/musico/dist/index.html" ]]; then
+      echo "Build home, quiz, and Musico and include the API before first-time setup."
       exit 1
     fi
-    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/home/dist' '$REMOTE_DIR/app/quiz/dist'"
+    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/home/dist' '$REMOTE_DIR/app/quiz/dist' '$REMOTE_DIR/app/musico/dist'"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "${REPO_ROOT}/scripts/setup_server.sh" \
       "${REPO_ROOT}/scripts/setup_tls_certificate.sh" "${REPO_ROOT}/scripts/setup_postgresql.sh" \
       "${REPO_ROOT}/scripts/backup_postgresql.sh" \
       "${REPO_ROOT}/scripts/setup_php_fpm.sh" "${REPO_ROOT}/scripts/setup_email_worker.sh" \
       "${REPO_ROOT}/scripts/setup_nginx.sh" "${REPO_ROOT}/scripts/deploy_api.sh" \
       "${REPO_ROOT}/scripts/deploy_home.sh" \
-      "${REPO_ROOT}/scripts/deploy_quiz.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+      "${REPO_ROOT}/scripts/deploy_quiz.sh" "${REPO_ROOT}/scripts/deploy_musico.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
       "${REPO_ROOT}/scripts/lib/app_selection.sh" \
       "${REPO_ROOT}/scripts/lib/apt_locks.sh" \
@@ -44,6 +45,7 @@ case "${MODE}" in
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/api/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/api/"
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/home/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/home/dist/"
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/quiz/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/quiz/dist/"
+    scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/musico/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/musico/dist/"
     ;;
   nginx)
     ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs'"
@@ -67,8 +69,8 @@ case "${MODE}" in
   apps)
     select_apps "${APP_LIST:-all}"
 
-    if app_selected api; then
-      for entrypoint in index auth quiz media; do
+    if app_selected api || app_selected musico; then
+      for entrypoint in index auth quiz media musico; do
         if [[ ! -f "${REPO_ROOT}/app/api/${entrypoint}.php" ]]; then
           echo "Missing app/api/${entrypoint}.php in repository."
           exit 1
@@ -83,18 +85,26 @@ case "${MODE}" in
       echo "Missing built app/quiz/dist/index.html in repository."
       exit 1
     fi
+    if app_selected musico && [[ ! -f "${REPO_ROOT}/app/musico/dist/index.html" ]]; then
+      echo "Missing built app/musico/dist/index.html in repository."
+      exit 1
+    fi
 
-    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs/postgresql' '$REMOTE_DIR/configs/nginx' '$REMOTE_DIR/configs/systemd' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/home/dist' '$REMOTE_DIR/app/quiz/dist'"
+    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs/postgresql' '$REMOTE_DIR/configs/nginx' '$REMOTE_DIR/configs/systemd' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/home/dist' '$REMOTE_DIR/app/quiz/dist' '$REMOTE_DIR/app/musico/dist'"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
       "${REPO_ROOT}/scripts/lib/app_selection.sh" \
       "${REPO_ROOT}/scripts/lib/deploy_checks.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
-    if app_selected api; then
+    if app_selected api || app_selected musico; then
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/setup_nginx.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/api_env.sh" \
         "${REPO_ROOT}/scripts/lib/apt_locks.sh" \
         "${REPO_ROOT}/scripts/lib/tls_certificate.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
       scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/nginx/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/nginx/"
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/postgresql/musico.sql" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/postgresql/"
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/backup_postgresql.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+    fi
+    if app_selected api || app_selected musico; then
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/postgresql/auth.sql" \
         "${REPO_ROOT}/configs/postgresql/quiz.sql" \
         "${REPO_ROOT}/configs/postgresql/media.sql" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/postgresql/"
@@ -111,6 +121,10 @@ case "${MODE}" in
     if app_selected quiz; then
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_quiz.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
       scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/quiz/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/quiz/dist/"
+    fi
+    if app_selected musico; then
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_musico.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+      scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/musico/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/musico/dist/"
     fi
     ;;
   api-tests)

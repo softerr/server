@@ -40,6 +40,31 @@ run_postgresql() {
   AUTH_SCHEMA_APPLIED=1
   QUIZ_SCHEMA_APPLIED=1
   MEDIA_SCHEMA_APPLIED=1
+  MUSICO_SCHEMA_APPLIED=1
+}
+
+ensure_musico_schema() {
+  if [[ "${MUSICO_SCHEMA_APPLIED:-0}" == 1 ]]; then
+    return
+  fi
+  local musico_schema="${REPO_ROOT}/configs/postgresql/musico.sql"
+  if [[ ! -f "${musico_schema}" ]]; then
+    echo "Musico database setup files are missing." >&2
+    exit 1
+  fi
+  # Deploy Apps can introduce Musico to an already configured server.
+  sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d postgres <<'SQL'
+SELECT 'CREATE DATABASE musico'
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'musico') \gexec
+SQL
+  sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d musico < "${musico_schema}"
+  MUSICO_SCHEMA_APPLIED=1
+  if [[ -f /etc/systemd/system/softerr-backup-postgresql.service ]]; then
+    install -m 755 "${SCRIPT_DIR}/backup_postgresql.sh" /usr/local/lib/softerr/backup_postgresql.sh
+    if ! find /var/backups/softerr -maxdepth 1 -type f -name 'musico-*.dump' -print -quit | grep -q .; then
+      systemctl start softerr-backup-postgresql.service
+    fi
+  fi
 }
 
 run_nginx() {
@@ -82,7 +107,9 @@ run_api_deploy() {
     sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d media < "${media_schema}"
     MEDIA_SCHEMA_APPLIED=1
   fi
+  ensure_musico_schema
   run_root_script "${SCRIPT_DIR}/deploy_api.sh"
+  API_DEPLOYED=1
 }
 
 run_home_deploy() {
@@ -99,6 +126,17 @@ run_quiz_deploy() {
   run_root_script "${SCRIPT_DIR}/deploy_quiz.sh"
 }
 
+run_musico_deploy() {
+  ensure_musico_schema
+  if [[ "${API_DEPLOYED:-0}" != 1 ]]; then
+    run_api_deploy
+  fi
+  if [[ -z "${MUSICO_DIST_DIR:-}" && -d "${REPO_ROOT}/app/musico/dist" ]]; then
+    export MUSICO_DIST_DIR="${REPO_ROOT}/app/musico/dist"
+  fi
+  run_root_script "${SCRIPT_DIR}/deploy_musico.sh"
+}
+
 run_app_deploys() {
   source "${SCRIPT_DIR}/lib/app_selection.sh"
   select_apps "${APP_LIST:-all}"
@@ -108,6 +146,7 @@ run_app_deploys() {
       api) run_api_deploy ;;
       home) run_home_deploy ;;
       quiz) run_quiz_deploy ;;
+      musico) run_musico_deploy ;;
     esac
   done
 }
@@ -136,6 +175,9 @@ run_component() {
     quiz)
       run_quiz_deploy
       ;;
+    musico)
+      run_musico_deploy
+      ;;
     apps)
       run_app_deploys
       ;;
@@ -147,10 +189,11 @@ run_component() {
       run_api_deploy
       run_home_deploy
       run_quiz_deploy
+      run_musico_deploy
       ;;
     *)
       echo "Unknown provisioning component: ${component}"
-      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, home, quiz, apps"
+      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, home, quiz, musico, apps"
       exit 1
       ;;
   esac

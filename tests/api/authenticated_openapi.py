@@ -12,7 +12,7 @@ import yaml
 
 
 OPERATIONS = {
-    "currentUser", "listUsers", "listBackups", "listImages", "listMyImages",
+    "currentUser", "ensureMusicoUser", "getMusicoChanges", "listMusicoTracks", "listUsers", "listBackups", "listImages", "listMyImages",
     "listSharedImages", "listMediaGroups", "exploreQuizzes", "listQuizzes",
     "getQuiz", "listQuizQuestions", "listQuizAttempts", "getQuizAttempt",
     "getImage", "exportQuizZip", "startQuizAttempt", "nextQuizQuestion",

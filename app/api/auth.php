@@ -11,6 +11,7 @@ require_once __DIR__ . '/handlers/signup.php';
 require_once __DIR__ . '/handlers/resend.php';
 require_once __DIR__ . '/handlers/verify.php';
 require_once __DIR__ . '/handlers/login.php';
+require_once __DIR__ . '/handlers/mobile.php';
 require_once __DIR__ . '/handlers/users.php';
 require_once __DIR__ . '/handlers/api_tokens.php';
 require_once __DIR__ . '/handlers/backups.php';
@@ -45,6 +46,19 @@ if ($path === '/login') {
         respond(405, ['error' => 'Method not allowed']);
     }
     handleLogin();
+}
+
+if ($path === '/mobile/login') {
+    if ($method !== 'POST') respond(405, ['error' => 'Method not allowed']);
+    handleMobileLogin();
+}
+if ($path === '/mobile/refresh') {
+    if ($method !== 'POST') respond(405, ['error' => 'Method not allowed']);
+    handleMobileRefresh();
+}
+if ($path === '/mobile/logout') {
+    if ($method !== 'POST') respond(405, ['error' => 'Method not allowed']);
+    handleMobileLogout();
 }
 
 if ($path === '/me') {

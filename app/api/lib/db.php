@@ -50,3 +50,8 @@ function openMediaDb(): array
     return openDb(3, 'media');
 }
 
+function openMusicoDb(): array
+{
+    return openDb(3, 'musico');
+}
+
