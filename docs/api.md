@@ -47,11 +47,22 @@ shared auth account. Repeated requests return the same Musico user ID.
 
 ## Musico library
 
-Musico routes require an approved browser session or mobile access token. Uploaded audio is private
-to its owner. Each track is stored once in the `musico` database; a playlist
-stores references to tracks, so the same track can belong to several playlists.
-Deleting a playlist keeps its tracks. Deleting a track removes it from all
-playlists.
+Musico routes require an approved browser session or mobile access token. Audio files live
+in the shared `media` database and appear under **Media → Audio**. A Musico song
+stores its own metadata and the `media_audio_id` of its audio file. Filename,
+format, size, and SHA-256 are read from Media when returning a song. Playlists
+reference songs, so a song can belong to several playlists. Deleting a song
+removes its playlist memberships but keeps its Media audio file. A Media audio
+file can be deleted once no Musico song references it.
+
+- `GET /api/media/audio` lists the account's audio files and storage usage.
+  Each listed file includes `musico_song_ids`, which is empty when it can be deleted.
+  `POST /api/media/audio` accepts raw audio bytes with `X-Audio-Name` set to the
+  URL-encoded filename. `GET /api/media/audio/{audioId}` streams the file and
+  supports byte ranges. `DELETE` returns `409` if a Musico song uses the file.
+  Identical bytes are stored once per account.
+- `POST /api/musico/tracks/from-media` with `{ "media_audio_id": 123 }` creates
+  a song from an already uploaded Media file, or returns the existing song.
 
 - `GET /api/musico/tracks` lists your tracks. `POST /api/musico/tracks` accepts
   `multipart/form-data` with a `file` field and optional title, artist, album,
@@ -73,7 +84,8 @@ playlists.
   was deleted also returns `409`. Keys are scoped to the account and retained
   for 30 days. Uploads without a key still deduplicate identical audio bytes.
 - The track list also returns `usage.bytes` and `limits.bytes` /
-  `limits.per_file_bytes` for the web storage meter. Tracks include album,
+  `limits.per_file_bytes` for the web storage meter. Usage counts Media audio
+  files, including files not currently attached to a Musico song. Tracks include album,
   genre, year, track number, rating, play count, listening time, and saved
   `analysis` (or `null` before a song is analyzed).
 - Track and playlist responses include a `version` for edits. Track responses

@@ -1,8 +1,8 @@
 <?php
 declare(strict_types=1);
 
-const MUSICO_TRACK_MAX_BYTES = 25165824;
-const MUSICO_USER_MAX_BYTES = 4294967296;
+const MUSICO_TRACK_MAX_BYTES = MEDIA_AUDIO_MAX_BYTES;
+const MUSICO_USER_MAX_BYTES = MEDIA_AUDIO_USER_MAX_BYTES;
 const MUSICO_ANALYSIS_COLUMNS = ['duration_ms', 'bit_rate', 'sample_rate_hz', 'bit_depth',
     'channels', 'codec', 'estimated_bpm', 'estimated_key', 'peak_db', 'average_db',
     'dynamic_range_db', 'analysis_saved_at'];
@@ -149,7 +149,7 @@ function handleMusicoChanges(array $authUser): never
             'SELECT id, cursor_token FROM public.change_log
              WHERE user_id = $1 ORDER BY id DESC LIMIT 1', [$userId]);
         $tracks = @pg_query_params($db,
-            'SELECT t.id, t.title, t.artist, t.original_name, t.mime_type, t.size_bytes, t.content_sha256,
+            'SELECT t.id, t.title, t.artist, t.media_audio_id,
                     t.version, t.stats_version,
                     t.album, t.genre, t.release_year, t.track_number, t.rating, t.play_count, t.listen_ms,
                     t.art_image_id, ' . musicoAnalysisProjection('t') . ', t.created
@@ -163,8 +163,7 @@ function handleMusicoChanges(array $authUser): never
         if ($latest === false || $tracks === false || $playlists === false) {
             respond(500, ['error' => 'Could not load Musico snapshot']);
         }
-        $trackRows = [];
-        while (($row = pg_fetch_assoc($tracks)) !== false) $trackRows[] = publicMusicoTrack($row);
+        $trackRows = publicMusicoTracks($tracks, (int) $authUser['id']);
         $playlistRows = [];
         while (($row = pg_fetch_assoc($playlists)) !== false) {
             $playlistRows[] = publicMusicoPlaylist($row) + ['track_ids' => json_decode($row['track_ids'], true)];
@@ -233,16 +232,34 @@ function handleMusicoMe(array $authUser): never
     respond(200, ['id' => $id, 'auth_user_id' => (int) $authUser['id']]);
 }
 
-function publicMusicoTrack(array $row): array
+function musicoAudioFiles(array $rows, int $authUserId): array
 {
+    $ids = array_values(array_unique(array_map(static fn (array $row): int =>
+        (int) $row['media_audio_id'], $rows)));
+    if ($ids === []) return [];
+    $result = @pg_query_params(connectMediaDb(),
+        'SELECT id, original_name, mime_type, size_bytes, sha256
+         FROM public.audio_file WHERE owner_auth_user_id = $1 AND id = ANY($2::bigint[])',
+        [$authUserId, '{' . implode(',', $ids) . '}']);
+    if ($result === false) respond(500, ['error' => 'Could not load song audio']);
+    $files = [];
+    while (($file = pg_fetch_assoc($result)) !== false) $files[(int) $file['id']] = $file;
+    if (count($files) !== count($ids)) respond(503, ['error' => 'Song audio is unavailable']);
+    return $files;
+}
+
+function publicMusicoTrack(array $row, int $authUserId, ?array $file = null): array
+{
+    $file ??= musicoAudioFiles([$row], $authUserId)[(int) $row['media_audio_id']];
     return [
         'id' => (int) $row['id'],
         'title' => $row['title'],
         'artist' => $row['artist'],
-        'original_name' => $row['original_name'],
-        'mime_type' => $row['mime_type'],
-        'size_bytes' => (int) $row['size_bytes'],
-        'content_sha256' => trim($row['content_sha256']),
+        'original_name' => $file['original_name'],
+        'mime_type' => $file['mime_type'],
+        'size_bytes' => (int) $file['size_bytes'],
+        'content_sha256' => trim($file['sha256']),
+        'media_audio_id' => (int) $row['media_audio_id'],
         'version' => (int) $row['version'],
         'stats_version' => (int) $row['stats_version'],
         'album' => $row['album'],
@@ -258,23 +275,28 @@ function publicMusicoTrack(array $row): array
     ];
 }
 
+function publicMusicoTracks($result, int $authUserId): array
+{
+    $rows = [];
+    while (($row = pg_fetch_assoc($result)) !== false) $rows[] = $row;
+    $files = musicoAudioFiles($rows, $authUserId);
+    return array_map(static fn (array $row): array => publicMusicoTrack(
+        $row, $authUserId, $files[(int) $row['media_audio_id']]), $rows);
+}
+
 function handleListMusicoTracks(array $authUser): never
 {
     $db = connectMusicoDb();
     $result = @pg_query_params($db,
-        'SELECT t.id, t.title, t.artist, t.original_name, t.mime_type, t.size_bytes, t.content_sha256,
+        'SELECT t.id, t.title, t.artist, t.media_audio_id,
                 t.version, t.stats_version,
                 t.album, t.genre, t.release_year, t.track_number, t.rating, t.play_count, t.listen_ms, t.art_image_id, '
                 . musicoAnalysisProjection('t') . ', t.created
          FROM public.track t JOIN public."user" u ON u.id = t.user_id
          WHERE u.auth_user_id = $1 ORDER BY t.id DESC', [$authUser['id']]);
     if ($result === false) respond(500, ['error' => 'Failed to load tracks']);
-    $tracks = [];
-    $usedBytes = 0;
-    while (($row = pg_fetch_assoc($result)) !== false) {
-        $tracks[] = publicMusicoTrack($row);
-        $usedBytes += (int) $row['size_bytes'];
-    }
+    $tracks = publicMusicoTracks($result, (int) $authUser['id']);
+    $usedBytes = mediaAudioUsage(connectMediaDb(), (int) $authUser['id']);
     respond(200, [
         'tracks' => $tracks,
         'usage' => ['bytes' => $usedBytes],
@@ -286,7 +308,7 @@ function handleGetMusicoTrack(array $authUser, int $id): never
 {
     $db = connectMusicoDb();
     $result = @pg_query_params($db,
-        'SELECT t.id, t.title, t.artist, t.original_name, t.mime_type, t.size_bytes, t.content_sha256,
+        'SELECT t.id, t.title, t.artist, t.media_audio_id,
                 t.version, t.stats_version,
                 t.album, t.genre, t.release_year, t.track_number, t.rating, t.play_count, t.listen_ms,
                 t.art_image_id, ' . musicoAnalysisProjection('t') . ', t.created
@@ -297,19 +319,7 @@ function handleGetMusicoTrack(array $authUser, int $id): never
     if ($row === false) respond(404, ['error' => 'Track not found']);
     header('Cache-Control: private, no-store');
     header('ETag: "v' . $row['version'] . '"');
-    respond(200, publicMusicoTrack($row));
-}
-
-function musicoAudioType(string $name, string $bytes): ?string
-{
-    $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-    if ($extension === 'mp3' && (str_starts_with($bytes, 'ID3')
-        || (strlen($bytes) > 1 && ord($bytes[0]) === 0xff && (ord($bytes[1]) & 0xe0) === 0xe0))) return 'audio/mpeg';
-    if ($extension === 'ogg' && str_starts_with($bytes, 'OggS')) return 'audio/ogg';
-    if ($extension === 'wav' && str_starts_with($bytes, 'RIFF') && substr($bytes, 8, 4) === 'WAVE') return 'audio/wav';
-    if ($extension === 'flac' && str_starts_with($bytes, 'fLaC')) return 'audio/flac';
-    if ($extension === 'm4a' && substr($bytes, 4, 4) === 'ftyp') return 'audio/mp4';
-    return null;
+    respond(200, publicMusicoTrack($row, (int) $authUser['id']));
 }
 
 function musicoUploadRequestId(): ?string
@@ -387,12 +397,12 @@ function handleUploadMusicoTrack(array $authUser): never
         || !is_uploaded_file((string) ($file['tmp_name'] ?? ''))) {
         respond(400, ['error' => 'Choose an audio file']);
     }
-    $name = musicoText($file['name'], 255, 'filename');
+    $name = mediaAudioName(musicoText($file['name'], 255, 'filename'));
     $size = (int) ($file['size'] ?? 0);
     if ($size < 1 || $size > MUSICO_TRACK_MAX_BYTES) respond(413, ['error' => 'Audio file must be at most 24 MiB']);
     $bytes = @file_get_contents($file['tmp_name']);
     if ($bytes === false || strlen($bytes) !== $size) respond(500, ['error' => 'Could not read audio file']);
-    $mime = musicoAudioType($name, $bytes);
+    $mime = mediaAudioType($name, $bytes);
     if ($mime === null) respond(400, ['error' => 'Choose an MP3, Ogg, WAV, FLAC, or M4A audio file']);
     $contentSha256 = hash('sha256', $bytes);
     $title = musicoText($_POST['title'] ?? pathinfo($name, PATHINFO_FILENAME), 200, 'title');
@@ -435,7 +445,7 @@ function handleUploadMusicoTrack(array $authUser): never
                 respond(409, ['error' => 'The original uploaded track was deleted']);
             }
             $priorTrack = @pg_query_params($db,
-                'SELECT t.id, t.title, t.artist, t.original_name, t.mime_type, t.size_bytes, t.content_sha256,
+                'SELECT t.id, t.title, t.artist, t.media_audio_id,
                         t.version, t.stats_version,
                         t.album, t.genre, t.release_year, t.track_number, t.rating, t.play_count, t.listen_ms,
                         t.art_image_id, ' . musicoAnalysisProjection('t') . ', t.created
@@ -445,43 +455,38 @@ function handleUploadMusicoTrack(array $authUser): never
             $row = pg_fetch_assoc($priorTrack);
             if ($row === false) respond(409, ['error' => 'The original uploaded track was deleted']);
             finishMusicoMutation($db);
-            respond(200, publicMusicoTrack($row));
+            respond(200, publicMusicoTrack($row, (int) $authUser['id']));
         }
     }
+    $mediaFile = saveMediaAudioFile(connectMediaDb(), (int) $authUser['id'],
+        $name, $mime, $bytes, $contentSha256);
     $existing = @pg_query_params($db,
-        'SELECT t.id, t.title, t.artist, t.original_name, t.mime_type, t.size_bytes, t.content_sha256,
+        'SELECT t.id, t.title, t.artist, t.media_audio_id,
                 t.version, t.stats_version,
                 t.album, t.genre, t.release_year, t.track_number, t.rating, t.play_count, t.listen_ms, t.art_image_id, '
                 . musicoAnalysisProjection('t') . ', t.created
-         FROM public.track t WHERE t.user_id = $1 AND t.content_sha256 = $2
-         ORDER BY t.id LIMIT 1', [$userId, $contentSha256]);
+         FROM public.track t WHERE t.user_id = $1 AND t.media_audio_id = $2
+         ORDER BY t.id LIMIT 1', [$userId, $mediaFile['id']]);
     if ($existing === false) respond(500, ['error' => 'Could not check existing tracks']);
     if (($existingTrack = pg_fetch_assoc($existing)) !== false) {
         recordMusicoUploadRequest($db, $userId, $requestId, $requestHash, (int) $existingTrack['id']);
         finishMusicoMutation($db);
-        respond(200, publicMusicoTrack($existingTrack));
-    }
-    $usage = @pg_query_params($db,
-        'SELECT COALESCE(SUM(size_bytes), 0) FROM public.track WHERE user_id = $1', [$userId]);
-    if ($usage === false) respond(500, ['error' => 'Could not check audio usage']);
-    if ((int) pg_fetch_result($usage, 0, 0) + $size > MUSICO_USER_MAX_BYTES) {
-        respond(413, ['error' => 'Your audio library is limited to 4 GiB']);
+        respond(200, publicMusicoTrack($existingTrack, (int) $authUser['id'], $mediaFile));
     }
     $saved = @pg_query_params($db,
-        'INSERT INTO public.track (user_id, title, artist, original_name, mime_type, size_bytes, content, content_sha256,
+        'INSERT INTO public.track (user_id, title, artist, media_audio_id,
                                   album, genre, release_year, track_number)
-         VALUES ($1, $2, $3, $4, $5, $6, decode($7, \'base64\'), $8, $9, $10, $11, $12)
-         RETURNING id, title, artist, original_name, mime_type, size_bytes, content_sha256,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, title, artist, media_audio_id,
                    version, stats_version,
                    album, genre, release_year, track_number, rating, play_count, listen_ms, art_image_id, '
                    . musicoAnalysisProjection() . ', created',
-        [$userId, $title, $artist, $name, $mime, $size, base64_encode($bytes), $contentSha256,
-            $album, $genre, $year, $trackNumber]);
+        [$userId, $title, $artist, $mediaFile['id'], $album, $genre, $year, $trackNumber]);
     if ($saved === false || ($row = pg_fetch_assoc($saved)) === false) respond(500, ['error' => 'Could not save track']);
     recordMusicoUploadRequest($db, $userId, $requestId, $requestHash, (int) $row['id']);
     recordMusicoChange($db, $authUser, 'track', (int) $row['id']);
     finishMusicoMutation($db);
-    respond(201, publicMusicoTrack($row));
+    respond(201, publicMusicoTrack($row, (int) $authUser['id'], $mediaFile));
 }
 
 function handleDeleteMusicoTrack(array $authUser, int $id): never
@@ -514,6 +519,50 @@ function handleDeleteMusicoTrack(array $authUser, int $id): never
     finishMusicoMutation($db);
     http_response_code(204);
     exit;
+}
+
+function handleCreateMusicoTrackFromMedia(array $authUser): never
+{
+    $body = readJsonBody();
+    $audioId = $body['media_audio_id'] ?? null;
+    if (!is_int($audioId) || $audioId < 1) respond(400, ['error' => 'Invalid media audio ID']);
+    $db = connectMusicoDb();
+    beginMusicoMutation($db, $authUser);
+    $userId = ensureMusicoUserId($db, $authUser);
+    $media = connectMediaDb();
+    $fileResult = @pg_query_params($media,
+        'SELECT id, original_name, mime_type, size_bytes, sha256 FROM public.audio_file
+         WHERE id = $1 AND owner_auth_user_id = $2', [$audioId, $authUser['id']]);
+    if ($fileResult === false) respond(500, ['error' => 'Could not load audio file']);
+    $file = pg_fetch_assoc($fileResult);
+    if ($file === false) respond(404, ['error' => 'Audio file not found']);
+    $existing = @pg_query_params($db,
+        'SELECT t.id, t.title, t.artist, t.media_audio_id,
+                t.version, t.stats_version, t.album, t.genre, t.release_year, t.track_number,
+                t.rating, t.play_count, t.listen_ms, t.art_image_id, ' . musicoAnalysisProjection('t') . ', t.created
+         FROM public.track t WHERE t.user_id = $1 AND t.media_audio_id = $2', [$userId, $audioId]);
+    if ($existing === false) respond(500, ['error' => 'Could not check songs']);
+    if (($row = pg_fetch_assoc($existing)) !== false) {
+        finishMusicoMutation($db);
+        respond(200, publicMusicoTrack($row, (int) $authUser['id'], $file));
+    }
+    $defaultTitle = pathinfo($file['original_name'], PATHINFO_FILENAME);
+    if (trim($defaultTitle) === '') $defaultTitle = $file['original_name'];
+    while (strlen($defaultTitle) > 200) $defaultTitle = preg_replace('/.$/u', '', $defaultTitle);
+    $title = musicoText($defaultTitle, 200, 'title');
+    $saved = @pg_query_params($db,
+        'INSERT INTO public.track (user_id, media_audio_id, title)
+         VALUES ($1, $2, $3)
+         RETURNING id, title, artist, media_audio_id,
+                   version, stats_version, album, genre, release_year, track_number,
+                   rating, play_count, listen_ms, art_image_id, ' . musicoAnalysisProjection() . ', created',
+        [$userId, $audioId, $title]);
+    if ($saved === false || ($row = pg_fetch_assoc($saved)) === false) {
+        respond(500, ['error' => 'Could not add song']);
+    }
+    recordMusicoChange($db, $authUser, 'track', (int) $row['id']);
+    finishMusicoMutation($db);
+    respond(201, publicMusicoTrack($row, (int) $authUser['id'], $file));
 }
 
 function musicoOptionalText(mixed $value, string $label): string
@@ -560,7 +609,7 @@ function handleUpdateMusicoTrack(array $authUser, int $id): never
              release_year = $5, track_number = $6, rating = $7, art_image_id = $8,
              version = t.version + 1
          FROM public."user" u WHERE t.id = $9 AND t.user_id = u.id AND u.auth_user_id = $10
-         RETURNING t.id, t.title, t.artist, t.original_name, t.mime_type, t.size_bytes, t.content_sha256,
+         RETURNING t.id, t.title, t.artist, t.media_audio_id,
                    t.version, t.stats_version,
                    t.album, t.genre, t.release_year, t.track_number, t.rating, t.play_count, t.listen_ms, t.art_image_id, '
                    . musicoAnalysisProjection('t') . ', t.created',
@@ -571,7 +620,7 @@ function handleUpdateMusicoTrack(array $authUser, int $id): never
     recordMusicoChange($db, $authUser, 'track', $id);
     finishMusicoMutation($db);
     header('ETag: "v' . $row['version'] . '"');
-    respond(200, publicMusicoTrack($row));
+    respond(200, publicMusicoTrack($row, (int) $authUser['id']));
 }
 
 function musicoAnalysisInteger(array $body, string $key, int $min, int $max): ?int
@@ -722,48 +771,14 @@ function handleStreamMusicoTrack(array $authUser, int $id): never
 {
     $db = connectMusicoDb();
     $result = @pg_query_params($db,
-        'SELECT t.mime_type, t.size_bytes FROM public.track t
+        'SELECT t.media_audio_id FROM public.track t
          JOIN public."user" u ON u.id = t.user_id
          WHERE t.id = $1 AND u.auth_user_id = $2', [$id, $authUser['id']]);
     if ($result === false) respond(500, ['error' => 'Could not load track']);
     $track = pg_fetch_assoc($result);
     if ($track === false) respond(404, ['error' => 'Track not found']);
-    $size = (int) $track['size_bytes'];
-    $start = 0;
-    $end = $size - 1;
-    if (isset($_SERVER['HTTP_RANGE'])) {
-        $range = (string) $_SERVER['HTTP_RANGE'];
-        if (preg_match('/^bytes=(\d*)-(\d*)$/D', $range, $match) !== 1 || ($match[1] === '' && $match[2] === '')) {
-            header("Content-Range: bytes */{$size}");
-            respond(416, ['error' => 'Invalid audio range']);
-        }
-        if ($match[1] === '') {
-            $length = min((int) $match[2], $size);
-            $start = $size - $length;
-        } else {
-            $start = (int) $match[1];
-            if ($match[2] !== '') $end = min((int) $match[2], $end);
-        }
-        if ($start > $end || $start >= $size) {
-            header("Content-Range: bytes */{$size}");
-            respond(416, ['error' => 'Invalid audio range']);
-        }
-        http_response_code(206);
-        header("Content-Range: bytes {$start}-{$end}/{$size}");
-    }
-    $length = $end - $start + 1;
-    $data = @pg_query_params($db,
-        'SELECT encode(substring(content FROM $2 FOR $3), \'base64\')
-         FROM public.track WHERE id = $1', [$id, $start + 1, $length]);
-    if ($data === false || ($encoded = pg_fetch_result($data, 0, 0)) === false
-        || ($bytes = base64_decode($encoded, true)) === false) respond(500, ['error' => 'Could not stream track']);
-    header('Content-Type: ' . $track['mime_type']);
-    header('Content-Length: ' . strlen($bytes));
-    header('Accept-Ranges: bytes');
-    header('Cache-Control: private, no-store');
-    header('X-Content-Type-Options: nosniff');
-    echo $bytes;
-    exit;
+    if ($track['media_audio_id'] === null) respond(503, ['error' => 'Audio file is not ready']);
+    streamMediaAudio(connectMediaDb(), (int) $track['media_audio_id'], (int) $authUser['id']);
 }
 
 function publicMusicoPlaylist(array $row): array
@@ -843,15 +858,14 @@ function handleGetMusicoPlaylist(array $authUser, int $id): never
     $playlist = pg_fetch_assoc($result);
     if ($playlist === false) respond(404, ['error' => 'Playlist not found']);
     $tracks = @pg_query_params($db,
-        'SELECT t.id, t.title, t.artist, t.original_name, t.mime_type, t.size_bytes, t.content_sha256,
+        'SELECT t.id, t.title, t.artist, t.media_audio_id,
                 t.version, t.stats_version,
                 t.album, t.genre, t.release_year, t.track_number, t.rating, t.play_count, t.listen_ms, t.art_image_id, '
                 . musicoAnalysisProjection('t') . ', t.created
          FROM public.playlist_track pt JOIN public.track t ON t.id = pt.track_id
          WHERE pt.playlist_id = $1 ORDER BY pt.position, t.id', [$id]);
     if ($tracks === false) respond(500, ['error' => 'Could not load playlist tracks']);
-    $items = [];
-    while (($row = pg_fetch_assoc($tracks)) !== false) $items[] = publicMusicoTrack($row);
+    $items = publicMusicoTracks($tracks, (int) $authUser['id']);
     header('ETag: "v' . $playlist['version'] . '"');
     respond(200, ['playlist' => publicMusicoPlaylist($playlist), 'tracks' => $items]);
 }

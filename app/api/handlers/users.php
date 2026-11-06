@@ -260,6 +260,11 @@ function handleDeleteUser(int $targetId): never
     if ($mediaGc === false) {
         respond(500, ['error' => 'Failed to clean up user images']);
     }
+    if (@pg_query_params($mediaDb,
+        'DELETE FROM public.audio_file WHERE owner_auth_user_id = ANY($1::bigint[])',
+        [$accountIdArray]) === false) {
+        respond(500, ['error' => 'Failed to delete user audio']);
+    }
     if (@pg_query($mediaDb, 'COMMIT') === false) {
         respond(500, ['error' => 'Failed to delete user images']);
     }

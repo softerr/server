@@ -7,11 +7,25 @@ require_once __DIR__ . '/lib/http.php';
 require_once __DIR__ . '/lib/url.php';
 require_once __DIR__ . '/lib/session.php';
 require_once __DIR__ . '/handlers/images.php';
+require_once __DIR__ . '/handlers/audio.php';
 require_once __DIR__ . '/handlers/online_images.php';
 require_once __DIR__ . '/handlers/media_groups.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $path = apiRequestPath('/api/media');
+
+if ($path === '/audio') {
+    if ($method === 'GET') handleListMediaAudio();
+    if ($method === 'POST') handleUploadMediaAudio();
+    respond(405, ['error' => 'Method not allowed']);
+}
+if (is_string($path) && preg_match('#^/audio/([1-9][0-9]*)$#D', $path, $match)) {
+    $audioId = filter_var($match[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($audioId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'GET') handleGetMediaAudio($audioId);
+    if ($method === 'DELETE') handleDeleteMediaAudio($audioId);
+    respond(405, ['error' => 'Method not allowed']);
+}
 
 if ($path === '/images') {
     if ($method === 'GET') handleListImages();

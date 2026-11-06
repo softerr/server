@@ -4,25 +4,22 @@ import { editIcon, deleteIcon, removeIcon } from '../../shared/icons.js'
 import { createPlayer } from './player.js'
 import { renderDiscover } from './discover.js'
 import { exportLibrary, importLibrary } from './library-data.js'
-import { mountArtworkPicker } from './artwork.js'
-import { createSongDetails } from './details.js'
-import { MAX_IMAGE_BYTES } from '../../shared/media-limits.js'
+import { renderSongDetails } from './details.js'
 
 const MAX_TRACK_BYTES = 24 * 1024 * 1024
 let player
-let details
 
 function musicPlayer(requestJson) {
   player ??= createPlayer(requestJson)
   return player
 }
 
-function songDetails() {
-  details ??= createSongDetails()
-  return details
-}
-
 const detailsIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>'
+
+function songDetailsUrl(id) {
+  const from = window.location.hash.slice(1)
+  return `#details?${new URLSearchParams({ id, from })}`
+}
 
 function status(element, message, error = false) {
   element.textContent = message
@@ -66,7 +63,7 @@ function artThumbnail(id, alt = '') {
   return image
 }
 
-function renderTrackRow(track, onPlay, onDelete, removeLabel = 'Delete', onEdit = null, onDetails = null) {
+function renderTrackRow(track, onPlay, onDelete, removeLabel = 'Delete', onDetails = null) {
   const row = document.createElement('li')
   row.className = 'musico-row'
   const main = document.createElement('div')
@@ -88,7 +85,6 @@ function renderTrackRow(track, onPlay, onDelete, removeLabel = 'Delete', onEdit 
   actions.className = 'musico-row-actions'
   actions.append(button('Play', 'auth-button auth-button-secondary', onPlay))
   if (onDetails) actions.append(iconButton('Song details', detailsIcon, onDetails))
-  if (onEdit) actions.append(iconButton('Edit song', editIcon, onEdit))
   if (onDelete) actions.append(iconButton(removeLabel === 'Remove' ? 'Remove song from playlist' : 'Delete song',
     removeLabel === 'Remove' ? removeIcon : deleteIcon, onDelete))
   row.append(main, actions)
@@ -142,24 +138,6 @@ function renderSongs(app, { requestJson, responseError }) {
       </div>
       <p id="musico-status" class="form-status" role="status" aria-live="polite">Loading songs…</p>
       <ul id="musico-tracks" class="musico-list"></ul>
-      <dialog id="edit-song-dialog" class="musico-dialog">
-        <form id="edit-song-form">
-          <h2>Edit song</h2>
-          <button id="edit-song-art" type="button" class="musico-edit-art">Choose album art</button>
-          <label class="field"><span>Title</span><input name="title" maxlength="200" required></label>
-          <label class="field"><span>Artist</span><input name="artist" maxlength="200"></label>
-          <label class="field"><span>Album</span><input name="album" maxlength="200"></label>
-          <label class="field"><span>Genre</span><input name="genre" maxlength="200"></label>
-          <div class="musico-edit-numbers">
-            <label class="field"><span>Year</span><input name="year" type="number" min="1800" max="2100"></label>
-            <label class="field"><span>Track</span><input name="track_number" type="number" min="1" max="999"></label>
-            <label class="field"><span>Rating</span><input name="rating" type="number" min="0" max="10"></label>
-          </div>
-          <div class="musico-dialog-actions musico-metadata-actions"><button id="clean-song-title" type="button" class="auth-button auth-button-secondary">Clean title</button><button id="lookup-song" type="button" class="auth-button auth-button-secondary">Look up metadata</button><button id="undo-song-lookup" type="button" class="auth-button auth-button-secondary" hidden>Undo lookup</button></div>
-          <p id="edit-song-status" class="form-status" role="status"></p>
-          <div class="musico-dialog-actions"><button id="cancel-edit-song" type="button" class="auth-button auth-button-secondary">Cancel</button><button type="submit" class="auth-button auth-button-primary">Save</button></div>
-        </form>
-      </dialog>
     </main>
   `
   const list = page.querySelector('#musico-tracks')
@@ -167,37 +145,8 @@ function renderSongs(app, { requestJson, responseError }) {
   const input = page.querySelector('#audio-upload')
   const usage = page.querySelector('#musico-usage')
   const controls = page.querySelector('.musico-library-tools')
-  const editDialog = page.querySelector('#edit-song-dialog')
-  const editForm = page.querySelector('#edit-song-form')
-  const artwork = mountArtworkPicker(page.querySelector('.musico-page'), { requestJson, responseError })
-  let artImageId = null
-  let pendingArtwork = null
-  let lookupSnapshot = null
-
-  function clearPendingArtwork() {
-    if (pendingArtwork) URL.revokeObjectURL(pendingArtwork.preview)
-    pendingArtwork = null
-  }
-
-  function renderArt() {
-    const control = page.querySelector('#edit-song-art')
-    control.replaceChildren()
-    if (pendingArtwork || artImageId) {
-      const image = pendingArtwork ? document.createElement('img') : artThumbnail(artImageId, 'Selected album art')
-      if (pendingArtwork) { image.src = pendingArtwork.preview; image.alt = 'Selected album art' }
-      const label = document.createElement('span')
-      label.textContent = 'Change album art'
-      control.append(image, label)
-    } else control.textContent = 'Choose album art'
-  }
-  page.querySelector('#edit-song-art').addEventListener('click', async () => {
-    const selected = await artwork.open()
-    if (selected !== undefined) { clearPendingArtwork(); artImageId = selected; renderArt() }
-  })
   const initialFilters = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
   let tracks = []
-  let editId = null
-  let editVersion = null
   let initialFiltersApplied = false
 
   function options(id, values, defaultLabel) {
@@ -235,22 +184,6 @@ function renderSongs(app, { requestJson, responseError }) {
     })
   }
 
-  function openEdit(track) {
-    editId = track.id
-    editVersion = track.version
-    clearPendingArtwork()
-    artImageId = track.art_image_id
-    renderArt()
-    lookupSnapshot = null
-    page.querySelector('#undo-song-lookup').hidden = true
-    for (const field of ['title', 'artist', 'album', 'genre', 'year', 'track_number', 'rating']) {
-      editForm.elements[field].value = track[field] ?? ''
-    }
-    status(page.querySelector('#edit-song-status'), '')
-    editDialog.showModal()
-    editForm.elements.title.focus()
-  }
-
   function renderList() {
     const visible = visibleTracks()
     list.replaceChildren()
@@ -264,134 +197,13 @@ function renderSongs(app, { requestJson, responseError }) {
           await refresh()
           status(message, 'Song deleted.')
         } catch (error) { status(message, error.message, true) }
-      }, 'Delete', () => openEdit(track), () => songDetails().open(track)))
+      }, 'Delete', () => { window.location.hash = songDetailsUrl(track.id) }))
     })
     status(message, tracks.length ? (visible.length ? '' : 'No songs match these filters.') : 'No songs yet. Upload an audio file to get started.')
   }
 
   controls.addEventListener('input', renderList)
   controls.addEventListener('change', renderList)
-  editDialog.addEventListener('close', clearPendingArtwork)
-  page.querySelector('#cancel-edit-song').addEventListener('click', () => editDialog.close())
-  page.querySelector('#clean-song-title').addEventListener('click', () => {
-    const title = editForm.elements.title
-    const parts = title.value.split(/\s+[-–—~]\s+/, 3)
-    if (parts.length >= 2) {
-      if (/^\d+$/.test(parts[0]) && parts.length === 3) {
-        editForm.elements.track_number.value = parts[0]
-        editForm.elements.artist.value = parts[1].trim()
-        title.value = parts[2].trim()
-      } else {
-        editForm.elements.artist.value = parts[0].trim()
-        title.value = parts.slice(1).join(' - ').trim()
-      }
-    }
-    title.value = title.value.replace(/\.(mp3|ogg|wav|flac|m4a)$/i, '').replace(/\[[^\]]*\]|\([^)]*\)/g, '').replace(/\s{2,}/g, ' ').trim()
-  })
-  page.querySelector('#undo-song-lookup').addEventListener('click', () => {
-    if (!lookupSnapshot) return
-    for (const [field, value] of Object.entries(lookupSnapshot)) {
-      if (field === 'art_image_id') artImageId = value
-      else editForm.elements[field].value = value
-    }
-    clearPendingArtwork()
-    renderArt()
-    lookupSnapshot = null
-    page.querySelector('#undo-song-lookup').hidden = true
-    status(page.querySelector('#edit-song-status'), '')
-  })
-  page.querySelector('#lookup-song').addEventListener('click', async (event) => {
-    const lookup = event.currentTarget
-    const query = `${editForm.elements.title.value} ${editForm.elements.artist.value}`.trim()
-    if (!query) return
-    lookup.disabled = true
-    const resultStatus = page.querySelector('#edit-song-status')
-    status(resultStatus, 'Looking up metadata…')
-    try {
-      const url = new URL('https://itunes.apple.com/search')
-      url.search = new URLSearchParams({ term: query, media: 'music', entity: 'song', limit: '10' })
-      const response = await fetch(url)
-      if (!response.ok) throw new Error('Metadata lookup is unavailable.')
-      const matches = (await response.json()).results ?? []
-      const match = matches.find((item) => item.kind === 'song' && item.trackName && item.artistName)
-      if (!match) throw new Error('No matching song found.')
-      if (!lookupSnapshot) {
-        lookupSnapshot = Object.fromEntries(
-          ['title', 'artist', 'album', 'genre', 'year', 'track_number'].map((field) => [field, editForm.elements[field].value]))
-        lookupSnapshot.art_image_id = artImageId
-      }
-      editForm.elements.title.value = match.trackName
-      editForm.elements.artist.value = match.artistName
-      editForm.elements.album.value = match.collectionName ?? ''
-      editForm.elements.genre.value = match.primaryGenreName ?? ''
-      editForm.elements.year.value = /^\d{4}/.test(match.releaseDate ?? '') ? match.releaseDate.slice(0, 4) : ''
-      editForm.elements.track_number.value = match.trackNumber || ''
-      page.querySelector('#undo-song-lookup').hidden = false
-      clearPendingArtwork()
-      let artworkError = ''
-      if (match.artworkUrl100) {
-        try {
-          const coverUrl = new URL(match.artworkUrl100.replace('100x100', '600x600'))
-          if (coverUrl.protocol !== 'https:' || !/^is\d+-ssl\.mzstatic\.com$/i.test(coverUrl.hostname)) {
-            throw new Error('Unsupported iTunes artwork URL.')
-          }
-          const coverResponse = await fetch(coverUrl, { credentials: 'omit' })
-          if (!coverResponse.ok) throw new Error('iTunes artwork is unavailable.')
-          const cover = await coverResponse.blob()
-          if (!['image/jpeg', 'image/png', 'image/webp'].includes(cover.type)
-            || cover.size < 1 || cover.size > MAX_IMAGE_BYTES) {
-            throw new Error('iTunes artwork exceeds the image limits.')
-          }
-          if (!editDialog.open) return
-          pendingArtwork = {
-            blob: cover,
-            name: `Album art - ${match.collectionId || match.trackId || editId}.${{
-              'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
-            }[cover.type]}`,
-            preview: URL.createObjectURL(cover),
-          }
-          renderArt()
-        } catch (error) { artworkError = error.message }
-      }
-      status(resultStatus, artworkError
-        ? `Metadata found, but artwork could not be loaded: ${artworkError}`
-        : pendingArtwork ? 'Metadata and artwork found. Review them before saving.'
-          : 'Metadata found. No artwork was available.', Boolean(artworkError))
-    } catch (error) { status(resultStatus, error.message, true) }
-    finally { lookup.disabled = false }
-  })
-  editForm.addEventListener('submit', async (event) => {
-    event.preventDefault()
-    const save = editForm.querySelector('[type="submit"]')
-    save.disabled = true
-    try {
-      if (pendingArtwork) {
-        const response = await fetch('/api/media/images', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream', 'X-Image-Name': encodeURIComponent(pendingArtwork.name) },
-          body: pendingArtwork.blob,
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) throw new Error(responseError(response, payload))
-        artImageId = payload.id
-        clearPendingArtwork()
-        renderArt()
-      }
-      const number = (field) => editForm.elements[field].value === '' ? null : Number(editForm.elements[field].value)
-      const updated = await loadJson(requestJson, 'PATCH', `/api/musico/tracks/${editId}`, {
-        title: editForm.elements.title.value, artist: editForm.elements.artist.value,
-        album: editForm.elements.album.value, genre: editForm.elements.genre.value,
-        year: number('year'), track_number: number('track_number'), rating: number('rating'),
-        art_image_id: artImageId,
-      }, responseError, versionHeader(editVersion))
-      playback.updateTrack(updated)
-      editDialog.close()
-      await refresh()
-      status(message, 'Song updated.')
-    } catch (error) { status(page.querySelector('#edit-song-status'), error.message, true) }
-    finally { save.disabled = false }
-  })
-
   async function refresh() {
     try {
       await ready(requestJson, responseError)
@@ -757,7 +569,7 @@ function renderPlaylists(app, { requestJson, responseError }) {
             await refresh()
             status(message, 'Song removed from playlist.')
           } catch (error) { status(message, error.message, true) }
-        }, 'Remove', null, () => songDetails().open(track)))
+        }, 'Remove', () => { window.location.hash = songDetailsUrl(track.id) }))
       })
     }
     searchTracks.addEventListener('input', renderTracks)
@@ -862,8 +674,8 @@ startAuthApp({
   name: 'Musico',
   homeHref: '/musico/',
   signupPrompt: 'New to Musico?',
-  onLogout() { player?.stop(); details?.close() },
-  views: ['songs', 'playlists', 'stats', 'discover'],
+  onLogout() { player?.stop() },
+  views: ['songs', 'playlists', 'stats', 'discover', 'details'],
   links: [
     { view: 'songs', label: 'Songs' },
     { view: 'playlists', label: 'Playlists' },
@@ -885,6 +697,10 @@ startAuthApp({
     }
     if (view === 'discover') {
       renderDiscover(app, helpers)
+      return true
+    }
+    if (view === 'details') {
+      renderSongDetails(app, { ...helpers, onTrackUpdated: (track) => player?.updateTrack(track) })
       return true
     }
     return false

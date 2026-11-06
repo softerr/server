@@ -27,6 +27,7 @@ cleanup() {
       -c "DELETE FROM public.\"user\" WHERE auth_user_id = ${auth_user_id}" >/dev/null || result=1
     sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -q -d media \
       -c "DELETE FROM public.image WHERE owner_auth_user_id = ${auth_user_id};
+          DELETE FROM public.audio_file WHERE owner_auth_user_id = ${auth_user_id};
           DELETE FROM public.image_blob b WHERE NOT EXISTS
           (SELECT 1 FROM public.image i WHERE i.blob_id = b.id);" >/dev/null || result=1
     sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -q -d auth \

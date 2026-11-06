@@ -103,11 +103,14 @@ function currentMobileTokenUser(string $authorization): array
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     $mediaImage = is_string($path) && ($path === '/api/media/images'
         || preg_match('#^/api/media/images/[1-9][0-9]*(?:/thumbnail)?$#D', $path) === 1);
+    $mediaAudio = is_string($path) && ($path === '/api/media/audio'
+        || preg_match('#^/api/media/audio/[1-9][0-9]*$#D', $path) === 1);
     $allowed = is_string($path) && (
         str_starts_with($path, '/api/musico/')
         || ($path === '/api/auth/me' && $method === 'GET')
         || ($method === 'GET' && $mediaImage)
         || ($method === 'POST' && $path === '/api/media/images')
+        || ($mediaAudio && in_array($method, ['GET', 'POST', 'DELETE'], true))
     );
     if (!$allowed) respond(403, ['error' => 'Mobile token cannot access this endpoint']);
     $db = connectDb();

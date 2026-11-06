@@ -50,6 +50,23 @@ CREATE TABLE IF NOT EXISTS public.image_source (
     attribution TEXT NOT NULL
 );
 
+-- Audio belongs to Media. Applications store only its ID and their own song metadata.
+CREATE TABLE IF NOT EXISTS public.audio_file (
+    id BIGSERIAL PRIMARY KEY,
+    owner_auth_user_id BIGINT NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(64) NOT NULL CHECK (mime_type IN
+        ('audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/flac', 'audio/mp4')),
+    size_bytes INTEGER NOT NULL CHECK (size_bytes BETWEEN 1 AND 25165824),
+    sha256 CHAR(64) NOT NULL,
+    content BYTEA NOT NULL,
+    created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT audio_file_content_size_check CHECK (octet_length(content) = size_bytes),
+    UNIQUE (owner_auth_user_id, sha256)
+);
+CREATE INDEX IF NOT EXISTS audio_file_owner_id_idx
+    ON public.audio_file (owner_auth_user_id, id DESC);
+
 -- Media is committed before the quiz transaction. Keep a durable record so a
 -- failed or interrupted import can remove only images created by that import.
 CREATE TABLE IF NOT EXISTS public.quiz_import_recovery (
@@ -65,6 +82,7 @@ CREATE INDEX IF NOT EXISTS quiz_import_recovery_created_idx
 GRANT CONNECT ON DATABASE media TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.image_blob TO auth_api;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.audio_file TO auth_api;
 GRANT UPDATE (thumbnail_content, thumbnail_mime_type) ON TABLE public.image_blob TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.image TO auth_api;
 GRANT UPDATE (owner_auth_user_id, shared, group_id, original_name) ON TABLE public.image TO auth_api;
@@ -72,5 +90,6 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.media_group TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.image_source TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quiz_import_recovery TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.image_blob_id_seq TO auth_api;
+GRANT USAGE, SELECT ON SEQUENCE public.audio_file_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.image_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.media_group_id_seq TO auth_api;

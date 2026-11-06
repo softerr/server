@@ -108,6 +108,7 @@ run_api_deploy() {
     MEDIA_SCHEMA_APPLIED=1
   fi
   ensure_musico_schema
+  run_root_script "${SCRIPT_DIR}/migrate_musico_audio.sh"
   run_root_script "${SCRIPT_DIR}/deploy_api.sh"
   API_DEPLOYED=1
 }

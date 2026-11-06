@@ -64,7 +64,7 @@ function handleReadiness(): never
         respond(503, ['status' => 'unavailable', 'error' => $musicoError]);
     }
     if (@pg_query($musicoDb,
-        'SELECT u.id, u.auth_user_id, t.id, t.user_id, t.content, t.size_bytes, t.content_sha256,
+        'SELECT u.id, u.auth_user_id, t.id, t.user_id, t.media_audio_id,
             t.version, t.stats_version,
             t.duration_ms, t.bit_rate, t.sample_rate_hz, t.bit_depth, t.channels, t.codec,
             t.estimated_bpm, t.estimated_key, t.peak_db, t.average_db,
@@ -98,6 +98,13 @@ function handleReadiness(): never
     }
     if (@pg_query($mediaDb, 'SELECT id, quiz_id, image_ids FROM public.quiz_import_recovery LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media database schema is not ready']);
+    }
+    if (@pg_query($mediaDb, 'SELECT id, owner_auth_user_id, original_name, mime_type, size_bytes, sha256, content FROM public.audio_file LIMIT 0') === false) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Media audio schema is not ready']);
+    }
+    $pendingAudio = @pg_query($musicoDb, 'SELECT 1 FROM public.track WHERE media_audio_id IS NULL LIMIT 1');
+    if ($pendingAudio === false || pg_num_rows($pendingAudio) > 0) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Musico audio upgrade is not complete']);
     }
 
     respond(200, ['status' => 'ok', 'message' => 'API is ready']);

@@ -92,6 +92,12 @@ location /api/musico/ {
     try_files $uri /api/musico.php?$query_string;
 }
 
+location ~ ^/api/media/audio(?:/|$) {
+    root /var/www;
+    client_max_body_size 26m;
+    try_files $uri /api/media.php?$query_string;
+}
+
 location /api/media/ {
     root /var/www;
     client_max_body_size 6m;
@@ -117,7 +123,7 @@ location = /api/quiz.php {
 location = /api/media.php {
     root /var/www;
     internal;
-    client_max_body_size 6m;
+    client_max_body_size 26m;
     include snippets/fastcgi-php.conf;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
     fastcgi_param HTTP_AUTHORIZATION $http_authorization;

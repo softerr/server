@@ -153,12 +153,13 @@ jobs:
           assert 'location /api/auth/' in routes
           assert 'location /api/quiz/' in routes
           assert 'location /api/media/' in routes
+          assert 'location ~ ^/api/media/audio(?:/|$) {' in routes
           assert 'location /api/musico/' in routes
-          assert routes.count('client_max_body_size 26m;') == 2
+          assert routes.count('client_max_body_size 26m;') == 4
           assert 'location ~ ^/api/quiz/quizzes/import/*$ {' in routes
           assert 'client_max_body_size 48m;' in routes
           assert 'client_max_body_size 2m;' in routes
-          assert routes.count('client_max_body_size 6m;') == 2
+          assert routes.count('client_max_body_size 6m;') == 1
           assert 'location ~ ^/api/.*\\.php$' in routes
           assert 'location ~ ^/api/auth/signup/*$' in routes
           assert 'client_max_body_size 4k;' in routes

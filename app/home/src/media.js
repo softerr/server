@@ -6,6 +6,7 @@ import { bindMediaCardSelection, updateMediaCardSelection } from './media-select
 import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
 import { createPageNotice } from '../../shared/page-notice.js'
 import { createMediaDeletion } from './media-delete.js'
+import { renderAudioMedia } from './audio-media.js'
 
 const viewOptions = [
   ['list', 'List', '<rect x="3" y="4" width="4" height="4"/><path d="M10 6h11"/><rect x="3" y="10" width="4" height="4"/><path d="M10 12h11"/><rect x="3" y="16" width="4" height="4"/><path d="M10 18h11"/>'],
@@ -26,6 +27,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
         <div class="media-tabs" role="tablist" aria-label="Media libraries">
           <button id="media-tab-personal" class="media-tab" type="button" role="tab" aria-controls="media-personal" aria-selected="true">My library</button>
           <button id="media-tab-shared" class="media-tab" type="button" role="tab" aria-controls="shared-media" aria-selected="false" tabindex="-1">Shared library</button>
+          <button id="media-tab-audio" class="media-tab" type="button" role="tab" aria-controls="media-audio" aria-selected="false" tabindex="-1">Audio</button>
         </div>
         <div class="media-tools">
           <label class="media-search">
@@ -59,6 +61,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
         <p id="media-status" class="form-status" role="status" aria-live="polite">Loading images…</p>
       </section>
       <section id="shared-media" class="shared-media media-panel" role="tabpanel" aria-labelledby="media-tab-shared" tabindex="0" hidden></section>
+      <section id="media-audio" class="media-panel" role="tabpanel" aria-labelledby="media-tab-audio" tabindex="0" hidden></section>
       <dialog id="media-rename-dialog" class="user-dialog" aria-labelledby="media-rename-title"><form id="media-rename-form"><h2 id="media-rename-title">Rename image</h2><label class="field"><span>Filename</span><input name="name" maxlength="255" required></label><p id="media-rename-status" class="form-status" role="status" aria-live="polite"></p><div class="user-dialog-actions"><button type="button" class="auth-button auth-button-secondary" data-cancel>Cancel</button><button type="submit" class="auth-button auth-button-primary">Save name</button></div></form></dialog>
     </main>
   `
@@ -106,15 +109,20 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
     renameImage: openRename, openDeleteDialog: mediaDeletion.open,
     thumbnailLoader,
   })
+  const audioMedia = renderAudioMedia(page.querySelector('#media-audio'), {
+    requestJson, responseError, setStatus, notify: notice.show,
+  })
   search.addEventListener('input', () => {
     selected.clear()
     selectionAnchor.id = null
     sharedMedia.setSearch(search.value)
+    audioMedia.setSearch(search.value)
     render()
   })
   const tabs = [...page.querySelectorAll('.media-tab')]
   const personalPanel = page.querySelector('#media-personal')
   const sharedPanel = page.querySelector('#shared-media')
+  const audioPanel = page.querySelector('#media-audio')
   function selectTab(index) {
     for (const [position, tab] of tabs.entries()) {
       const active = position === index
@@ -123,6 +131,9 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
     }
     personalPanel.hidden = index !== 0
     sharedPanel.hidden = index !== 1
+    audioPanel.hidden = index !== 2
+    search.placeholder = index === 2 ? 'Search audio' : 'Search images'
+    search.setAttribute('aria-label', index === 2 ? 'Search audio by name' : 'Search images by name')
     thumbnailLoader.sync()
   }
   tabs.forEach((tab, index) => tab.addEventListener('click', () => selectTab(index)))

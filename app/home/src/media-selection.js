@@ -14,7 +14,8 @@ export function bindMediaCardSelection(card, image, { grid, selected, anchor, vi
   card.dataset.mediaCardName = image.name
   card.tabIndex = 0
   card.setAttribute('aria-description', 'Long press or press Space to select. Ctrl click to add or remove. Ctrl Shift click to select a range.')
-  card.querySelector('img').draggable = false
+  const preview = card.querySelector('img')
+  if (preview) preview.draggable = false
   let timer = null
   let pointerStart = null
   let ignoreClickUntil = 0
@@ -49,7 +50,7 @@ export function bindMediaCardSelection(card, image, { grid, selected, anchor, vi
   }
 
   card.addEventListener('pointerdown', (event) => {
-    if (busy() || event.button !== 0 || event.target.closest('button, a, input')) return
+    if (busy() || event.button !== 0 || event.target.closest('button, a, input, audio, select, textarea')) return
     pointerStart = { x: event.clientX, y: event.clientY, id: event.pointerId }
     timer = setTimeout(() => {
       timer = null
@@ -68,7 +69,7 @@ export function bindMediaCardSelection(card, image, { grid, selected, anchor, vi
   card.addEventListener('pointerleave', stopPress)
   card.addEventListener('contextmenu', (event) => { if (!busy()) event.preventDefault() })
   card.addEventListener('click', (event) => {
-    if (event.target.closest('button, a, input') || busy()) return
+    if (event.target.closest('button, a, input, audio, select, textarea') || busy()) return
     if (performance.now() < ignoreClickUntil) { ignoreClickUntil = 0; return }
     select(event)
   })

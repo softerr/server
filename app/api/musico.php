@@ -6,6 +6,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/lib/http.php';
 require_once __DIR__ . '/lib/url.php';
 require_once __DIR__ . '/lib/session.php';
+require_once __DIR__ . '/handlers/audio.php';
 require_once __DIR__ . '/handlers/musico.php';
 
 $path = apiRequestPath('/api/musico');
@@ -23,6 +24,10 @@ if ($path === '/changes') {
 if ($path === '/tracks') {
     if ($method === 'GET') handleListMusicoTracks($authUser);
     if ($method === 'POST') handleUploadMusicoTrack($authUser);
+    respond(405, ['error' => 'Method not allowed']);
+}
+if ($path === '/tracks/from-media') {
+    if ($method === 'POST') handleCreateMusicoTrackFromMedia($authUser);
     respond(405, ['error' => 'Method not allowed']);
 }
 if (is_string($path) && preg_match('#^/tracks/([1-9][0-9]*)/file$#D', $path, $match)) {

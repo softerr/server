@@ -8,11 +8,7 @@ CREATE TABLE IF NOT EXISTS public.track (
     user_id BIGINT NOT NULL REFERENCES public."user"(id) ON DELETE CASCADE,
     title VARCHAR(200) NOT NULL,
     artist VARCHAR(200) NOT NULL DEFAULT '',
-    original_name VARCHAR(255) NOT NULL,
-    mime_type VARCHAR(64) NOT NULL,
-    size_bytes INTEGER NOT NULL CHECK (size_bytes BETWEEN 1 AND 25165824),
-    content BYTEA NOT NULL,
-    content_sha256 CHAR(64) NOT NULL,
+    media_audio_id BIGINT NOT NULL,
     version BIGINT NOT NULL DEFAULT 1,
     stats_version BIGINT NOT NULL DEFAULT 1,
     album VARCHAR(200) NOT NULL DEFAULT '',
@@ -37,8 +33,10 @@ CREATE TABLE IF NOT EXISTS public.track (
     analysis_saved_at TIMESTAMPTZ,
     created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+-- Existing installations get this column before the audio-copy upgrade runs.
+ALTER TABLE public.track ADD COLUMN IF NOT EXISTS media_audio_id BIGINT;
 CREATE INDEX IF NOT EXISTS track_user_id_idx ON public.track (user_id, id DESC);
-CREATE INDEX IF NOT EXISTS track_user_content_sha256_idx ON public.track (user_id, content_sha256);
+CREATE UNIQUE INDEX IF NOT EXISTS track_user_media_audio_id_idx ON public.track (user_id, media_audio_id);
 
 CREATE TABLE IF NOT EXISTS public.track_upload_request (
     user_id BIGINT NOT NULL REFERENCES public."user"(id) ON DELETE CASCADE,

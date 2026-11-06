@@ -17,6 +17,7 @@ tags:
   - name: Administration
   - name: Quizzes
   - name: Musico
+  - name: Media
 paths:
   /:
     get:
@@ -207,6 +208,33 @@ paths:
         '409': {description: Idempotency-Key was reused for a different upload, or the original track was deleted.}
         '413': {description: File or user storage limit exceeded.}
         '500': { $ref: '#/components/responses/InternalError' }
+
+  /musico/tracks/from-media:
+    post:
+      tags: [Musico]
+      operationId: createMusicoTrackFromMedia
+      summary: Add an owned Media audio file as a Musico song
+      description: Returns the existing song if this audio file is already in Musico. The file remains in Media when the song is deleted.
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [media_audio_id]
+              properties:
+                media_audio_id: {type: integer, format: int64, minimum: 1}
+      responses:
+        '200': {description: Song already exists, content: {application/json: {schema: {$ref: '#/components/schemas/MusicoTrack'}}}}
+        '201': {description: Song created, content: {application/json: {schema: {$ref: '#/components/schemas/MusicoTrack'}}}}
+        '400': {description: Invalid audio ID.}
+        '401': {description: No active session.}
+        '404': {description: Audio file not found in your Media library.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
 
   /musico/tracks/{trackId}:
     parameters:
@@ -1550,6 +1578,107 @@ paths:
               schema:
                 type: string
               description: Browser page asking the user to try again later.
+
+  /media/audio:
+    get:
+      tags: [Media]
+      operationId: listMediaAudio
+      summary: List your audio files in Media
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+        - apiBearer: []
+      responses:
+        '200':
+          description: Audio files and storage usage.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [audio, usage, limits]
+                properties:
+                  audio: {type: array, items: {$ref: '#/components/schemas/MediaAudio'}}
+                  usage:
+                    type: object
+                    required: [count, bytes]
+                    properties:
+                      count: {type: integer, minimum: 0}
+                      bytes: {type: integer, minimum: 0}
+                  limits:
+                    type: object
+                    required: [bytes, per_file_bytes]
+                    properties:
+                      bytes: {type: integer, const: 4294967296}
+                      per_file_bytes: {type: integer, const: 25165824}
+        '401': {description: No active session.}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      tags: [Media]
+      operationId: uploadMediaAudio
+      summary: Upload an audio file to Media
+      description: The file can later be added to Musico without uploading it again. Identical files are stored once per account.
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+        - apiBearer: []
+      parameters:
+        - name: X-Audio-Name
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 255}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '201': {description: Audio file saved, content: {application/json: {schema: {$ref: '#/components/schemas/MediaAudio'}}}}
+        '400': {description: Invalid filename or audio format.}
+        '401': {description: No active session.}
+        '413': {description: File or account storage limit exceeded.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /media/audio/{audioId}:
+    parameters:
+      - name: audioId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    get:
+      tags: [Media]
+      operationId: getMediaAudio
+      summary: Stream one of your Media audio files
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+        - apiBearer: []
+      parameters:
+        - name: Range
+          in: header
+          required: false
+          schema: {type: string}
+      responses:
+        '200': {description: Complete audio file.}
+        '206': {description: Requested audio byte range.}
+        '401': {description: No active session.}
+        '404': {description: Audio file not found.}
+        '416': {description: Invalid audio byte range.}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      tags: [Media]
+      operationId: deleteMediaAudio
+      summary: Delete an unreferenced audio file
+      description: Returns 409 while a Musico song references this file.
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+        - apiBearer: []
+      responses:
+        '204': {description: Audio file deleted.}
+        '401': {description: No active session.}
+        '404': {description: Audio file not found.}
+        '409': {description: Audio file is used by a Musico song.}
+        '500': {$ref: '#/components/responses/InternalError'}
 
   /media/thumbnails:
     post:
@@ -3411,9 +3540,23 @@ components:
               created: {type: string}
         next_cursor: {$ref: '#/components/schemas/MusicoCursor'}
         has_more: {type: boolean}
+    MediaAudio:
+      type: object
+      required: [id, name, mime_type, size_bytes, sha256, created]
+      properties:
+        id: {type: integer, format: int64, minimum: 1}
+        name: {type: string}
+        mime_type: {type: string, enum: [audio/mpeg, audio/ogg, audio/wav, audio/flac, audio/mp4]}
+        size_bytes: {type: integer, minimum: 1, maximum: 25165824}
+        sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        created: {type: string}
+        musico_song_ids:
+          type: array
+          description: Included in the Media list; songs that currently reference this file.
+          items: {type: integer, format: int64, minimum: 1}
     MusicoTrack:
       type: object
-      required: [id, title, artist, original_name, mime_type, size_bytes, content_sha256, version, stats_version, album, genre, year, track_number, rating, play_count, listen_ms, art_image_id, analysis, created]
+      required: [id, title, artist, original_name, mime_type, size_bytes, content_sha256, media_audio_id, version, stats_version, album, genre, year, track_number, rating, play_count, listen_ms, art_image_id, analysis, created]
       properties:
         id: {type: integer, format: int64}
         title: {type: string}
@@ -3425,6 +3568,7 @@ components:
           type: string
           pattern: '^[0-9a-f]{64}$'
           description: SHA-256 of the original audio bytes. Stable across uploads of the same file, including uploads from different devices on this account.
+        media_audio_id: {type: integer, format: int64, minimum: 1}
         version: {type: integer, format: int64, minimum: 1}
         stats_version: {type: integer, format: int64, minimum: 1}
         album: {type: string}

@@ -77,38 +77,78 @@
 .musico-row-info strong { color: var(--text-h); overflow-wrap: anywhere; }
 .musico-row-info span { color: var(--text-grey); font-size: 14px; overflow-wrap: anywhere; }
 .musico-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.musico-details-dialog { width: min(100% - 32px, 690px); max-height: 85vh; overflow-y: auto; }
-.musico-details-heading { display: flex; align-items: center; gap: 16px; margin: 16px 0; }
-.musico-details-heading img { width: 90px; height: 90px; object-fit: cover; border-radius: 4px; }
-.musico-details-heading div { display: grid; gap: 4px; }
+.musico-details-page { width: min(100%, 850px); }
+.musico-details-page .section-title { margin: 20px 0 28px; }
+.musico-details-heading { display: flex; align-items: flex-start; gap: 18px; margin: 0 0 24px; min-width: 0; }
+.musico-details-heading img { flex: none; width: 112px; height: 112px; object-fit: cover; border-radius: 5px; }
+.musico-details-name { display: grid; flex: 1; gap: 4px; min-width: 0; }
 .musico-details-heading strong { color: var(--text-h); font-size: 22px; }
 .musico-details-heading span { color: var(--text-grey); }
-.musico-details-fields { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 8px 14px; margin: 18px 0; }
+.musico-details-name strong, .musico-details-name span { overflow-wrap: anywhere; }
+.musico-details-fields { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px 18px; margin: 24px 0; padding: 20px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); }
+.musico-details-fields[hidden] { display: none; }
 .musico-details-fields dt { color: var(--text-grey); }
 .musico-details-fields dd { margin: 0; overflow-wrap: anywhere; }
-.musico-details-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.musico-details-actions .auth-button { width: auto; text-decoration: none; }
-.musico-details-dialog canvas { width: 100%; max-height: 120px; margin-top: 16px; border: 1px solid var(--border); background: var(--field); }
+.musico-details-actions { display: flex; flex: none; align-items: flex-start; gap: 4px; margin-left: auto; }
+.musico-details-actions .musico-icon-action { text-decoration: none; }
+.musico-details-tools { margin-top: 24px; }
+.musico-details-tools .auth-button { width: auto; }
+.musico-details-page canvas { display: block; width: 100%; max-height: 120px; margin-top: 16px; border: 1px solid var(--border); background: var(--field); }
+.musico-details-page [data-spectrogram] { height: clamp(220px, 35vw, 360px); max-height: none; box-sizing: border-box; }
+.musico-details-page canvas[hidden] { display: none; }
+.musico-frequency-controls { display: flex; align-items: center; gap: 16px; margin-top: 8px; color: var(--text-grey); font-size: 13px; }
+.musico-frequency-controls[hidden] { display: none; }
+.musico-frequency-controls label { white-space: nowrap; }
+.musico-frequency-controls input { flex: 1; min-width: 0; accent-color: var(--accent); }
+@media (max-width: 520px) {
+  .musico-details-heading { gap: 10px; }
+  .musico-details-heading img { width: 72px; height: 72px; }
+  .musico-details-heading strong { font-size: 18px; }
+  .musico-details-actions { gap: 0; }
+  .musico-details-actions .musico-icon-action { width: 32px; height: 32px; }
+  .musico-details-actions .musico-icon-action svg { width: 21px; height: 21px; }
+  .musico-frequency-controls { align-items: stretch; flex-direction: column; gap: 4px; }
+  .musico-details-fields { grid-template-columns: 1fr; gap: 3px; padding: 16px; }
+  .musico-details-fields dd + dt { margin-top: 9px; }
+}
 .musico-row-actions .auth-button { width: auto; }
 .musico-icon-action { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 4px; border: 0; background: none; color: var(--text); cursor: pointer; }
 .musico-icon-action svg { width: 24px; height: 24px; }
 .musico-icon-action:hover, .musico-icon-action:focus-visible { color: var(--accent); }
 .musico-icon-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-body:has(.musico-player-bar:not([hidden])) .musico-page { padding-bottom: 160px; }
-.musico-player-bar { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: minmax(120px, 1fr) auto minmax(180px, 1.4fr) auto; align-items: center; gap: 16px; padding: 14px max(24px, calc((100vw - 1100px) / 2)); border-top: 1px solid var(--border); background: var(--panel); box-shadow: 0 -8px 24px rgb(0 0 0 / 25%); }
+body:has(.musico-player-bar:not([hidden])) .musico-page { padding-bottom: 150px; }
+.musico-player-bar { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; padding: 12px 24px 14px; border-top: 1px solid var(--border); background: var(--panel); }
 .musico-player-bar[hidden] { display: none; }
-.musico-player-name { display: grid; gap: 2px; min-width: 0; }
+.musico-player-inner { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px 24px; width: min(100%, 1100px); margin: 0 auto; }
+.musico-player-track { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.musico-player-art { display: grid; flex: none; width: 48px; height: 48px; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: 5px; background: var(--field); color: var(--text-grey); }
+.musico-player-art img { width: 100%; height: 100%; object-fit: cover; }
+.musico-player-art svg { width: 23px; height: 23px; }
+.musico-player-name { display: grid; gap: 2px; min-width: 0; text-align: left; }
 .musico-player-name strong, .musico-player-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.musico-player-name span { color: var(--text-grey); font-size: 13px; }
-.musico-player-controls, .musico-player-progress { display: flex; align-items: center; gap: 8px; }
-.musico-player-controls button { width: 36px; height: 36px; border: 0; background: none; color: var(--text-h); font-size: 20px; cursor: pointer; }
-.musico-player-controls button:hover { color: var(--accent); }
-.musico-mode-label, .musico-timer-label { display: flex; align-items: center; gap: 6px; color: var(--text-grey); font-size: 13px; white-space: nowrap; }
-.musico-mode-label select, .musico-timer-label input { min-height: 32px; border: 1px solid var(--border); border-radius: 4px; background: var(--field); color: var(--text); }
-.musico-mode-label select { padding: 4px 20px 4px 8px; }
-.musico-timer-label input { width: 50px; padding: 4px; text-align: center; }
-.musico-player-progress input { width: 100%; accent-color: var(--accent); }
-.musico-player-progress span { color: var(--text-grey); font-size: 12px; }
+.musico-player-name strong { color: var(--text-h); font-size: 14px; }
+.musico-player-name span { color: var(--text-grey); font-size: 12px; }
+.musico-player-controls, .musico-player-progress, .musico-player-options { display: flex; align-items: center; }
+.musico-player-controls { justify-content: center; gap: 6px; }
+.musico-player-controls button { display: grid; width: 38px; height: 38px; place-items: center; padding: 8px; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--text-h); cursor: pointer; }
+.musico-player-controls .musico-player-toggle { width: 42px; height: 42px; border-color: var(--border); background: var(--field); }
+.musico-player-controls button svg { width: 22px; height: 22px; }
+.musico-player-controls button:hover, .musico-mode-button:hover { border-color: var(--accent); color: var(--accent); }
+.musico-player-controls button:focus-visible, .musico-mode-button:focus-visible, .musico-timer-label input:focus-visible, .musico-player-progress input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.musico-player-options { justify-content: flex-end; gap: 12px; }
+.musico-mode-button { display: grid; justify-items: center; gap: 1px; min-width: 62px; padding: 3px 5px; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--text-h); cursor: pointer; }
+.musico-mode-button svg { display: block; width: 23px; height: 23px; }
+.musico-mode-button [data-mode-name] { color: var(--text-grey); font-size: 10px; font-weight: 700; }
+.musico-timer-label { display: flex; align-items: center; gap: 5px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--field); color: var(--text-grey); font-size: 12px; white-space: nowrap; }
+.musico-timer-label svg { width: 16px; height: 16px; }
+.musico-timer-label input { width: 38px; padding: 1px 0; border: 0; background: transparent; color: var(--text-h); font: inherit; text-align: center; }
+.musico-player-progress { grid-column: 1 / -1; gap: 10px; }
+.musico-player-progress span { min-width: 36px; color: var(--text-grey); font-size: 12px; font-variant-numeric: tabular-nums; }
+.musico-player-progress span:first-child { text-align: right; }
+.musico-player-progress span:last-child { text-align: left; }
+.musico-player-progress input { flex: 1; height: 5px; margin: 0; appearance: none; border-radius: 3px; background: linear-gradient(to right, var(--accent) var(--seek-progress, 0%), var(--border) var(--seek-progress, 0%)); cursor: pointer; }
+.musico-player-progress input::-webkit-slider-thumb { width: 12px; height: 12px; appearance: none; border: 0; border-radius: 50%; background: var(--text-h); }
+.musico-player-progress input::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--text-h); }
 .musico-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 16px; margin-top: 40px; }
 .musico-browse-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
 .musico-browse-tabs a { padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-grey); text-decoration: none; }
@@ -128,7 +168,7 @@ body:has(.musico-player-bar:not([hidden])) .musico-page { padding-bottom: 160px;
 .musico-add-row { justify-content: flex-start; margin-top: 24px; }
 .musico-add-row .auth-button { width: auto; white-space: nowrap; }
 .musico-dialog { width: min(100% - 32px, 430px); padding: 24px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: var(--text); }
-#edit-song-dialog { width: min(100% - 32px, 620px); }
+.musico-edit-song-dialog { width: min(100% - 32px, 620px); }
 .musico-dialog::backdrop { background: rgb(0 0 0 / 75%); }
 .musico-dialog h2 { margin: 0 0 20px; color: var(--text-h); }
 .musico-dialog-actions { justify-content: flex-end; margin-top: 20px; }
@@ -153,7 +193,14 @@ body:has(.musico-player-bar:not([hidden])) .musico-page { padding-bottom: 160px;
   .musico-upload { align-self: flex-start; }
 }
 @media (max-width: 900px) {
-  .musico-player-bar { grid-template-columns: minmax(0, 1fr) auto; }
-  .musico-player-progress { grid-column: 1 / -1; grid-row: 2; }
-  .musico-timer-label { grid-column: 1 / -1; }
+  .musico-player-inner { grid-template-columns: minmax(0, 1fr) auto; }
+  .musico-player-controls { grid-column: 1 / -1; grid-row: 2; }
+  .musico-player-progress { grid-row: 3; }
+}
+@media (max-width: 520px) {
+  body:has(.musico-player-bar:not([hidden])) .musico-page { padding-bottom: 205px; }
+  .musico-player-bar { padding-inline: 16px; }
+  .musico-player-options { gap: 3px; }
+  .musico-timer-label { padding-inline: 4px; }
+  .musico-timer-label > span:first-of-type { display: none; }
 }

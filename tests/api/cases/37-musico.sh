@@ -5,7 +5,7 @@ test_musico_shared_track_playlists() {
     skip_test 'login fixture unavailable; skipping Musico test'
     return 200
   fi
-  local cookie_file audio_file response track_id first_id second_id range_status range_body content_hash upload_key listen_key restore_key playlist_key second_playlist_key initial_cursor first_change_cursor snapshot_cursor delete_cursor track_version stats_version stale_version first_version second_version
+  local cookie_file audio_file response track_id media_audio_id first_id second_id range_status range_body content_hash upload_key listen_key restore_key playlist_key second_playlist_key initial_cursor first_change_cursor snapshot_cursor delete_cursor track_version stats_version stale_version first_version second_version
   cookie_file="$(mktemp)"
   audio_file="$(mktemp --suffix=.wav)"
   php -r '
@@ -44,15 +44,41 @@ test_musico_shared_track_playlists() {
     -F 'album=Uploaded album' -F 'genre=Rock' -F 'year=2025' -F 'track_number=3' \
     -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/musico/tracks")"
   track_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  media_audio_id="$(jq -r '.media_audio_id // empty' <<<"${response%$'\n'*}")"
   track_version="$(jq -r '.version // empty' <<<"${response%$'\n'*}")"
   stats_version="$(jq -r '.stats_version // empty' <<<"${response%$'\n'*}")"
   content_hash="$(sha256sum "${audio_file}" | cut -d ' ' -f 1)"
   if [[ "${response##*$'\n'}" != 201 || ! "${track_id}" =~ ^[1-9][0-9]*$ \
+    || ! "${media_audio_id}" =~ ^[1-9][0-9]*$ \
     || "${track_version}" != 1 || "${stats_version}" != 1 ]] \
     || ! jq -e --arg hash "${content_hash}" '.content_sha256 == $hash and .album == "Uploaded album" and .genre == "Rock" and .year == 2025 and .track_number == 3 and .analysis == null' \
       <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}" "${audio_file}"
     fail_test "Musico upload failed: ${response}"
+    return 1
+  fi
+
+  if [[ "$(test_psql musico "SELECT media_audio_id FROM public.track WHERE id = ${track_id}")" != "${media_audio_id}" \
+    || "$(test_psql musico "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'track' AND column_name IN ('content', 'original_name', 'mime_type', 'size_bytes', 'content_sha256')")" != 0 \
+    || "$(test_psql media "SELECT sha256 FROM public.audio_file WHERE id = ${media_audio_id} AND octet_length(content) = size_bytes")" != "${content_hash}" ]]; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test 'Musico track did not reference audio bytes in Media'
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/audio/${media_audio_id}")"
+  if [[ "${response##*$'\n'}" != 409 ]]; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Media deleted an audio file still used by Musico: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/audio")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --argjson id "${media_audio_id}" \
+    --argjson track "${track_id}" \
+    '.audio | any(.id == $id and (.musico_song_ids | index($track) != null))' <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Media audio list did not include uploaded song: ${response}"
     return 1
   fi
 
@@ -228,6 +254,15 @@ test_musico_shared_track_playlists() {
   if [[ "${response##*$'\n'}" != 428 ]]; then
     rm -f "${cookie_file}" "${audio_file}"
     fail_test "Musico listen accepted a missing idempotency key: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -H 'X-Audio-Name: shared.wav' \
+    -H 'Content-Type: application/octet-stream' --data-binary @"${audio_file}" \
+    -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/media/audio")"
+  if [[ "${response##*$'\n'}" != 201 ]] || ! jq -e --argjson id "${media_audio_id}" \
+    '.id == $id' <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Media audio upload did not reuse the file: ${response}"
     return 1
   fi
   response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
@@ -575,6 +610,30 @@ test_musico_shared_track_playlists() {
     <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}" "${audio_file}"
     fail_test "Musico playlist deletion tombstones failed: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+    --data "{\"media_audio_id\":${media_audio_id}}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/musico/tracks/from-media")"
+  if [[ "${response##*$'\n'}" != 201 ]] || ! jq -e --argjson id "${media_audio_id}" \
+    '.media_audio_id == $id' <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Could not add Media audio to Musico: ${response}"
+    return 1
+  fi
+  track_id="$(jq -r '.id' <<<"${response%$'\n'*}")"
+  response="$(curl -sS -b "${cookie_file}" -X DELETE -H 'If-Match: "v1"' -o /dev/null -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/musico/tracks/${track_id}")"
+  if [[ "${response}" != 204 ]]; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Could not delete Media-backed song: HTTP ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X DELETE -o /dev/null -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/audio/${media_audio_id}")"
+  if [[ "${response}" != 204 ]]; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Could not delete unreferenced Media audio: HTTP ${response}"
     return 1
   fi
   rm -f "${cookie_file}" "${audio_file}"

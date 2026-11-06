@@ -33,6 +33,7 @@ case "${MODE}" in
       "${REPO_ROOT}/scripts/backup_postgresql.sh" \
       "${REPO_ROOT}/scripts/setup_php_fpm.sh" "${REPO_ROOT}/scripts/setup_email_worker.sh" \
       "${REPO_ROOT}/scripts/setup_nginx.sh" "${REPO_ROOT}/scripts/deploy_api.sh" \
+      "${REPO_ROOT}/scripts/migrate_musico_audio.sh" "${REPO_ROOT}/scripts/migrate_musico_audio.php" \
       "${REPO_ROOT}/scripts/deploy_home.sh" \
       "${REPO_ROOT}/scripts/deploy_quiz.sh" "${REPO_ROOT}/scripts/deploy_musico.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
@@ -112,6 +113,8 @@ case "${MODE}" in
         "${REPO_ROOT}/configs/systemd/softerr-recover-quiz-imports.timer" \
         "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/systemd/"
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_api.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/migrate_musico_audio.sh" \
+        "${REPO_ROOT}/scripts/migrate_musico_audio.php" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
       scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/api/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/api/"
     fi
     if app_selected home; then
