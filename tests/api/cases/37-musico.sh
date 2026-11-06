@@ -243,7 +243,7 @@ test_musico_shared_track_playlists() {
     '(.tracks | any(.id == $id and .analysis.estimated_bpm == 120))
      and ([.tracks[] | select(.content_sha256 == $hash)] | length) == 1
      and .usage.bytes >= $size and .usage.bytes <= .limits.bytes
-     and .limits.bytes == 4294967296
+     and .limits.bytes == 6442450944
      and .limits.per_file_bytes >= $size' <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}" "${audio_file}"
     fail_test "Musico storage usage was not reported: ${response}"

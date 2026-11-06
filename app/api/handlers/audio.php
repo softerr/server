@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 const MEDIA_AUDIO_MAX_BYTES = 25165824;
-const MEDIA_AUDIO_USER_MAX_BYTES = 4294967296;
+const MEDIA_AUDIO_USER_MAX_BYTES = 6442450944;
 
 function mediaAudioType(string $name, string $bytes): ?string
 {
@@ -50,7 +50,7 @@ function saveMediaAudioFile($db, int $ownerId, string $name, string $mime, strin
         return $row;
     }
     if (mediaAudioUsage($db, $ownerId) + strlen($bytes) > MEDIA_AUDIO_USER_MAX_BYTES) {
-        respond(413, ['error' => 'Your audio files are limited to 4 GiB']);
+        respond(413, ['error' => 'Your audio files are limited to 6 GiB']);
     }
     $saved = @pg_query_params($db,
         'INSERT INTO public.audio_file (owner_auth_user_id, original_name, mime_type, size_bytes, sha256, content)
