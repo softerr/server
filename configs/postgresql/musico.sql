@@ -33,8 +33,6 @@ CREATE TABLE IF NOT EXISTS public.track (
     analysis_saved_at TIMESTAMPTZ,
     created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
--- Existing installations get this column before the audio-copy upgrade runs.
-ALTER TABLE public.track ADD COLUMN IF NOT EXISTS media_audio_id BIGINT;
 CREATE INDEX IF NOT EXISTS track_user_id_idx ON public.track (user_id, id DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS track_user_media_audio_id_idx ON public.track (user_id, media_audio_id);
 

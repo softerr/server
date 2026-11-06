@@ -50,7 +50,6 @@ CREATE TABLE IF NOT EXISTS public.image_source (
     attribution TEXT NOT NULL
 );
 
--- Audio belongs to Media. Applications store only its ID and their own song metadata.
 CREATE TABLE IF NOT EXISTS public.audio_file (
     id BIGSERIAL PRIMARY KEY,
     owner_auth_user_id BIGINT NOT NULL,
@@ -67,8 +66,6 @@ CREATE TABLE IF NOT EXISTS public.audio_file (
 CREATE INDEX IF NOT EXISTS audio_file_owner_id_idx
     ON public.audio_file (owner_auth_user_id, id DESC);
 
--- Media is committed before the quiz transaction. Keep a durable record so a
--- failed or interrupted import can remove only images created by that import.
 CREATE TABLE IF NOT EXISTS public.quiz_import_recovery (
     id CHAR(32) PRIMARY KEY,
     owner_auth_user_id BIGINT NOT NULL,

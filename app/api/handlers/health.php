@@ -102,10 +102,5 @@ function handleReadiness(): never
     if (@pg_query($mediaDb, 'SELECT id, owner_auth_user_id, original_name, mime_type, size_bytes, sha256, content FROM public.audio_file LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media audio schema is not ready']);
     }
-    $pendingAudio = @pg_query($musicoDb, 'SELECT 1 FROM public.track WHERE media_audio_id IS NULL LIMIT 1');
-    if ($pendingAudio === false || pg_num_rows($pendingAudio) > 0) {
-        respond(503, ['status' => 'unavailable', 'error' => 'Musico audio upgrade is not complete']);
-    }
-
     respond(200, ['status' => 'ok', 'message' => 'API is ready']);
 }

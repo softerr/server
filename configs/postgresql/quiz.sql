@@ -25,8 +25,6 @@ CREATE INDEX IF NOT EXISTS quiz_user_id_id_idx
 CREATE INDEX IF NOT EXISTS quiz_public_id_idx
     ON public.quiz (id DESC) WHERE is_public = TRUE;
 
--- Survives quiz deletion so recovery can distinguish a committed import from
--- one whose quiz transaction rolled back after media was committed.
 CREATE TABLE IF NOT EXISTS public.quiz_import_receipt (
     id CHAR(32) PRIMARY KEY,
     owner_auth_user_id BIGINT NOT NULL,

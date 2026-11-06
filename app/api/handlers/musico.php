@@ -777,7 +777,6 @@ function handleStreamMusicoTrack(array $authUser, int $id): never
     if ($result === false) respond(500, ['error' => 'Could not load track']);
     $track = pg_fetch_assoc($result);
     if ($track === false) respond(404, ['error' => 'Track not found']);
-    if ($track['media_audio_id'] === null) respond(503, ['error' => 'Audio file is not ready']);
     streamMediaAudio(connectMediaDb(), (int) $track['media_audio_id'], (int) $authUser['id']);
 }
 
