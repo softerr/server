@@ -132,7 +132,11 @@ file can be deleted once no Musico song references it.
 - `POST /api/musico/playlists/{playlistId}/tracks` with `{ "track_id": 123 }`
   adds an owned track. The same track can appear in multiple playlists, once
   per playlist. `DELETE /api/musico/playlists/{playlistId}/tracks/{trackId}`
-  removes it from that playlist only.
+  removes it from that playlist only. `PUT /api/musico/playlists/{playlistId}/tracks`
+  with `{ "track_ids": [123, 456] }` replaces the ordered membership in one
+  transaction. Send the current playlist version in `If-Match`. If a response
+  is lost, fetch the playlist before retrying; matching membership means the
+  replacement already succeeded.
 
 ### Musico change feed
 

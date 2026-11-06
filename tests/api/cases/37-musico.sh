@@ -516,6 +516,46 @@ test_musico_shared_track_playlists() {
     else second_version="$((second_version + 1))"; fi
   done
 
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    -H "If-Match: \"v${first_version}\"" --data '{"track_ids":[]}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/musico/playlists/${first_id}/tracks")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --argjson version "$((first_version + 1))" \
+    '.track_ids == [] and .version == $version' <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Could not clear playlist in one request: ${response}"
+    return 1
+  fi
+  first_version="$((first_version + 1))"
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    -H "If-Match: \"v${first_version}\"" \
+    --data "{\"track_ids\":[${track_id}]}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/musico/playlists/${first_id}/tracks")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --argjson id "${track_id}" \
+    --argjson version "$((first_version + 1))" \
+    '.track_ids == [$id] and .version == $version' <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Could not restore playlist in one request: ${response}"
+    return 1
+  fi
+  first_version="$((first_version + 1))"
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    -H 'If-Match: "v1"' --data '{"track_ids":[]}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/musico/playlists/${first_id}/tracks")"
+  if [[ "${response##*$'\n'}" != 412 ]]; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Stale bulk playlist update was not rejected: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    -H "If-Match: \"v${first_version}\"" \
+    --data '{"track_ids":[999999999]}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/musico/playlists/${first_id}/tracks")"
+  if [[ "${response##*$'\n'}" != 404 ]]; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Bulk playlist update accepted an unowned track: ${response}"
+    return 1
+  fi
+
   response="$(curl -sS -b "${cookie_file}" -X DELETE -H "If-Match: \"v${first_version}\"" -w '%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/musico/playlists/${first_id}/tracks/${track_id}")"
   if [[ "${response}" != 204 ]]; then
@@ -551,7 +591,7 @@ test_musico_shared_track_playlists() {
   if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --arg cursor "${snapshot_cursor}" \
     '.has_more == false and .next_cursor == $cursor
      and ([.changes[] | select(.resource == "track" and .action == "upsert")] | length) == 6
-     and ([.changes[] | select(.resource == "playlist" and .action == "upsert")] | length) == 6' \
+     and ([.changes[] | select(.resource == "playlist" and .action == "upsert")] | length) == 8' \
     <<<"${response%$'\n'*}" >/dev/null; then
     rm -f "${cookie_file}" "${audio_file}"
     fail_test "Musico change feed missed a track or playlist write: ${response}"

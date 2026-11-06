@@ -666,6 +666,48 @@ paths:
         in: path
         required: true
         schema: {type: integer, format: int64, minimum: 1}
+    put:
+      tags: [Musico]
+      operationId: replaceMusicoPlaylistTracks
+      summary: Replace a playlist's tracks in one atomic update
+      parameters:
+        - {$ref: '#/components/parameters/MusicoVersion'}
+      description: Track IDs must be unique and belong to the signed-in user's library.
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [track_ids]
+              properties:
+                track_ids:
+                  type: array
+                  uniqueItems: true
+                  items: {type: integer, format: int64, minimum: 1}
+      responses:
+        '200':
+          description: Playlist tracks replaced.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [track_ids, version]
+                properties:
+                  track_ids:
+                    type: array
+                    items: {type: integer, format: int64, minimum: 1}
+                  version: {type: integer, format: int64, minimum: 1}
+        '400': {description: Invalid track IDs or If-Match.}
+        '401': {description: No active session.}
+        '404': {description: Playlist or track not found in your library.}
+        '412': {description: Playlist version changed; reload before retrying.}
+        '413': {description: Request body is too large.}
+        '428': {description: If-Match is required.}
+        '500': { $ref: '#/components/responses/InternalError' }
     post:
       tags: [Musico]
       operationId: addMusicoPlaylistTrack

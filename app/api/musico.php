@@ -82,6 +82,7 @@ if (is_string($path) && preg_match('#^/playlists/([1-9][0-9]*)/tracks$#D', $path
     $id = filter_var($match[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($id === false) respond(404, ['error' => 'Not found']);
     if ($method === 'POST') handleAddMusicoPlaylistTrack($authUser, $id);
+    if ($method === 'PUT') handleReplaceMusicoPlaylistTracks($authUser, $id);
     respond(405, ['error' => 'Method not allowed']);
 }
 if (is_string($path) && preg_match('#^/playlists/([1-9][0-9]*)$#D', $path, $match)) {

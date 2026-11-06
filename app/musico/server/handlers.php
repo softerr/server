@@ -995,6 +995,50 @@ function handleAddMusicoPlaylistTrack(array $authUser, int $playlistId): never
     respond(201, ['track_id' => $trackId, 'version' => $currentVersion]);
 }
 
+function handleReplaceMusicoPlaylistTracks(array $authUser, int $playlistId): never
+{
+    $expected = requiredMusicoVersion();
+    $body = readJsonBody(262144);
+    $trackIds = $body['track_ids'] ?? null;
+    if (!is_array($trackIds) || !array_is_list($trackIds)
+        || count($trackIds) !== count(array_unique($trackIds))
+        || count(array_filter($trackIds, static fn ($id): bool => !is_int($id) || $id < 1)) > 0) {
+        respond(400, ['error' => 'Invalid track IDs']);
+    }
+    $db = connectMusicoDb();
+    beginMusicoMutation($db, $authUser);
+    assertMusicoVersion($db, $authUser, 'playlist', $playlistId, $expected);
+    $ids = '{' . implode(',', $trackIds) . '}';
+    $owned = @pg_query_params($db,
+        'SELECT COUNT(*) FROM public.track t JOIN public."user" u ON u.id = t.user_id
+         WHERE u.auth_user_id = $1 AND t.id = ANY($2::bigint[])',
+        [$authUser['id'], $ids]);
+    if ($owned === false) respond(500, ['error' => 'Could not check playlist tracks']);
+    if ((int) pg_fetch_result($owned, 0, 0) !== count($trackIds)) {
+        respond(404, ['error' => 'Track not found in your library']);
+    }
+    if (@pg_query_params($db, 'DELETE FROM public.playlist_track WHERE playlist_id = $1',
+        [$playlistId]) === false
+        || @pg_query_params($db,
+            'INSERT INTO public.playlist_track (playlist_id, track_id, position)
+             SELECT $1, requested.track_id, requested.position::integer
+             FROM unnest($2::bigint[]) WITH ORDINALITY AS requested(track_id, position)',
+            [$playlistId, $ids]) === false) {
+        respond(500, ['error' => 'Could not replace playlist tracks']);
+    }
+    $updated = @pg_query_params($db,
+        'UPDATE public.playlist SET version = version + 1 WHERE id = $1 RETURNING version',
+        [$playlistId]);
+    if ($updated === false || pg_num_rows($updated) !== 1) {
+        respond(500, ['error' => 'Could not update playlist version']);
+    }
+    $version = (int) pg_fetch_result($updated, 0, 0);
+    recordMusicoChange($db, $authUser, 'playlist', $playlistId);
+    finishMusicoMutation($db);
+    header('ETag: "v' . $version . '"');
+    respond(200, ['track_ids' => $trackIds, 'version' => $version]);
+}
+
 function handleRemoveMusicoPlaylistTrack(array $authUser, int $playlistId, int $trackId): never
 {
     $expected = requiredMusicoVersion();
