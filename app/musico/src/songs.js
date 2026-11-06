@@ -26,7 +26,8 @@ export function renderSongs(app, { requestJson, responseError }) {
         <select id="song-genre" aria-label="Filter by genre"><option value="">All genres</option></select>
         <select id="song-year" aria-label="Filter by year"><option value="">All years</option></select>
         <select id="song-sort" aria-label="Sort songs">
-          <option value="newest">Newest added</option><option value="oldest">Oldest added</option>
+          <option value="phone">Phone order</option><option value="newest">Newest added</option>
+          <option value="oldest">Oldest added</option>
           <option value="title">Title A–Z</option><option value="title-desc">Title Z–A</option>
           <option value="artist">Artist A–Z</option><option value="year-desc">Year newest</option>
           <option value="year">Year oldest</option><option value="rating-desc">Rating highest</option>
@@ -44,6 +45,7 @@ export function renderSongs(app, { requestJson, responseError }) {
   const controls = page.querySelector('.musico-library-tools')
   const initialFilters = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
   let tracks = []
+  let phoneOrder = new Map()
   let initialFiltersApplied = false
 
   function options(id, values, defaultLabel) {
@@ -68,6 +70,8 @@ export function renderSongs(app, { requestJson, responseError }) {
     const sort = controls.querySelector('#song-sort').value
     const compare = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })
     return filtered.sort((a, b) => {
+      if (sort === 'phone') return (phoneOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER)
+        - (phoneOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.id - b.id
       if (sort === 'title') return compare(a.title, b.title)
       if (sort === 'title-desc') return compare(b.title, a.title)
       if (sort === 'artist') return compare(a.artist, b.artist) || compare(a.title, b.title)
@@ -107,6 +111,7 @@ export function renderSongs(app, { requestJson, responseError }) {
       const payload = await loadJson(requestJson, 'GET', '/api/musico/tracks', undefined, responseError)
       if (!app.contains(list)) return
       tracks = payload.tracks ?? []
+      phoneOrder = new Map((payload.phone_order ?? []).map((id, index) => [id, index]))
       usage.querySelector('[data-storage-usage]').textContent = `${formatAudioBytes(payload.usage.bytes)} / ${formatAudioBytes(payload.limits.bytes)}`
       const storageBar = usage.querySelector('[data-storage-bar]')
       storageBar.max = payload.limits.bytes

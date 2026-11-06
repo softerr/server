@@ -58,6 +58,33 @@ test_musico_shared_track_playlists() {
     return 1
   fi
 
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    --data "{\"track_ids\":[${track_id}]}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/musico/tracks/order")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e '.count == 1' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Could not save phone song order: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/musico/tracks")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --argjson id "${track_id}" \
+    '.phone_order == [$id]' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Phone song order was not returned: ${response}"
+    return 1
+  fi
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    --data "{\"track_ids\":[${track_id},${track_id}]}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/musico/tracks/order")"
+  if [[ "${response##*$'\n'}" != 400 ]]; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Duplicate phone order IDs were accepted: ${response}"
+    return 1
+  fi
+
   if [[ "$(test_psql musico "SELECT media_audio_id FROM public.track WHERE id = ${track_id}")" != "${media_audio_id}" \
     || "$(test_psql musico "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'track' AND column_name IN ('content', 'original_name', 'mime_type', 'size_bytes', 'content_sha256')")" != 0 \
     || "$(test_psql media "SELECT sha256 FROM public.audio_file WHERE id = ${media_audio_id} AND octet_length(content) = size_bytes")" != "${content_hash}" ]]; then

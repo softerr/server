@@ -36,6 +36,14 @@ CREATE TABLE IF NOT EXISTS public.track (
 CREATE INDEX IF NOT EXISTS track_user_id_idx ON public.track (user_id, id DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS track_user_media_audio_id_idx ON public.track (user_id, media_audio_id);
 
+CREATE TABLE IF NOT EXISTS public.track_order (
+    user_id BIGINT NOT NULL REFERENCES public."user"(id) ON DELETE CASCADE,
+    track_id BIGINT NOT NULL REFERENCES public.track(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    PRIMARY KEY (user_id, track_id),
+    UNIQUE (user_id, position)
+);
+
 CREATE TABLE IF NOT EXISTS public.track_upload_request (
     user_id BIGINT NOT NULL REFERENCES public."user"(id) ON DELETE CASCADE,
     request_id UUID NOT NULL,
@@ -101,6 +109,7 @@ GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public."user" TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.user_id_seq TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.track, public.playlist, public.playlist_track TO auth_api;
+GRANT SELECT, INSERT, DELETE ON TABLE public.track_order TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.playlist_create_request TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.track_upload_request TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.track_stat_request TO auth_api;

@@ -11,7 +11,7 @@ const modeIcons = {
 }
 const previousIcon = icon('<path d="M5 5v14M19 5l-10 7 10 7V5Z"/>')
 const nextIcon = icon('<path d="M19 5v14M5 5l10 7-10 7V5Z"/>')
-const playIcon = icon('<path d="m8 5 11 7-11 7V5Z"/>')
+export const playIcon = icon('<path d="m8 5 11 7-11 7V5Z"/>')
 const pauseIcon = icon('<path d="M8 5v14M16 5v14"/>')
 const noteIcon = icon('<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>')
 const timerIcon = icon('<circle cx="12" cy="13" r="8"/><path d="M12 9v5l3 2M9 2h6"/>')

@@ -1,4 +1,4 @@
-import { createPlayer } from './player.js'
+import { createPlayer, playIcon } from './player.js'
 import { deleteIcon, removeIcon, missingMediaIcon } from '../../shared/icons.js'
 import { showMissingImageWhenUnavailable } from '../../shared/missing-image.js'
 import { formatBytes } from '../../shared/format.js'
@@ -72,7 +72,7 @@ export function renderTrackRow(track, onPlay, onDelete, removeLabel = 'Delete', 
   main.append(info)
   const actions = document.createElement('div')
   actions.className = 'musico-row-actions'
-  actions.append(button('Play', 'auth-button auth-button-secondary', onPlay))
+  actions.append(iconButton('Play song', playIcon, onPlay))
   if (onDetails) actions.append(iconButton('Song details', detailsIcon, onDetails))
   if (onDelete) actions.append(iconButton(removeLabel === 'Remove' ? 'Remove song from playlist' : 'Delete song',
     removeLabel === 'Remove' ? removeIcon : deleteIcon, onDelete))

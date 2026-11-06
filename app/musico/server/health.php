@@ -13,6 +13,7 @@ return static function (): void {
             t.estimated_bpm, t.estimated_key, t.peak_db, t.average_db,
             t.dynamic_range_db, t.analysis_saved_at,
             p.id, p.user_id, p.version, pt.playlist_id, pt.track_id, pt.position,
+            track_order.user_id, track_order.track_id, track_order.position,
             upload.request_id, upload.request_sha256, upload.track_id,
             stat_request.request_id, stat_request.request_sha256, stat_request.track_id,
             stat_request.play_count, stat_request.listen_ms, stat_request.stats_version,
@@ -21,7 +22,8 @@ return static function (): void {
             playlist_create_request.request_name, playlist_create_request.playlist_id
          FROM public."user" u, public.track t, public.playlist p, public.playlist_track pt,
               public.track_upload_request upload, public.track_stat_request stat_request,
-              public.change_log changes, public.playlist_create_request playlist_create_request LIMIT 0') === false) {
+              public.change_log changes, public.playlist_create_request playlist_create_request,
+              public.track_order track_order LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Musico database schema is not ready']);
     }
 

@@ -144,12 +144,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [tracks, usage, limits]
+                required: [tracks, phone_order, usage, limits]
                 properties:
                   tracks:
                     type: array
                     items:
                       $ref: '#/components/schemas/MusicoTrack'
+                  phone_order:
+                    type: array
+                    description: Server track IDs in the most recently synced phone's default song order. Other tracks follow these in the web library.
+                    items: {type: integer, format: int64, minimum: 1}
                   usage:
                     type: object
                     required: [bytes]
@@ -207,6 +211,43 @@ paths:
         '401': {description: No active session.}
         '409': {description: Idempotency-Key was reused for a different upload, or the original track was deleted.}
         '413': {description: File or user storage limit exceeded.}
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /musico/tracks/order:
+    put:
+      tags: [Musico]
+      operationId: saveMusicoTrackOrder
+      summary: Set the web library order from a phone
+      description: Replaces the account's phone order. Submit the server track IDs in the same order as the phone's default Songs view. Songs absent from the list follow those supplied. The most recently synced phone determines the order.
+      security:
+        - sessionCookie: []
+        - mobileBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [track_ids]
+              properties:
+                track_ids:
+                  type: array
+                  maxItems: 50000
+                  uniqueItems: true
+                  items: {type: integer, format: int64, minimum: 1}
+      responses:
+        '200':
+          description: Order saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count: {type: integer, minimum: 0}
+        '400': {description: Invalid, duplicate, or unavailable track ID.}
+        '401': {description: No active session.}
+        '413': {description: Request body is too large.}
         '500': { $ref: '#/components/responses/InternalError' }
 
   /musico/tracks/from-media:

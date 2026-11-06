@@ -296,12 +296,58 @@ function handleListMusicoTracks(array $authUser): never
          WHERE u.auth_user_id = $1 ORDER BY t.id DESC', [$authUser['id']]);
     if ($result === false) respond(500, ['error' => 'Failed to load tracks']);
     $tracks = publicMusicoTracks($result, (int) $authUser['id']);
+    $order = @pg_query_params($db,
+        'SELECT o.track_id FROM public.track_order o
+         JOIN public."user" u ON u.id = o.user_id
+         WHERE u.auth_user_id = $1 ORDER BY o.position', [$authUser['id']]);
+    if ($order === false) respond(500, ['error' => 'Failed to load phone order']);
+    $phoneOrder = [];
+    while (($row = pg_fetch_assoc($order)) !== false) $phoneOrder[] = (int) $row['track_id'];
     $usedBytes = mediaAudioUsage(connectMediaDb(), (int) $authUser['id']);
     respond(200, [
         'tracks' => $tracks,
+        'phone_order' => $phoneOrder,
         'usage' => ['bytes' => $usedBytes],
         'limits' => ['bytes' => MUSICO_USER_MAX_BYTES, 'per_file_bytes' => MUSICO_TRACK_MAX_BYTES],
     ]);
+}
+
+function handleSaveMusicoTrackOrder(array $authUser): never
+{
+    $body = readJsonBody(1048576);
+    $ids = $body['track_ids'] ?? null;
+    if (!is_array($ids) || !array_is_list($ids) || count($ids) > 50000) {
+        respond(400, ['error' => 'Invalid track order']);
+    }
+    $seen = [];
+    foreach ($ids as $id) {
+        if (!is_int($id) || $id < 1 || isset($seen[$id])) {
+            respond(400, ['error' => 'Invalid track order']);
+        }
+        $seen[$id] = true;
+    }
+    $db = connectMusicoDb();
+    beginMusicoMutation($db, $authUser);
+    $userId = ensureMusicoUserId($db, $authUser);
+    $array = '{' . implode(',', $ids) . '}';
+    $owned = @pg_query_params($db,
+        'SELECT COUNT(*) FROM public.track WHERE user_id = $1 AND id = ANY($2::bigint[])',
+        [$userId, $array]);
+    if ($owned === false) respond(500, ['error' => 'Could not check track order']);
+    if ((int) pg_fetch_result($owned, 0, 0) !== count($ids)) {
+        respond(400, ['error' => 'Track order contains an unavailable song']);
+    }
+    if (@pg_query_params($db, 'DELETE FROM public.track_order WHERE user_id = $1', [$userId]) === false) {
+        respond(500, ['error' => 'Could not clear track order']);
+    }
+    $saved = @pg_query_params($db,
+        'INSERT INTO public.track_order (user_id, track_id, position)
+         SELECT $1, item.track_id, item.ordinality - 1
+         FROM unnest($2::bigint[]) WITH ORDINALITY AS item(track_id, ordinality)',
+        [$userId, $array]);
+    if ($saved === false) respond(500, ['error' => 'Could not save track order']);
+    finishMusicoMutation($db);
+    respond(200, ['count' => count($ids)]);
 }
 
 function handleGetMusicoTrack(array $authUser, int $id): never

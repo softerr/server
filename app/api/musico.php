@@ -26,6 +26,10 @@ if ($path === '/tracks') {
     if ($method === 'POST') handleUploadMusicoTrack($authUser);
     respond(405, ['error' => 'Method not allowed']);
 }
+if ($path === '/tracks/order') {
+    if ($method === 'PUT') handleSaveMusicoTrackOrder($authUser);
+    respond(405, ['error' => 'Method not allowed']);
+}
 if ($path === '/tracks/from-media') {
     if ($method === 'POST') handleCreateMusicoTrackFromMedia($authUser);
     respond(405, ['error' => 'Method not allowed']);
