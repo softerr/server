@@ -58,7 +58,7 @@ playlists.
   genre, year, and track number. The web uploader reads embedded tags where
   available and sends them with the file.
   Accepted formats are MP3, Ogg, WAV, FLAC, and M4A. The maximum is 24 MiB per
-  file and 256 MiB per account.
+  file and 4 GiB per account.
 - Each track returns `content_sha256`, the SHA-256 hash of the uploaded audio
   bytes. Clients can compute the same hash for a local file to match it to a
   server track. Uploading the same bytes again for the same account returns

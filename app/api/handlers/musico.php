@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 const MUSICO_TRACK_MAX_BYTES = 25165824;
-const MUSICO_USER_MAX_BYTES = 268435456;
+const MUSICO_USER_MAX_BYTES = 4294967296;
 const MUSICO_ANALYSIS_COLUMNS = ['duration_ms', 'bit_rate', 'sample_rate_hz', 'bit_depth',
     'channels', 'codec', 'estimated_bpm', 'estimated_key', 'peak_db', 'average_db',
     'dynamic_range_db', 'analysis_saved_at'];
@@ -465,7 +465,7 @@ function handleUploadMusicoTrack(array $authUser): never
         'SELECT COALESCE(SUM(size_bytes), 0) FROM public.track WHERE user_id = $1', [$userId]);
     if ($usage === false) respond(500, ['error' => 'Could not check audio usage']);
     if ((int) pg_fetch_result($usage, 0, 0) + $size > MUSICO_USER_MAX_BYTES) {
-        respond(413, ['error' => 'Your audio library is limited to 256 MiB']);
+        respond(413, ['error' => 'Your audio library is limited to 4 GiB']);
     }
     $saved = @pg_query_params($db,
         'INSERT INTO public.track (user_id, title, artist, original_name, mime_type, size_bytes, content, content_sha256,

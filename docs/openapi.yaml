@@ -158,7 +158,7 @@ paths:
                     type: object
                     required: [bytes, per_file_bytes]
                     properties:
-                      bytes: { type: integer, minimum: 1 }
+                      bytes: { type: integer, const: 4294967296 }
                       per_file_bytes: { type: integer, minimum: 1 }
         '401': {description: No active session.}
         '500': { $ref: '#/components/responses/InternalError' }
@@ -166,7 +166,7 @@ paths:
       tags: [Musico]
       operationId: uploadMusicoTrack
       summary: Upload one audio file
-      description: MP3, Ogg, WAV, FLAC, and M4A are accepted. Each file is at most 24 MiB; each user's library is limited to 256 MiB. The server computes SHA-256 from the file bytes. Reuploading identical bytes for the same account returns the existing track without changing its metadata or consuming quota. Clients should send a new UUID in Idempotency-Key for each intended upload and reuse it when retrying that upload. Keys are retained for 30 days, including when the uploaded track is deleted.
+      description: MP3, Ogg, WAV, FLAC, and M4A are accepted. Each file is at most 24 MiB; each user's library is limited to 4 GiB. The server computes SHA-256 from the file bytes. Reuploading identical bytes for the same account returns the existing track without changing its metadata or consuming quota. Clients should send a new UUID in Idempotency-Key for each intended upload and reuse it when retrying that upload. Keys are retained for 30 days, including when the uploaded track is deleted.
       security:
         - sessionCookie: []
         - mobileBearer: []
