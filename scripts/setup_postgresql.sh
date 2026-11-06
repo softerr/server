@@ -98,9 +98,11 @@ systemctl daemon-reload
 systemctl enable --now softerr-prune-user-tokens.timer
 
 echo "Installing verified database backup timer..."
+echo "Installing backup script and database registry..."
 install -d -m 755 /usr/local/lib/softerr
 install -m 644 "${REPO_ROOT}/configs/apps.tsv" /etc/softerr/apps.tsv
 install -m 644 "${SCRIPT_DIR}/lib/app_registry.sh" /usr/local/lib/softerr/app_registry.sh
+echo "Preparing backup directory and existing archives..."
 install -d -o postgres -g www-data -m 2750 /var/backups/softerr
 chmod 2750 /var/backups/softerr
 # Existing verified archives become available to the web API for admin downloads.
@@ -110,7 +112,29 @@ install -m 755 "${BACKUP_SCRIPT_FILE}" /usr/local/lib/softerr/backup_postgresql.
 install -m 644 "${BACKUP_SERVICE_FILE}" /etc/systemd/system/softerr-backup-postgresql.service
 install -m 644 "${BACKUP_TIMER_FILE}" /etc/systemd/system/softerr-backup-postgresql.timer
 systemctl daemon-reload
-systemctl start softerr-backup-postgresql.service
+echo "Starting initial database backups and restore checks; this can take several minutes..."
+backup_started="$(date '+%Y-%m-%d %H:%M:%S')"
+systemctl start softerr-backup-postgresql.service &
+backup_start_pid=$!
+backup_wait_seconds=0
+while kill -0 "${backup_start_pid}" 2>/dev/null; do
+  sleep 1
+  backup_wait_seconds=$((backup_wait_seconds + 1))
+  if (( backup_wait_seconds % 10 == 0 )) && kill -0 "${backup_start_pid}" 2>/dev/null; then
+    backup_stage="$(journalctl --quiet --no-pager --output=cat --unit=softerr-backup-postgresql.service \
+      --since="${backup_started}" -n 1 2>/dev/null || true)"
+    echo "Initial backup and restore checks are still running: ${backup_stage:-waiting for service output}"
+  fi
+done
+if ! wait "${backup_start_pid}"; then
+  journalctl --quiet --no-pager --output=cat --unit=softerr-backup-postgresql.service \
+    --since="${backup_started}" || true
+  echo "Initial database backup or restore check failed." >&2
+  exit 1
+fi
+journalctl --quiet --no-pager --output=cat --unit=softerr-backup-postgresql.service \
+  --since="${backup_started}" || true
+echo "Initial database backups and restore checks passed. Enabling daily timer..."
 systemctl enable --now softerr-backup-postgresql.timer
 
 echo "Done."
