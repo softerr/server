@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/app_selection.sh"
+load_app_registry "${REPO_ROOT}"
 
 QEMU_ENV_FILE="${QEMU_ENV_FILE:-${REPO_ROOT}/.qemu.env}"
 if [[ -f "${QEMU_ENV_FILE}" ]]; then
@@ -315,13 +316,13 @@ provision_includes_app() {
 
 build_app_dist() {
   local app="$1"
-  echo "Building app/${app} from current source..."
+  echo "Building ${APP_SOURCES[$app]} from current source..."
   if ! command -v npm >/dev/null 2>&1; then
-    echo "npm is required to build app/${app} before VM deployment."
+    echo "npm is required to build ${app} before VM deployment."
     exit 1
   fi
   (
-    cd "${REPO_ROOT}/app/${app}"
+    cd "${REPO_ROOT}/${APP_SOURCES[$app]}"
     if [[ -f package-lock.json ]]; then
       npm ci
     else
@@ -331,41 +332,21 @@ build_app_dist() {
   )
 }
 
-check_home_route() {
-  local status
-  status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 10 "http://127.0.0.1:${HTTP_PORT}/")" || return 1
-  [[ "${status}" == 200 ]] || { echo "Home route returned HTTP ${status}, expected 200." >&2; return 1; }
-  echo "Home route / returned HTTP 200."
-}
-
-check_quiz_routes() {
-  local route status
-  for route in /quiz /quiz/; do
+check_app_routes() {
+  local app="$1" route status
+  local -a routes=("${APP_ROUTES[$app]}")
+  [[ "${APP_ROUTES[$app]}" == / ]] || routes+=("${APP_ROUTES[$app]%/}")
+  for route in "${routes[@]}"; do
     if ! status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 10 "http://127.0.0.1:${HTTP_PORT}${route}")"; then
-      echo "Quiz route check failed: ${route} is unreachable."
+      echo "${app} route check failed: ${route} is unreachable."
       return 1
     fi
     if [[ "${status}" != "200" ]]; then
-      echo "Quiz route check failed: ${route} returned HTTP ${status}, expected 200."
+      echo "${app} route check failed: ${route} returned HTTP ${status}, expected 200."
       return 1
     fi
   done
-  echo "Quiz routes /quiz and /quiz/ returned HTTP 200."
-}
-
-check_musico_routes() {
-  local route status
-  for route in /musico /musico/; do
-    if ! status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 10 "http://127.0.0.1:${HTTP_PORT}${route}")"; then
-      echo "Musico route check failed: ${route} is unreachable."
-      return 1
-    fi
-    if [[ "${status}" != "200" ]]; then
-      echo "Musico route check failed: ${route} returned HTTP ${status}, expected 200."
-      return 1
-    fi
-  done
-  echo "Musico routes /musico and /musico/ returned HTTP 200."
+  echo "${app} routes returned HTTP 200."
 }
 
 sync_repo_to_vm() {
@@ -384,13 +365,14 @@ sync_repo_to_vm() {
     fi
   fi
 
+  local -a app_excludes=()
+  local app
+  for app in "${WEB_APPS[@]}"; do app_excludes+=(--exclude="${APP_SOURCES[$app]}/node_modules"); done
   rsync -az --delete \
     "${secret_filters[@]}" \
     --exclude=".git" \
     --exclude=".qemu" \
-    --exclude="app/home/node_modules" \
-    --exclude="app/quiz/node_modules" \
-    --exclude="app/musico/node_modules" \
+    "${app_excludes[@]}" \
     -e "${rsync_ssh}" \
     "${REPO_ROOT}/" "${SSH_TARGET}:${REMOTE_APP_DIR}/"
 }
@@ -484,39 +466,28 @@ provision_vm() {
     echo "Signup verification email in VM will fail unless VM has a working local MTA for PHP mail()."
   fi
 
-  if provision_includes_app home; then
-    build_app_dist home
-  fi
-  if provision_includes_app quiz; then
-    build_app_dist quiz
-  fi
-  if provision_includes_app musico; then
-    build_app_dist musico
-  fi
+  local app
+  for app in "${WEB_APPS[@]}"; do
+    if provision_includes_app "${app}"; then build_app_dist "${app}"; fi
+  done
   sync_repo_to_vm
 
   echo "Running server setup scripts inside VM..."
   run_remote_script "scripts/provision.sh"
-  if provision_includes_app home; then
-    check_home_route
-  fi
-  if provision_includes_app quiz; then
-    check_quiz_routes
-  fi
-  if provision_includes_app musico; then
-    check_musico_routes
-  fi
+  for app in "${WEB_APPS[@]}"; do
+    if provision_includes_app "${app}"; then check_app_routes "${app}"; fi
+  done
 }
 
 apply_component_vm() {
   local component="$1"
   case "${component}" in
-    all|postgresql|php-fpm|email-worker|nginx|api|home|quiz|musico|apps) ;;
-    *)
+    all|postgresql|php-fpm|email-worker|nginx|api|apps) ;;
+    *) if ! web_app_exists "${component}"; then
       echo "Unknown provisioning component: ${component}" >&2
-      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, home, quiz, musico, apps" >&2
+      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, apps, ${WEB_APPS[*]}" >&2
       return 1
-      ;;
+      fi ;;
   esac
   if [[ "${component}" == apps ]]; then
     select_apps "${APP_LIST:-all}"
@@ -525,8 +496,16 @@ apply_component_vm() {
   local PROVISION_COMPONENTS="${component}"
   if [[ "${component}" == api ]]; then
     PROVISION_COMPONENTS="nginx,api"
-  elif [[ "${component}" == musico ]]; then
-    PROVISION_COMPONENTS="nginx,musico"
+  elif [[ "${component}" == apps ]]; then
+    local selected_app
+    for selected_app in "${SELECTED_APPS[@]}"; do
+      if [[ "${selected_app}" == api || -n "${APP_HEALTH_ROUTES[$selected_app]:-}" ]]; then
+        PROVISION_COMPONENTS="nginx,apps"
+        break
+      fi
+    done
+  elif web_app_exists "${component}" && [[ -n "${APP_HEALTH_ROUTES[$component]}" ]]; then
+    PROVISION_COMPONENTS="nginx,${component}"
   fi
 
   if ! qemu_running; then
@@ -538,27 +517,18 @@ apply_component_vm() {
   wait_for_cloud_init
   bootstrap_vm
 
-  if provision_includes_app home; then
-    build_app_dist home
-  fi
-  if provision_includes_app quiz; then
-    build_app_dist quiz
-  fi
-  if provision_includes_app musico; then
-    build_app_dist musico
-  fi
+  local app
+  for app in "${WEB_APPS[@]}"; do
+    if provision_includes_app "${app}"; then build_app_dist "${app}"; fi
+  done
 
   sync_repo_to_vm
   run_remote_script "scripts/provision.sh"
-  if provision_includes_app home; then
-    check_home_route
-  fi
-  if provision_includes_app quiz || [[ "${component}" == nginx ]]; then
-    check_quiz_routes
-  fi
-  if provision_includes_app musico || [[ "${component}" == nginx ]]; then
-    check_musico_routes
-  fi
+  for app in "${WEB_APPS[@]}"; do
+    if provision_includes_app "${app}" || [[ "${component}" == nginx ]]; then
+      check_app_routes "${app}"
+    fi
+  done
   echo "Applied ${component} in VM."
 }
 
@@ -612,7 +582,7 @@ Environment variables:
   API_TEST_REQUIRE_EMAIL       Default: 1 (require signup email delivery checks)
   API_TEST_MAILPIT_URL         Optional Mailpit API URL for resend delivery test
   PROVISION_COMPONENTS         Components to run during start (default: all)
-  APP_LIST                     all|api|home|quiz|musico when applying apps (default: all)
+  APP_LIST                     all|api|a registered app when applying apps (default: all)
   VM_NAME                      Default: server-clone
   VM_USER                      Default: ubuntu (repo syncs to /home/<VM_USER>/server)
   VM_DIR                       Default: ./.qemu/<VM_NAME>

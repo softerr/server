@@ -5,23 +5,7 @@ location / {
     try_files $uri $uri/ /index.html;
 }
 
-location = /quiz {
-    rewrite ^ /quiz/index.html last;
-}
-
-location /quiz/ {
-    alias /var/www/quiz/;
-    try_files $uri $uri/ /quiz/index.html;
-}
-
-location = /musico {
-    rewrite ^ /musico/index.html last;
-}
-
-location /musico/ {
-    alias /var/www/musico/;
-    try_files $uri $uri/ /musico/index.html;
-}
+__WEB_APP_ROUTES__
 
 location = /api {
     return 301 /api/;
@@ -74,23 +58,7 @@ location /api/auth/ {
     try_files $uri /api/auth.php?$query_string;
 }
 
-location ~ ^/api/quiz/quizzes/import/*$ {
-    root /var/www;
-    client_max_body_size 48m;
-    try_files $uri /api/quiz.php?$query_string;
-}
-
-location /api/quiz/ {
-    root /var/www;
-    client_max_body_size 2m;
-    try_files $uri /api/quiz.php?$query_string;
-}
-
-location /api/musico/ {
-    root /var/www;
-    client_max_body_size 26m;
-    try_files $uri /api/musico.php?$query_string;
-}
+__APP_API_ROUTES__
 
 location ~ ^/api/media/audio(?:/|$) {
     root /var/www;
@@ -110,27 +78,7 @@ location /api/ {
     try_files $uri $uri/ /api/index.php?$query_string;
 }
 
-location = /api/quiz.php {
-    root /var/www;
-    internal;
-    client_max_body_size 48m;
-    include snippets/fastcgi-php.conf;
-    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-    fastcgi_param HTTP_AUTHORIZATION $http_authorization;
-    fastcgi_pass unix:__PHP_FPM_SOCK__;
-}
-
 location = /api/media.php {
-    root /var/www;
-    internal;
-    client_max_body_size 26m;
-    include snippets/fastcgi-php.conf;
-    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-    fastcgi_param HTTP_AUTHORIZATION $http_authorization;
-    fastcgi_pass unix:__PHP_FPM_SOCK__;
-}
-
-location = /api/musico.php {
     root /var/www;
     internal;
     client_max_body_size 26m;

@@ -8,9 +8,3 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'auth') \gexec
 
 SELECT 'CREATE DATABASE media'
 WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'media') \gexec
-
-SELECT 'CREATE DATABASE quiz'
-WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'quiz') \gexec
-
-SELECT 'CREATE DATABASE musico'
-WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'musico') \gexec

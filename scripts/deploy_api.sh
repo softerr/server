@@ -8,6 +8,9 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/lib/app_registry.sh"
+load_app_registry "${REPO_ROOT}"
 REPO_API_DIR="${SCRIPT_DIR}/../app/api"
 REMOTE_API_DIR="${REMOTE_DIR:-/tmp/workflow-artifacts}/app/api"
 
@@ -25,11 +28,37 @@ if [[ -z "${SOURCE_DIR}" ]] || [[ ! -f "${SOURCE_DIR}/index.php" ]]; then
   echo "Set API_SOURCE_DIR to a directory that contains the API entry files."
   exit 1
 fi
-for entrypoint in index auth quiz media musico; do
+for entrypoint in index auth media; do
   if [[ ! -f "${SOURCE_DIR}/${entrypoint}.php" ]]; then
     echo "Missing API entry file: ${SOURCE_DIR}/${entrypoint}.php" >&2
     exit 1
   fi
+done
+for app in "${WEB_APPS[@]}"; do
+  [[ -z "${APP_HEALTH_ROUTES[$app]}" ]] && continue
+  if [[ ! -f "${SOURCE_DIR}/${app}.php" ]]; then
+    echo "Missing API entry file: ${SOURCE_DIR}/${app}.php" >&2
+    exit 1
+  fi
+done
+
+api_release="$(mktemp -d "${TMPDIR:-/tmp}/softerr-api-source.XXXXXXXX")"
+trap 'rm -rf -- "${api_release}"' EXIT
+cp -a -- "${SOURCE_DIR}/." "${api_release}/"
+for app in "${WEB_APPS[@]}"; do
+  [[ -z "${APP_HEALTH_ROUTES[$app]}" ]] && continue
+  module_source="${REPO_ROOT}/${APP_SOURCES[$app]}/server"
+  if [[ ! -d "${module_source}" ]]; then
+    echo "Missing ${app} API module: ${module_source}" >&2
+    exit 1
+  fi
+  if [[ ! -f "${module_source}/health.php" ]]; then
+    echo "Missing ${app} API readiness check: ${module_source}/health.php" >&2
+    exit 1
+  fi
+  install -d "${api_release}/apps/${app}"
+  cp -a -- "${module_source}/." "${api_release}/apps/${app}/"
+  rm -f -- "${api_release}/apps/${app}/schema.sql" "${api_release}/apps/${app}/nginx.conf"
 done
 
 TARGET_DIR="${API_TARGET_DIR:-/var/www/api}"
@@ -74,11 +103,14 @@ verify_api_release() {
   restart_api_fpm || return 1
   verify_local_app_route /api/ api || return 1
   verify_local_app_route /api/auth/me auth-required || return 1
-  verify_local_app_route /api/quiz/quizzes auth-required || return 1
   verify_local_app_route /api/media/images auth-required || return 1
-  verify_local_app_route /api/musico/me auth-required
+  local app
+  for app in "${WEB_APPS[@]}"; do
+    [[ -z "${APP_HEALTH_ROUTES[$app]}" ]] && continue
+    verify_local_app_route "${APP_HEALTH_ROUTES[$app]}" auth-required || return 1
+  done
 }
-if ! atomic_deploy_dir "${SOURCE_DIR}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}" verify_api_release; then
+if ! atomic_deploy_dir "${api_release}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}" verify_api_release; then
   restart_api_fpm || true
   exit 1
 fi

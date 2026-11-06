@@ -4,14 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       apps:
-        description: "Select app deployment target."
-        type: choice
-        options:
-          - all
-          - home
-          - quiz
-          - musico
-          - api
+        type: string
+        description: "App to deploy: all, api, or an ID from configs/apps.tsv."
         required: false
         default: all
 
@@ -37,44 +31,11 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: |
-            app/home/package-lock.json
-            app/quiz/package-lock.json
-            app/musico/package-lock.json
+            app/*/package-lock.json
 
-      - name: Build home app on GitHub runner
-        if: ${{ inputs.apps == 'all' || inputs.apps == 'home' }}
-        working-directory: app/home
-        run: |
-          set -euo pipefail
-          npm ci
-          npm run build
-          test -f dist/index.html
-
-      - name: Build quiz app on GitHub runner
-        if: ${{ inputs.apps == 'all' || inputs.apps == 'quiz' }}
-        run: |
-          set -euo pipefail
-          if [[ -d app/quiz ]]; then
-            cd app/quiz
-            if [[ -f package-lock.json ]]; then
-              npm ci
-            else
-              npm install
-            fi
-            npm run build
-          else
-            echo "Missing app/quiz in repository."
-            exit 1
-          fi
-
-      - name: Build Musico app on GitHub runner
-        if: ${{ inputs.apps == 'all' || inputs.apps == 'musico' }}
-        working-directory: app/musico
-        run: |
-          set -euo pipefail
-          npm ci
-          npm run build
-          test -f dist/index.html
+      - name: Build selected web apps
+        if: ${{ inputs.apps != 'api' }}
+        run: bash scripts/ci/build_web_apps.sh "${APP_LIST:-all}"
 
       - name: Configure SSH
         env:
@@ -103,7 +64,9 @@ jobs:
         run: |
           set -euo pipefail
           APP_LIST="${APP_LIST:-all}"
-          if [[ "${APP_LIST}" == all || "${APP_LIST}" == api || "${APP_LIST}" == musico ]]; then
+          source scripts/lib/app_registry.sh
+          load_app_registry "$PWD"
+          if [[ "${APP_LIST}" == all || "${APP_LIST}" == api || -n "${APP_HEALTH_ROUTES[$APP_LIST]:-}" ]]; then
             PROVISION_COMPONENTS=nginx,apps
           else
             PROVISION_COMPONENTS=apps

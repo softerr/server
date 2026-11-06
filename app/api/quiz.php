@@ -7,11 +7,11 @@ require_once __DIR__ . '/lib/http.php';
 require_once __DIR__ . '/lib/url.php';
 require_once __DIR__ . '/lib/session.php';
 require_once __DIR__ . '/handlers/images.php';
-require_once __DIR__ . '/lib/quiz_import_recovery.php';
-require_once __DIR__ . '/handlers/quizzes.php';
-require_once __DIR__ . '/handlers/questions.php';
-require_once __DIR__ . '/handlers/attempt_presentation.php';
-require_once __DIR__ . '/handlers/attempts.php';
+require_once __DIR__ . '/apps/quiz/import_recovery.php';
+require_once __DIR__ . '/apps/quiz/quizzes.php';
+require_once __DIR__ . '/apps/quiz/questions.php';
+require_once __DIR__ . '/apps/quiz/attempt_presentation.php';
+require_once __DIR__ . '/apps/quiz/attempts.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $path = apiRequestPath('/api/quiz');

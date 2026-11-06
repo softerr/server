@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/app_registry.sh"
+
 select_apps() {
+  load_app_registry "${REPO_ROOT:?repository root is required}"
   SELECTED_APPS=()
   case "${1:-all}" in
-    all) SELECTED_APPS=(api home quiz musico) ;;
+    all) SELECTED_APPS=(api "${WEB_APPS[@]}") ;;
     api) SELECTED_APPS=(api) ;;
-    home) SELECTED_APPS=(home) ;;
-    quiz) SELECTED_APPS=(quiz) ;;
-    musico) SELECTED_APPS=(musico) ;;
-    *) echo "Expected APP_LIST to be all, api, home, quiz, or musico." >&2; return 1 ;;
+    *)
+      if web_app_exists "$1"; then SELECTED_APPS=("$1")
+      else echo "Expected APP_LIST to be all, api, or one of: ${WEB_APPS[*]}." >&2; return 1
+      fi ;;
   esac
 }
 

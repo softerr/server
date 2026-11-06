@@ -22,6 +22,8 @@ on:
   pull_request:
     paths:
       - "app/api/**"
+      - "app/*/server/**"
+      - "configs/apps.tsv"
       - "docs/openapi.yaml"
       - "tests/api/**"
       - "scripts/test_api.sh"
@@ -45,6 +47,8 @@ on:
       - main
     paths:
       - "app/api/**"
+      - "app/*/server/**"
+      - "configs/apps.tsv"
       - "docs/openapi.yaml"
       - "tests/api/**"
       - "scripts/test_api.sh"

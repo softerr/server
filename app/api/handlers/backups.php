@@ -2,7 +2,26 @@
 declare(strict_types=1);
 
 const BACKUP_DIRECTORY = '/var/backups/softerr';
-const BACKUP_DATABASES = ['auth', 'quiz', 'media', 'musico'];
+const BACKUP_APP_REGISTRY = '/etc/softerr/apps.tsv';
+
+function backupDatabases(): array
+{
+    $lines = @file(BACKUP_APP_REGISTRY, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($lines === false) respond(503, ['error' => 'Backup configuration is unavailable']);
+    $databases = ['auth', 'media'];
+    foreach ($lines as $line) {
+        if (str_starts_with($line, '#')) continue;
+        $fields = explode('|', $line);
+        if (count($fields) !== 10) respond(503, ['error' => 'Backup configuration is invalid']);
+        $database = $fields[5];
+        if ($database === '') continue;
+        if (!preg_match('/^[a-z][a-z0-9_]*$/D', $database) || in_array($database, $databases, true)) {
+            respond(503, ['error' => 'Backup configuration is invalid']);
+        }
+        $databases[] = $database;
+    }
+    return $databases;
+}
 
 function authorizeBackupDownload(): void
 {
@@ -14,11 +33,13 @@ function authorizeBackupDownload(): void
 
 function availableBackupSets(): array
 {
+    $backupDatabases = backupDatabases();
+    $databasePattern = implode('|', array_map(static fn (string $name): string => preg_quote($name, '/'), $backupDatabases));
     $names = @scandir(BACKUP_DIRECTORY);
     if ($names === false) respond(503, ['error' => 'Backup storage is unavailable']);
     $candidates = [];
     foreach ($names as $name) {
-        if (!preg_match('/^(auth|quiz|media|musico)-(\d{8}T\d{6}Z)\.[A-Za-z0-9]{8}\.dump$/D', $name, $match)) continue;
+        if (!preg_match('/^(' . $databasePattern . ')-(\d{8}T\d{6}Z)\.[A-Za-z0-9]{8}\.dump$/D', $name, $match)) continue;
         $path = BACKUP_DIRECTORY . '/' . $name;
         if (is_link($path) || !is_file($path)) continue;
         $candidates[$match[2]][$match[1]][] = $path;
@@ -27,7 +48,7 @@ function availableBackupSets(): array
     $sets = [];
     foreach ($candidates as $stamp => $databases) {
         $files = [];
-        foreach (BACKUP_DATABASES as $database) {
+        foreach ($backupDatabases as $database) {
             if (count($databases[$database] ?? []) !== 1) continue 2;
             $path = $databases[$database][0];
             if (!is_readable($path)) respond(503, ['error' => 'Backup archive is not readable']);
@@ -73,7 +94,7 @@ function handleDownloadBackup(string $stamp): never
     if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
         respond(500, ['error' => 'Could not prepare backup download']);
     }
-    foreach (BACKUP_DATABASES as $database) {
+    foreach (backupDatabases() as $database) {
         $name = $database . '.dump';
         if (!$zip->addFile($files[$database], $name)
             || !$zip->setCompressionName($name, ZipArchive::CM_STORE)) {

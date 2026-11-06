@@ -10,11 +10,11 @@ fi
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/apt_locks.sh"
+source "${SCRIPT_DIR}/lib/app_registry.sh"
+load_app_registry "${REPO_ROOT}"
 INIT_SQL_FILE="${REPO_ROOT}/configs/postgresql/init.sql"
 AUTH_SQL_FILE="${REPO_ROOT}/configs/postgresql/auth.sql"
-QUIZ_SQL_FILE="${REPO_ROOT}/configs/postgresql/quiz.sql"
 MEDIA_SQL_FILE="${REPO_ROOT}/configs/postgresql/media.sql"
-MUSICO_SQL_FILE="${REPO_ROOT}/configs/postgresql/musico.sql"
 PRUNE_SQL_FILE="${REPO_ROOT}/configs/postgresql/prune_user_tokens.sql"
 PRUNE_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.service"
 PRUNE_TIMER_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.timer"
@@ -27,11 +27,18 @@ if ! command -v apt-get >/dev/null 2>&1; then
   exit 1
 fi
 
-for config_file in "${INIT_SQL_FILE}" "${AUTH_SQL_FILE}" "${QUIZ_SQL_FILE}" "${MEDIA_SQL_FILE}" "${MUSICO_SQL_FILE}" \
+for config_file in "${INIT_SQL_FILE}" "${AUTH_SQL_FILE}" "${MEDIA_SQL_FILE}" \
   "${PRUNE_SQL_FILE}" "${PRUNE_SERVICE_FILE}" "${PRUNE_TIMER_FILE}" \
   "${BACKUP_SCRIPT_FILE}" "${BACKUP_SERVICE_FILE}" "${BACKUP_TIMER_FILE}"; do
   if [[ ! -f "${config_file}" ]]; then
     echo "Required PostgreSQL setup file not found: ${config_file}"
+    exit 1
+  fi
+done
+for app in "${WEB_APPS[@]}"; do
+  [[ -z "${APP_DATABASES[$app]}" ]] && continue
+  if [[ ! -f "${REPO_ROOT}/${APP_SCHEMAS[$app]}" ]]; then
+    echo "Missing ${app} schema: ${APP_SCHEMAS[$app]}" >&2
     exit 1
   fi
 done
@@ -65,14 +72,19 @@ sudo -u postgres psql -X \
 echo "Applying auth database schema: ${AUTH_SQL_FILE}"
 sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${AUTH_SQL_FILE}"
 
-echo "Applying quiz database schema: ${QUIZ_SQL_FILE}"
-sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d quiz < "${QUIZ_SQL_FILE}"
-
 echo "Applying shared media database schema: ${MEDIA_SQL_FILE}"
 sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d media < "${MEDIA_SQL_FILE}"
 
-echo "Applying Musico database schema: ${MUSICO_SQL_FILE}"
-sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d musico < "${MUSICO_SQL_FILE}"
+for app in "${WEB_APPS[@]}"; do
+  database="${APP_DATABASES[$app]}"
+  [[ -z "${database}" ]] && continue
+  sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d postgres <<SQL
+SELECT 'CREATE DATABASE ${database}'
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${database}') \gexec
+SQL
+  echo "Applying ${app} schema: ${APP_SCHEMAS[$app]}"
+  sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d "${database}" < "${REPO_ROOT}/${APP_SCHEMAS[$app]}"
+done
 
 echo "Pruning expired verification tokens..."
 sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${PRUNE_SQL_FILE}"
@@ -87,6 +99,8 @@ systemctl enable --now softerr-prune-user-tokens.timer
 
 echo "Installing verified database backup timer..."
 install -d -m 755 /usr/local/lib/softerr
+install -m 644 "${REPO_ROOT}/configs/apps.tsv" /etc/softerr/apps.tsv
+install -m 644 "${SCRIPT_DIR}/lib/app_registry.sh" /usr/local/lib/softerr/app_registry.sh
 install -d -o postgres -g www-data -m 2750 /var/backups/softerr
 chmod 2750 /var/backups/softerr
 # Existing verified archives become available to the web API for admin downloads.
@@ -100,4 +114,4 @@ systemctl start softerr-backup-postgresql.service
 systemctl enable --now softerr-backup-postgresql.timer
 
 echo "Done."
-echo "PostgreSQL is installed and auth, quiz, media, and Musico database schemas are initialized."
+echo "PostgreSQL is installed and app database schemas are initialized."

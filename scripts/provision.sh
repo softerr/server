@@ -4,6 +4,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/lib/app_registry.sh"
+load_app_registry "${REPO_ROOT}"
+declare -A SCHEMA_APPLIED=()
 
 split_components() {
   local raw="${1:-all}"
@@ -38,30 +41,30 @@ run_root_script() {
 run_postgresql() {
   run_root_script "${SCRIPT_DIR}/setup_postgresql.sh"
   AUTH_SCHEMA_APPLIED=1
-  QUIZ_SCHEMA_APPLIED=1
   MEDIA_SCHEMA_APPLIED=1
-  MUSICO_SCHEMA_APPLIED=1
+  local app
+  for app in "${WEB_APPS[@]}"; do SCHEMA_APPLIED["${app}"]=1; done
 }
 
-ensure_musico_schema() {
-  if [[ "${MUSICO_SCHEMA_APPLIED:-0}" == 1 ]]; then
-    return
-  fi
-  local musico_schema="${REPO_ROOT}/configs/postgresql/musico.sql"
-  if [[ ! -f "${musico_schema}" ]]; then
-    echo "Musico database setup files are missing." >&2
+ensure_app_schema() {
+  local app="$1" database="${APP_DATABASES[$1]}" schema="${APP_SCHEMAS[$1]}"
+  [[ -n "${database}" ]] || return 0
+  [[ "${SCHEMA_APPLIED[${app}]:-0}" == 1 ]] && return 0
+  if [[ ! -f "${REPO_ROOT}/${schema}" ]]; then
+    echo "App database schema is missing: ${schema}" >&2
     exit 1
   fi
-  # Deploy Apps can introduce Musico to an already configured server.
-  sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d postgres <<'SQL'
-SELECT 'CREATE DATABASE musico'
-WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'musico') \gexec
+  sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d postgres <<SQL
+SELECT 'CREATE DATABASE ${database}'
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${database}') \gexec
 SQL
-  sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d musico < "${musico_schema}"
-  MUSICO_SCHEMA_APPLIED=1
+  sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d "${database}" < "${REPO_ROOT}/${schema}"
+  SCHEMA_APPLIED["${app}"]=1
   if [[ -f /etc/systemd/system/softerr-backup-postgresql.service ]]; then
+    install -m 644 "${REPO_ROOT}/configs/apps.tsv" /etc/softerr/apps.tsv
+    install -m 644 "${SCRIPT_DIR}/lib/app_registry.sh" /usr/local/lib/softerr/app_registry.sh
     install -m 755 "${SCRIPT_DIR}/backup_postgresql.sh" /usr/local/lib/softerr/backup_postgresql.sh
-    if ! find /var/backups/softerr -maxdepth 1 -type f -name 'musico-*.dump' -print -quit | grep -q .; then
+    if ! find /var/backups/softerr -maxdepth 1 -type f -name "${database}-*.dump" -print -quit | grep -q .; then
       systemctl start softerr-backup-postgresql.service
     fi
   fi
@@ -89,15 +92,6 @@ run_api_deploy() {
     sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${auth_schema}"
     AUTH_SCHEMA_APPLIED=1
   fi
-  if [[ "${QUIZ_SCHEMA_APPLIED:-0}" != 1 ]]; then
-    local quiz_schema="${REPO_ROOT}/configs/postgresql/quiz.sql"
-    if [[ ! -f "${quiz_schema}" ]]; then
-      echo "Quiz schema not found: ${quiz_schema}" >&2
-      exit 1
-    fi
-    sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d quiz < "${quiz_schema}"
-    QUIZ_SCHEMA_APPLIED=1
-  fi
   if [[ "${MEDIA_SCHEMA_APPLIED:-0}" != 1 ]]; then
     local media_schema="${REPO_ROOT}/configs/postgresql/media.sql"
     if [[ ! -f "${media_schema}" ]]; then
@@ -107,34 +101,22 @@ run_api_deploy() {
     sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d media < "${media_schema}"
     MEDIA_SCHEMA_APPLIED=1
   fi
-  ensure_musico_schema
+  local app
+  for app in "${WEB_APPS[@]}"; do ensure_app_schema "${app}"; done
   run_root_script "${SCRIPT_DIR}/deploy_api.sh"
   API_DEPLOYED=1
 }
 
-run_home_deploy() {
-  if [[ -z "${HOME_DIST_DIR:-}" && -d "${REPO_ROOT}/app/home/dist" ]]; then
-    export HOME_DIST_DIR="${REPO_ROOT}/app/home/dist"
-  fi
-  run_root_script "${SCRIPT_DIR}/deploy_home.sh"
-}
-
-run_quiz_deploy() {
-  if [[ -z "${QUIZ_DIST_DIR:-}" && -d "${REPO_ROOT}/app/quiz/dist" ]]; then
-    export QUIZ_DIST_DIR="${REPO_ROOT}/app/quiz/dist"
-  fi
-  run_root_script "${SCRIPT_DIR}/deploy_quiz.sh"
-}
-
-run_musico_deploy() {
-  ensure_musico_schema
-  if [[ "${API_DEPLOYED:-0}" != 1 ]]; then
+run_web_deploy() {
+  local app="$1" override="${1^^}_DIST_DIR"
+  ensure_app_schema "${app}"
+  if [[ -n "${APP_HEALTH_ROUTES[${app}]}" && "${API_DEPLOYED:-0}" != 1 ]]; then
     run_api_deploy
   fi
-  if [[ -z "${MUSICO_DIST_DIR:-}" && -d "${REPO_ROOT}/app/musico/dist" ]]; then
-    export MUSICO_DIST_DIR="${REPO_ROOT}/app/musico/dist"
+  if [[ -z "${!override:-}" && -d "${REPO_ROOT}/${APP_SOURCES[${app}]}/dist" ]]; then
+    export "${override}=${REPO_ROOT}/${APP_SOURCES[${app}]}/dist"
   fi
-  run_root_script "${SCRIPT_DIR}/deploy_musico.sh"
+  bash "${SCRIPT_DIR}/deploy_web_app.sh" "${app}"
 }
 
 run_app_deploys() {
@@ -144,9 +126,7 @@ run_app_deploys() {
   for app in "${SELECTED_APPS[@]}"; do
     case "${app}" in
       api) run_api_deploy ;;
-      home) run_home_deploy ;;
-      quiz) run_quiz_deploy ;;
-      musico) run_musico_deploy ;;
+      *) run_web_deploy "${app}" ;;
     esac
   done
 }
@@ -169,15 +149,6 @@ run_component() {
     api)
       run_api_deploy
       ;;
-    home)
-      run_home_deploy
-      ;;
-    quiz)
-      run_quiz_deploy
-      ;;
-    musico)
-      run_musico_deploy
-      ;;
     apps)
       run_app_deploys
       ;;
@@ -187,14 +158,16 @@ run_component() {
       run_email_worker
       run_nginx
       run_api_deploy
-      run_home_deploy
-      run_quiz_deploy
-      run_musico_deploy
+      local app
+      for app in "${WEB_APPS[@]}"; do run_web_deploy "${app}"; done
       ;;
     *)
-      echo "Unknown provisioning component: ${component}"
-      echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, home, quiz, musico, apps"
-      exit 1
+      if web_app_exists "${component}"; then run_web_deploy "${component}"
+      else
+        echo "Unknown provisioning component: ${component}" >&2
+        echo "Expected one of: all, postgresql, php-fpm, email-worker, nginx, api, apps, ${WEB_APPS[*]}" >&2
+        exit 1
+      fi
       ;;
   esac
 }

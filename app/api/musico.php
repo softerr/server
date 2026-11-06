@@ -7,7 +7,7 @@ require_once __DIR__ . '/lib/http.php';
 require_once __DIR__ . '/lib/url.php';
 require_once __DIR__ . '/lib/session.php';
 require_once __DIR__ . '/handlers/audio.php';
-require_once __DIR__ . '/handlers/musico.php';
+require_once __DIR__ . '/apps/musico/handlers.php';
 
 $path = apiRequestPath('/api/musico');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';

@@ -11,6 +11,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/api_env.sh"
 source "${SCRIPT_DIR}/lib/apt_locks.sh"
+source "${SCRIPT_DIR}/lib/app_registry.sh"
+load_app_registry "${REPO_ROOT}"
 CONFIG_TEMPLATE="${NGINX_CONFIG_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr.conf.template}"
 TLS_CONFIG_TEMPLATE="${NGINX_TLS_CONFIG_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr-tls.conf.template}"
 ROUTES_TEMPLATE="${NGINX_ROUTES_TEMPLATE:-${REPO_ROOT}/configs/nginx/softerr-routes.conf.template}"
@@ -44,54 +46,20 @@ if ! command -v nginx >/dev/null 2>&1; then
 fi
 
 echo "Creating web directories..."
-mkdir -p /var/www/home /var/www/quiz /var/www/musico /var/www/api
-chown -R www-data:www-data /var/www/home /var/www/quiz /var/www/musico /var/www/api
-find /var/www/home /var/www/quiz /var/www/musico /var/www/api -type d -exec chmod 755 {} \;
-
-if [[ ! -f /var/www/home/index.html ]]; then
-  cat > /var/www/home/index.html <<'EOF'
+mkdir -p /var/www/api
+for app in "${WEB_APPS[@]}"; do
+  target="${APP_TARGETS[$app]}"
+  mkdir -p "${target}"
+  if [[ ! -f "${target}/index.html" ]]; then
+    cat > "${target}/index.html" <<EOF
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Home</title>
-  </head>
-  <body>
-    <h1>Home page is working</h1>
-  </body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><title>${APP_TITLES[$app]}</title></head>
+<body><h1>${APP_TITLES[$app]} page is working</h1></body></html>
 EOF
-fi
-
-if [[ ! -f /var/www/quiz/index.html ]]; then
-  cat > /var/www/quiz/index.html <<'EOF'
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Quiz</title>
-  </head>
-  <body>
-    <h1>Quiz page is working</h1>
-  </body>
-</html>
-EOF
-fi
-
-if [[ ! -f /var/www/musico/index.html ]]; then
-  cat > /var/www/musico/index.html <<'EOF'
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Musico</title>
-  </head>
-  <body>
-    <h1>Musico page is working</h1>
-  </body>
-</html>
-EOF
-fi
+  fi
+done
+chown -R www-data:www-data /var/www/api "${APP_TARGETS[@]}"
+find /var/www/api "${APP_TARGETS[@]}" -type d -exec chmod 755 {} \;
 
 if [[ ! -f /var/www/api/index.php ]]; then
   cat > /var/www/api/index.php <<'EOF'
@@ -167,7 +135,21 @@ cleanup_nginx_stage() {
 trap cleanup_nginx_stage EXIT
 trap 'exit 1' HUP INT TERM
 
-sed "s|__PHP_FPM_SOCK__|${PHP_SOCK}|g" "${ROUTES_TEMPLATE}" > "${nginx_stage}/routes.conf"
+if [[ "$(grep -Fxc '__WEB_APP_ROUTES__' "${ROUTES_TEMPLATE}")" != 1 \
+  || "$(grep -Fxc '__APP_API_ROUTES__' "${ROUTES_TEMPLATE}")" != 1 ]]; then
+  echo "Nginx routes template must contain one marker for each app route section." >&2
+  exit 1
+fi
+render_web_app_routes > "${nginx_stage}/web-routes.conf"
+render_app_api_routes "${REPO_ROOT}" > "${nginx_stage}/app-api-routes.conf"
+while IFS= read -r line; do
+  case "${line}" in
+    __WEB_APP_ROUTES__) cat "${nginx_stage}/web-routes.conf" ;;
+    __APP_API_ROUTES__) cat "${nginx_stage}/app-api-routes.conf" ;;
+    *) printf '%s\n' "${line}" ;;
+  esac
+done < "${ROUTES_TEMPLATE}" > "${nginx_stage}/routes.conf"
+sed -i "s|__PHP_FPM_SOCK__|${PHP_SOCK}|g" "${nginx_stage}/routes.conf"
 sed \
   -e "s|__TLS_ORIGIN__|${TLS_ORIGIN}|g" \
   -e "s|__TLS_CERT_FILE__|${TLS_CERT_FILE}|g" \
@@ -229,7 +211,5 @@ nginx_committed=true
 
 echo "Done."
 echo "Mapped routes:"
-echo "  /      -> /var/www/home"
-echo "  /quiz  -> /var/www/quiz"
-echo "  /musico -> /var/www/musico"
+for app in "${WEB_APPS[@]}"; do echo "  ${APP_ROUTES[$app]} -> ${APP_TARGETS[$app]}"; done
 echo "  /api   -> /var/www/api (PHP)"

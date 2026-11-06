@@ -35,51 +35,16 @@ function handleReadiness(): never
         respond(503, ['status' => 'unavailable', 'error' => 'Database schema is not ready']);
     }
 
-    [$quizDb, $quizError] = openQuizDb();
-    if ($quizDb === false) {
-        respond(503, ['status' => 'unavailable', 'error' => $quizError]);
+    $healthFiles = glob(__DIR__ . '/../apps/*/health.php');
+    if ($healthFiles === false || count($healthFiles) === 0) {
+        respond(503, ['status' => 'unavailable', 'error' => 'App readiness checks are missing']);
     }
-    $quizSchema = @pg_query($quizDb, 'SELECT q.id, q.user_id, q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.randomize_answers, q.question_limit, q.time_limit_seconds,
-            u.auth_user_id, t.id, t.quiz_id, t.template, t.prompt, t.config, t.time_limit_seconds,
-            a.id, a.quiz_id, a.user_id, a.completed, a.allow_go_back, a.furthest_position, a.randomize_questions, a.randomize_answers, a.question_limit, a.time_limit_seconds, a.deadline_at,
-            b.attempt_id, b.question_id, b.position, b.template, b.prompt, b.config, b.time_limit_seconds,
-            s.id, s.attempt_id, s.source_question_id, s.position, s.started_at, s.time_spent_ms, r.attempt_id, r.question_id, r.answer
-        FROM public.quiz q, public."user" u, public.question t,
-             public.quiz_attempt a, public.quiz_attempt_source b,
-             public.quiz_attempt_question s, public.quiz_answer r LIMIT 0');
-    if ($quizSchema === false) {
-        respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
-    }
-    $quizOwnerConstraint = @pg_query($quizDb, "SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'public.quiz'::regclass AND conname = 'quiz_user_id_fkey'");
-    if ($quizOwnerConstraint === false || pg_num_rows($quizOwnerConstraint) !== 1) {
-        respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
-    }
-    if (@pg_query($quizDb, 'SELECT id, quiz_id FROM public.quiz_import_receipt LIMIT 0') === false) {
-        respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
-    }
-
-    [$musicoDb, $musicoError] = openMusicoDb();
-    if ($musicoDb === false) {
-        respond(503, ['status' => 'unavailable', 'error' => $musicoError]);
-    }
-    if (@pg_query($musicoDb,
-        'SELECT u.id, u.auth_user_id, t.id, t.user_id, t.media_audio_id,
-            t.version, t.stats_version,
-            t.duration_ms, t.bit_rate, t.sample_rate_hz, t.bit_depth, t.channels, t.codec,
-            t.estimated_bpm, t.estimated_key, t.peak_db, t.average_db,
-            t.dynamic_range_db, t.analysis_saved_at,
-            p.id, p.user_id, p.version, pt.playlist_id, pt.track_id, pt.position,
-            upload.request_id, upload.request_sha256, upload.track_id,
-            stat_request.request_id, stat_request.request_sha256, stat_request.track_id,
-            stat_request.play_count, stat_request.listen_ms, stat_request.stats_version,
-            changes.id, changes.cursor_token, changes.user_id, changes.resource, changes.resource_id, changes.action,
-            playlist_create_request.user_id, playlist_create_request.request_id,
-            playlist_create_request.request_name, playlist_create_request.playlist_id
-         FROM public."user" u, public.track t, public.playlist p, public.playlist_track pt,
-              public.track_upload_request upload, public.track_stat_request stat_request,
-              public.change_log changes, public.playlist_create_request playlist_create_request LIMIT 0') === false) {
-        respond(503, ['status' => 'unavailable', 'error' => 'Musico database schema is not ready']);
+    foreach ($healthFiles as $healthFile) {
+        $check = require $healthFile;
+        if (!is_callable($check)) {
+            respond(503, ['status' => 'unavailable', 'error' => 'App readiness check is invalid']);
+        }
+        $check();
     }
 
     [$mediaDb, $mediaError] = openMediaDb();

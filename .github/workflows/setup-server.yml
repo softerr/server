@@ -23,30 +23,10 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: |
-            app/home/package-lock.json
-            app/quiz/package-lock.json
-            app/musico/package-lock.json
+            app/*/package-lock.json
 
-      - name: Build home
-        working-directory: app/home
-        run: |
-          npm ci
-          npm run build
-          test -f dist/index.html
-
-      - name: Build quiz
-        working-directory: app/quiz
-        run: |
-          npm ci
-          npm run build
-          test -f dist/index.html
-
-      - name: Build Musico
-        working-directory: app/musico
-        run: |
-          npm ci
-          npm run build
-          test -f dist/index.html
+      - name: Build web apps
+        run: bash scripts/ci/build_web_apps.sh all
 
       - name: Configure SSH
         env:

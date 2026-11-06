@@ -5,3 +5,4 @@
 - [API docs](docs/api.md)
 - [OpenAPI specification](docs/openapi.yaml)
 - [Server maintenance](docs/server-maintenance.md)
+- [App layout](docs/app-layout.md)

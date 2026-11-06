@@ -9,6 +9,9 @@ fi
 
 BACKUP_DIR=/var/backups/softerr
 RETENTION_DAYS=30
+APP_REGISTRY_FILE=/etc/softerr/apps.tsv
+source /usr/local/lib/softerr/app_registry.sh
+load_app_registry /etc/softerr
 
 umask 077
 mkdir -p -- "${BACKUP_DIR}"
@@ -72,12 +75,9 @@ backup_database() {
 
 backup_database auth \
   'SELECT 1 FROM public."user", public.user_token, public.verification_email_outbox, public.approval_email_outbox LIMIT 0'
-backup_database quiz \
-  'SELECT q.id, q.user_id, q.name, q.created, u.auth_user_id FROM public.quiz q, public."user" u LIMIT 0'
 backup_database media \
   'SELECT i.id, i.blob_id, b.sha256 FROM public.image i, public.image_blob b LIMIT 0'
-backup_database musico \
-  'SELECT u.id, u.auth_user_id, t.id, p.id, pt.playlist_id, pt.track_id,
-          changes.id, changes.cursor_token
-   FROM public."user" u, public.track t, public.playlist p, public.playlist_track pt,
-        public.change_log changes LIMIT 0'
+for app in "${WEB_APPS[@]}"; do
+  [[ -z "${APP_DATABASES[$app]}" ]] && continue
+  backup_database "${APP_DATABASES[$app]}" "${APP_BACKUP_CHECKS[$app]}"
+done

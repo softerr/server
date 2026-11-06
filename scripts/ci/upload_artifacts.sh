@@ -20,34 +20,46 @@ source "${REPO_ROOT}/scripts/lib/app_selection.sh"
 
 case "${MODE}" in
   server)
-    if [[ ! -f "${REPO_ROOT}/app/api/index.php" || ! -f "${REPO_ROOT}/app/api/auth.php" \
-      || ! -f "${REPO_ROOT}/app/api/quiz.php" || ! -f "${REPO_ROOT}/app/api/media.php" \
-      || ! -f "${REPO_ROOT}/app/api/musico.php" || ! -f "${REPO_ROOT}/app/home/dist/index.html" \
-      || ! -f "${REPO_ROOT}/app/quiz/dist/index.html" || ! -f "${REPO_ROOT}/app/musico/dist/index.html" ]]; then
-      echo "Build home, quiz, and Musico and include the API before first-time setup."
-      exit 1
-    fi
-    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/home/dist' '$REMOTE_DIR/app/quiz/dist' '$REMOTE_DIR/app/musico/dist'"
+    select_apps all
+    for entrypoint in index auth media; do
+      [[ -f "${REPO_ROOT}/app/api/${entrypoint}.php" ]] || { echo "Missing API ${entrypoint}.php" >&2; exit 1; }
+    done
+    for app in "${WEB_APPS[@]}"; do
+      [[ -f "${REPO_ROOT}/${APP_SOURCES[$app]}/dist/index.html" ]] || { echo "Missing built ${app} app" >&2; exit 1; }
+      if [[ -n "${APP_HEALTH_ROUTES[$app]}" && ! -f "${REPO_ROOT}/app/api/${app}.php" ]]; then
+        echo "Missing API ${app}.php" >&2
+        exit 1
+      fi
+    done
+    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs' '$REMOTE_DIR/app/api'"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "${REPO_ROOT}/scripts/setup_server.sh" \
       "${REPO_ROOT}/scripts/setup_tls_certificate.sh" "${REPO_ROOT}/scripts/setup_postgresql.sh" \
       "${REPO_ROOT}/scripts/backup_postgresql.sh" \
       "${REPO_ROOT}/scripts/setup_php_fpm.sh" "${REPO_ROOT}/scripts/setup_email_worker.sh" \
       "${REPO_ROOT}/scripts/setup_nginx.sh" "${REPO_ROOT}/scripts/deploy_api.sh" \
       "${REPO_ROOT}/scripts/deploy_home.sh" \
-      "${REPO_ROOT}/scripts/deploy_quiz.sh" "${REPO_ROOT}/scripts/deploy_musico.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+      "${REPO_ROOT}/scripts/deploy_web_app.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
       "${REPO_ROOT}/scripts/lib/app_selection.sh" \
+      "${REPO_ROOT}/scripts/lib/app_registry.sh" \
       "${REPO_ROOT}/scripts/lib/apt_locks.sh" \
       "${REPO_ROOT}/scripts/lib/api_env.sh" \
       "${REPO_ROOT}/scripts/lib/deploy_checks.sh" \
       "${REPO_ROOT}/scripts/lib/tls_certificate.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/api/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/api/"
-    scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/home/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/home/dist/"
-    scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/quiz/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/quiz/dist/"
-    scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/musico/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/musico/dist/"
+    for app in "${WEB_APPS[@]}"; do
+      ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/${APP_SOURCES[$app]}/dist' '$REMOTE_DIR/${APP_SOURCES[$app]}/server'"
+      scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/${APP_SOURCES[$app]}/dist/." \
+        "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/${APP_SOURCES[$app]}/dist/"
+      if [[ -d "${REPO_ROOT}/${APP_SOURCES[$app]}/server" ]]; then
+        scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/${APP_SOURCES[$app]}/server/." \
+          "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/${APP_SOURCES[$app]}/server/"
+      fi
+    done
     ;;
   nginx)
+    load_app_registry "${REPO_ROOT}"
     ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs'"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/setup_php_fpm.sh" \
@@ -55,77 +67,88 @@ case "${MODE}" in
       "${REPO_ROOT}/scripts/setup_nginx.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/apt_locks.sh" \
       "${REPO_ROOT}/scripts/lib/api_env.sh" \
-      "${REPO_ROOT}/scripts/lib/tls_certificate.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
+      "${REPO_ROOT}/scripts/lib/tls_certificate.sh" \
+      "${REPO_ROOT}/scripts/lib/app_registry.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
+    for app in "${WEB_APPS[@]}"; do
+      [[ -n "${APP_HEALTH_ROUTES[$app]}" ]] || continue
+      ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/${APP_SOURCES[$app]}/server'"
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/${APP_SOURCES[$app]}/server/nginx.conf" \
+        "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/${APP_SOURCES[$app]}/server/"
+    done
     ;;
   postgresql)
     ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs'"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/setup_postgresql.sh" \
       "${REPO_ROOT}/scripts/backup_postgresql.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-    scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/apt_locks.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
+    scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/apt_locks.sh" \
+      "${REPO_ROOT}/scripts/lib/app_registry.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
+    load_app_registry "${REPO_ROOT}"
+    for app in "${WEB_APPS[@]}"; do
+      [[ -n "${APP_SCHEMAS[$app]}" ]] || continue
+      ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/${APP_SOURCES[$app]}/server'"
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/${APP_SCHEMAS[$app]}" \
+        "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/${APP_SCHEMAS[$app]}"
+    done
     ;;
   apps)
     select_apps "${APP_LIST:-all}"
-
-    if app_selected api || app_selected musico; then
-      for entrypoint in index auth quiz media musico; do
-        if [[ ! -f "${REPO_ROOT}/app/api/${entrypoint}.php" ]]; then
-          echo "Missing app/api/${entrypoint}.php in repository."
+    needs_api=false
+    for app in "${SELECTED_APPS[@]}"; do
+      if [[ "${app}" == api || -n "${APP_HEALTH_ROUTES[$app]:-}" ]]; then needs_api=true; fi
+      if [[ "${app}" != api && ! -f "${REPO_ROOT}/${APP_SOURCES[$app]}/dist/index.html" ]]; then
+        echo "Missing built ${app} app in repository." >&2
+        exit 1
+      fi
+    done
+    if [[ "${needs_api}" == true ]]; then
+      for entrypoint in index auth media; do
+        [[ -f "${REPO_ROOT}/app/api/${entrypoint}.php" ]] || { echo "Missing API ${entrypoint}.php" >&2; exit 1; }
+      done
+      for app in "${WEB_APPS[@]}"; do
+        if [[ -n "${APP_HEALTH_ROUTES[$app]}" && ! -f "${REPO_ROOT}/app/api/${app}.php" ]]; then
+          echo "Missing API ${app}.php" >&2
           exit 1
         fi
       done
     fi
-    if app_selected home && [[ ! -f "${REPO_ROOT}/app/home/dist/index.html" ]]; then
-      echo "Missing built app/home/dist/index.html in repository."
-      exit 1
-    fi
-    if app_selected quiz && [[ ! -f "${REPO_ROOT}/app/quiz/dist/index.html" ]]; then
-      echo "Missing built app/quiz/dist/index.html in repository."
-      exit 1
-    fi
-    if app_selected musico && [[ ! -f "${REPO_ROOT}/app/musico/dist/index.html" ]]; then
-      echo "Missing built app/musico/dist/index.html in repository."
-      exit 1
-    fi
-
-    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs/postgresql' '$REMOTE_DIR/configs/nginx' '$REMOTE_DIR/configs/systemd' '$REMOTE_DIR/app/api' '$REMOTE_DIR/app/home/dist' '$REMOTE_DIR/app/quiz/dist' '$REMOTE_DIR/app/musico/dist'"
-    scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+    ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts/lib' '$REMOTE_DIR/configs/postgresql' '$REMOTE_DIR/configs/nginx' '$REMOTE_DIR/configs/systemd' '$REMOTE_DIR/app/api'"
+    scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" \
+      "${REPO_ROOT}/scripts/deploy_web_app.sh" "${REPO_ROOT}/scripts/deploy_home.sh" \
+      "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
-      "${REPO_ROOT}/scripts/lib/app_selection.sh" \
+      "${REPO_ROOT}/scripts/lib/app_selection.sh" "${REPO_ROOT}/scripts/lib/app_registry.sh" \
       "${REPO_ROOT}/scripts/lib/deploy_checks.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
-    if app_selected api || app_selected musico; then
-      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/setup_nginx.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
+    scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/apps.tsv" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
+    if [[ "${needs_api}" == true ]]; then
+      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/setup_nginx.sh" \
+        "${REPO_ROOT}/scripts/deploy_api.sh" "${REPO_ROOT}/scripts/backup_postgresql.sh" \
+        "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/api_env.sh" \
-        "${REPO_ROOT}/scripts/lib/apt_locks.sh" \
-        "${REPO_ROOT}/scripts/lib/tls_certificate.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
+        "${REPO_ROOT}/scripts/lib/apt_locks.sh" "${REPO_ROOT}/scripts/lib/tls_certificate.sh" \
+        "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
       scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/nginx/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/nginx/"
-      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/postgresql/musico.sql" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/postgresql/"
-      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/backup_postgresql.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-    fi
-    if app_selected api || app_selected musico; then
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/postgresql/auth.sql" \
-        "${REPO_ROOT}/configs/postgresql/quiz.sql" \
         "${REPO_ROOT}/configs/postgresql/media.sql" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/postgresql/"
+      for app in "${WEB_APPS[@]}"; do
+        [[ -n "${APP_HEALTH_ROUTES[$app]}" ]] || continue
+        ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/${APP_SOURCES[$app]}/server'"
+        scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/${APP_SOURCES[$app]}/server/." \
+          "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/${APP_SOURCES[$app]}/server/"
+      done
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/systemd/softerr-recover-quiz-imports.service" \
         "${REPO_ROOT}/configs/systemd/softerr-recover-quiz-imports.timer" \
         "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/systemd/"
-      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_api.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
       scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/api/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/api/"
     fi
-    if app_selected home; then
-      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_home.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-      scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/home/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/home/dist/"
-    fi
-    if app_selected quiz; then
-      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_quiz.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-      scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/quiz/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/quiz/dist/"
-    fi
-    if app_selected musico; then
-      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/deploy_musico.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-      scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/musico/dist/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/musico/dist/"
-    fi
+    for app in "${SELECTED_APPS[@]}"; do
+      [[ "${app}" == api ]] && continue
+      ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/${APP_SOURCES[$app]}/dist'"
+      scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/${APP_SOURCES[$app]}/dist/." \
+        "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/${APP_SOURCES[$app]}/dist/"
+    done
     ;;
   api-tests)
     ssh $SSH_OPTS -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$REMOTE_DIR/scripts' '$REMOTE_DIR/tests/api/cases'"

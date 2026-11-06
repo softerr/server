@@ -5,7 +5,7 @@ if (PHP_SAPI !== 'cli') exit(1);
 
 require_once __DIR__ . '/../lib/db.php';
 require_once __DIR__ . '/../handlers/images.php';
-require_once __DIR__ . '/../lib/quiz_import_recovery.php';
+require_once __DIR__ . '/../apps/quiz/import_recovery.php';
 
 [$quizDb] = openQuizDb(5);
 [$mediaDb] = openMediaDb(5);

@@ -3,11 +3,8 @@ name: Test Deployment
 on:
   pull_request:
     paths:
-      - "app/api/**"
-      - "app/home/**"
-      - "app/quiz/**"
-      - "app/musico/**"
-      - "app/shared/**"
+      - "app/**"
+      - "configs/apps.tsv"
       - "configs/nginx/**"
       - "configs/postgresql/**"
       - "configs/systemd/**"
@@ -35,11 +32,8 @@ on:
     branches:
       - main
     paths:
-      - "app/api/**"
-      - "app/home/**"
-      - "app/quiz/**"
-      - "app/musico/**"
-      - "app/shared/**"
+      - "app/**"
+      - "configs/apps.tsv"
       - "configs/nginx/**"
       - "configs/postgresql/**"
       - "configs/systemd/**"
@@ -76,6 +70,9 @@ jobs:
       - name: Check shell syntax
         run: bash -n scripts/*.sh scripts/ci/*.sh scripts/lib/*.sh tests/deploy/*.sh
 
+      - name: Check app registry and modules
+        run: bash tests/deploy/app_registry.sh
+
       - name: Check atomic app replacement
         run: bash tests/deploy/atomic_deploy.sh
 
@@ -94,33 +91,13 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: |
-            app/home/package-lock.json
-            app/quiz/package-lock.json
-            app/musico/package-lock.json
+            app/*/package-lock.json
 
-      - name: Build home
-        working-directory: app/home
-        run: |
-          npm ci
-          npm run build
-          test -f dist/index.html
+      - name: Build web apps
+        run: bash scripts/ci/build_web_apps.sh all
 
       - name: Test frontend behavior
         run: node --test tests/frontend/*.test.js
-
-      - name: Build quiz
-        working-directory: app/quiz
-        run: |
-          npm ci
-          npm run build
-          test -f dist/index.html
-
-      - name: Build Musico
-        working-directory: app/musico
-        run: |
-          npm ci
-          npm run build
-          test -f dist/index.html
 
       - name: Install Nginx for config validation
         run: |
@@ -140,10 +117,20 @@ jobs:
             -keyout "${TLS_TEST_DIR}/key.pem" -out "${TLS_TEST_DIR}/cert.pem" >/dev/null 2>&1
           python3 - <<'PY'
           import os
+          import subprocess
           from pathlib import Path
 
           tls_dir = Path(os.environ['TLS_TEST_DIR'])
           routes = Path('configs/nginx/softerr-routes.conf.template').read_text()
+          web_routes = subprocess.check_output(['bash', '-c',
+              'set -euo pipefail; source scripts/lib/app_registry.sh; load_app_registry "$PWD"; render_web_app_routes'],
+              text=True)
+          api_routes = subprocess.check_output(['bash', '-c',
+              'set -euo pipefail; source scripts/lib/app_registry.sh; load_app_registry "$PWD"; render_app_api_routes "$PWD"'],
+              text=True)
+          assert routes.count('__WEB_APP_ROUTES__') == 1
+          assert routes.count('__APP_API_ROUTES__') == 1
+          routes = routes.replace('__WEB_APP_ROUTES__', web_routes).replace('__APP_API_ROUTES__', api_routes)
           assert 'location = /musico {' in routes
           assert 'location /musico/ {' in routes
           assert 'location = /api/quiz.php {' in routes

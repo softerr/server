@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/../../app/api/handlers/attempt_presentation.php';
+require __DIR__ . '/../../app/quiz/server/attempt_presentation.php';
 
 function expectAttempt(bool $condition, string $message): void
 {

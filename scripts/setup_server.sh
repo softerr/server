@@ -11,6 +11,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/tls_certificate.sh"
 source "${SCRIPT_DIR}/lib/deploy_checks.sh"
+source "${SCRIPT_DIR}/lib/app_registry.sh"
+load_app_registry "${REPO_ROOT}"
 BOOTSTRAP_CONFIG="${REPO_ROOT}/configs/nginx/softerr-bootstrap.conf"
 
 : "${API_DB_PASSWORD:?API_DB_PASSWORD is required}"
@@ -71,26 +73,24 @@ if ! PGPASSWORD="${API_DB_PASSWORD}" PGCONNECT_TIMEOUT=5 psql -X -v ON_ERROR_STO
 fi
 if ! PGPASSWORD="${API_DB_PASSWORD}" PGCONNECT_TIMEOUT=5 psql -X -v ON_ERROR_STOP=1 \
   -h "${API_DB_HOST:-127.0.0.1}" -p "${API_DB_PORT:-5432}" \
-  -U "${API_DB_USER:-auth_api}" -d quiz \
-  -Atqc 'SELECT 1 FROM public.quiz q, public."user" u LIMIT 0' >/dev/null; then
-  echo "Quiz database is not reachable with the API credentials." >&2
-  exit 1
-fi
-if ! PGPASSWORD="${API_DB_PASSWORD}" PGCONNECT_TIMEOUT=5 psql -X -v ON_ERROR_STOP=1 \
-  -h "${API_DB_HOST:-127.0.0.1}" -p "${API_DB_PORT:-5432}" \
   -U "${API_DB_USER:-auth_api}" -d media \
   -Atqc 'SELECT 1 FROM public.image i, public.image_blob b LIMIT 0' >/dev/null; then
   echo "Media database is not reachable with the API credentials." >&2
   exit 1
 fi
-if ! PGPASSWORD="${API_DB_PASSWORD}" PGCONNECT_TIMEOUT=5 psql -X -v ON_ERROR_STOP=1 \
-  -h "${API_DB_HOST:-127.0.0.1}" -p "${API_DB_PORT:-5432}" \
-  -U "${API_DB_USER:-auth_api}" -d musico \
-  -Atqc 'SELECT 1 FROM public."user" LIMIT 0' >/dev/null; then
-  echo "Musico database is not reachable with the API credentials." >&2
-  exit 1
-fi
-PROVISION_COMPONENTS=php-fpm,email-worker,nginx,api,home,quiz,musico bash "${SCRIPT_DIR}/provision.sh"
+for app in "${WEB_APPS[@]}"; do
+  [[ -z "${APP_DATABASES[$app]}" ]] && continue
+  if ! PGPASSWORD="${API_DB_PASSWORD}" PGCONNECT_TIMEOUT=5 psql -X -v ON_ERROR_STOP=1 \
+    -h "${API_DB_HOST:-127.0.0.1}" -p "${API_DB_PORT:-5432}" \
+    -U "${API_DB_USER:-auth_api}" -d "${APP_DATABASES[$app]}" \
+    -Atqc "${APP_DB_CHECKS[$app]}" >/dev/null; then
+    echo "${APP_TITLES[$app]} database is not reachable with the API credentials." >&2
+    exit 1
+  fi
+done
+components=php-fpm,email-worker,nginx,api
+for app in "${WEB_APPS[@]}"; do components+=",${app}"; done
+PROVISION_COMPONENTS="${components}" bash "${SCRIPT_DIR}/provision.sh"
 
 systemctl is-active --quiet nginx
 systemctl is-active --quiet postgresql
@@ -101,11 +101,12 @@ systemctl is-active --quiet softerr-backup-postgresql.timer
 
 verify_local_app_route /api/ api
 verify_local_app_route /api/auth/me auth-required
-verify_local_app_route /api/quiz/quizzes auth-required
 verify_local_app_route /api/media/images auth-required
-verify_local_app_route /api/musico/me auth-required
-verify_local_app_route / file /var/www/home/index.html
-verify_local_app_route /quiz/ file /var/www/quiz/index.html
-verify_local_app_route /musico/ file /var/www/musico/index.html
+for app in "${WEB_APPS[@]}"; do
+  if [[ -n "${APP_HEALTH_ROUTES[$app]}" ]]; then
+    verify_local_app_route "${APP_HEALTH_ROUTES[$app]}" auth-required
+  fi
+  verify_local_app_route "${APP_ROUTES[$app]}" file "${APP_TARGETS[$app]}/index.html"
+done
 
 echo "First-time setup is complete: ${API_APP_BASE_URL%/}"
