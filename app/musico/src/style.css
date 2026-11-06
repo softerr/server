@@ -11,8 +11,7 @@
 .musico-heading,
 .musico-detail-heading,
 .musico-row,
-.musico-add-row,
-.musico-dialog-actions {
+.musico-add-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -112,9 +111,7 @@
   .musico-details-fields dd + dt { margin-top: 9px; }
 }
 .musico-row-actions .auth-button { width: auto; }
-.musico-icon-action { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 4px; border: 0; background: none; color: var(--text); cursor: pointer; }
-.musico-icon-action svg { width: 24px; height: 24px; }
-.musico-icon-action:hover, .musico-icon-action:focus-visible { color: var(--accent); }
+.musico-icon-action { flex: none; width: 36px; height: 36px; padding: 4px; }
 .musico-icon-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 body:has(.musico-player-bar:not([hidden])) .musico-page { padding-bottom: 150px; }
 .musico-player-bar { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; padding: 12px 24px 14px; border-top: 1px solid var(--border); background: var(--panel); }
@@ -167,11 +164,9 @@ body:has(.musico-player-bar:not([hidden])) .musico-page { padding-bottom: 150px;
 .musico-back:hover { text-decoration: underline; }
 .musico-add-row { justify-content: flex-start; margin-top: 24px; }
 .musico-add-row .auth-button { width: auto; white-space: nowrap; }
-.musico-dialog { width: min(100% - 32px, 430px); padding: 24px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: var(--text); }
+.musico-dialog { width: min(100% - 32px, 430px); padding: 24px; border-radius: 7px; }
 .musico-edit-song-dialog { width: min(100% - 32px, 620px); }
-.musico-dialog::backdrop { background: rgb(0 0 0 / 75%); }
-.musico-dialog h2 { margin: 0 0 20px; color: var(--text-h); }
-.musico-dialog-actions { justify-content: flex-end; margin-top: 20px; }
+.musico-dialog-actions { align-items: center; margin-top: 20px; }
 .musico-metadata-actions { justify-content: flex-start; margin-top: 12px; }
 .musico-dialog-actions .auth-button { width: auto; }
 .musico-song-dialog { width: min(100% - 32px, 600px); }

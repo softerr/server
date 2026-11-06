@@ -1,9 +1,9 @@
-const imageUrl = (id) => `/api/media/images/${id}`
+import { mediaImageUrl, uploadMediaImage } from '../../shared/media-client.js'
+const imageUrl = mediaImageUrl
 import { renderSharedMedia, renameIcon } from './shared-media.js'
 import { createMediaThumbnailLoader } from './media-thumbnails.js'
 import { formatBytes, formatImageDetails, mediaImageIcon } from './media-format.js'
 import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
-import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
 import { createPageNotice } from '../../shared/page-notice.js'
 import { createMediaDeletion } from './media-delete.js'
 import { renderAudioMedia } from './audio-media.js'
@@ -304,25 +304,16 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
       for (const [index, file] of files.entries()) {
         if (!page.isConnected) return
         notice.show(`Uploading ${index + 1} of ${files.length}: ${file.name}…`, 'info')
-        if (file.size > MAX_IMAGE_BYTES) {
-          failures.push(`${file.name}: image must be at most ${MAX_IMAGE_SIZE_LABEL}`)
-          continue
-        }
         try {
-          const response = await fetch('/api/media/images', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/octet-stream', 'X-Image-Name': encodeURIComponent(file.name) },
-            body: file,
-          })
-          const payload = await response.json().catch(() => null)
+          const [response, payload] = await uploadMediaImage(file)
           if (!response.ok) {
             failures.push(`${file.name}: ${responseError(response, payload)}`)
             continue
           }
           if (payload?.scope === 'shared') shared++
           else ready++
-        } catch {
-          failures.push(`${file.name}: could not upload`)
+        } catch (error) {
+          failures.push(`${file.name}: ${error instanceof RangeError ? error.message : 'could not upload'}`)
         }
       }
       if (!page.isConnected) return

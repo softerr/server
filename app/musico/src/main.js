@@ -5,6 +5,9 @@ import { createPlayer } from './player.js'
 import { renderDiscover } from './discover.js'
 import { exportLibrary, importLibrary } from './library-data.js'
 import { renderSongDetails } from './details.js'
+import { versionHeader, loadJson } from './api.js'
+import { formatBytes } from '../../shared/format.js'
+import { mediaThumbnailUrl } from '../../shared/media-client.js'
 
 const MAX_TRACK_BYTES = 24 * 1024 * 1024
 let player
@@ -26,10 +29,7 @@ function status(element, message, error = false) {
   element.classList.toggle('error', error)
 }
 
-function formatBytes(bytes) {
-  if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)} GiB`
-  return `${(bytes / 1048576).toFixed(1)} MiB`
-}
+const formatAudioBytes = (bytes) => formatBytes(bytes, { minimumUnit: 'MiB' })
 
 function button(label, className, action) {
   const element = document.createElement('button')
@@ -50,7 +50,7 @@ function iconButton(label, icon, action) {
 
 function artThumbnail(id, alt = '') {
   const image = document.createElement('img')
-  image.src = `/api/media/images/${id}/thumbnail`
+  image.src = mediaThumbnailUrl(id)
   image.alt = alt
   image.loading = 'lazy'
   image.addEventListener('error', () => {
@@ -78,7 +78,7 @@ function renderTrackRow(track, onPlay, onDelete, removeLabel = 'Delete', onDetai
     main.append(art)
   }
   const detail = document.createElement('span')
-  detail.textContent = [track.artist, track.album, track.genre, track.year, track.rating === null ? '' : `★ ${track.rating}/10`, formatBytes(track.size_bytes)].filter(Boolean).join(' · ')
+  detail.textContent = [track.artist, track.album, track.genre, track.year, track.rating === null ? '' : `★ ${track.rating}/10`, formatAudioBytes(track.size_bytes)].filter(Boolean).join(' · ')
   info.append(name, detail)
   main.append(info)
   const actions = document.createElement('div')
@@ -89,17 +89,6 @@ function renderTrackRow(track, onPlay, onDelete, removeLabel = 'Delete', onDetai
     removeLabel === 'Remove' ? removeIcon : deleteIcon, onDelete))
   row.append(main, actions)
   return row
-}
-
-function versionHeader(version, kind = 'v') {
-  if (!Number.isSafeInteger(version) || version < 1) throw new Error('Reload this item before changing it.')
-  return { 'If-Match': `"${kind}${version}"` }
-}
-
-async function loadJson(requestJson, method, path, data, responseError, headers = {}) {
-  const [response, payload] = await requestJson(method, path, data, headers)
-  if (!response.ok) throw new Error(responseError(response, payload))
-  return payload
 }
 
 async function ready(requestJson, responseError) {
@@ -210,11 +199,11 @@ function renderSongs(app, { requestJson, responseError }) {
       const payload = await loadJson(requestJson, 'GET', '/api/musico/tracks', undefined, responseError)
       if (!app.contains(list)) return
       tracks = payload.tracks ?? []
-      usage.querySelector('[data-storage-usage]').textContent = `${formatBytes(payload.usage.bytes)} / ${formatBytes(payload.limits.bytes)}`
+      usage.querySelector('[data-storage-usage]').textContent = `${formatAudioBytes(payload.usage.bytes)} / ${formatAudioBytes(payload.limits.bytes)}`
       const storageBar = usage.querySelector('[data-storage-bar]')
       storageBar.max = payload.limits.bytes
       storageBar.value = payload.usage.bytes
-      page.querySelector('#musico-file-limit').textContent = ` · ${formatBytes(payload.limits.per_file_bytes)} per file`
+      page.querySelector('#musico-file-limit').textContent = ` · ${formatAudioBytes(payload.limits.per_file_bytes)} per file`
       usage.hidden = false
       options('song-artist', [...new Set(tracks.map((track) => track.artist).filter(Boolean))].sort(), 'All artists')
       options('song-album', [...new Set(tracks.map((track) => track.album).filter(Boolean))].sort(), 'All albums')

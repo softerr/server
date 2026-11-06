@@ -1,8 +1,4 @@
-function formatSize(bytes) {
-  if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)} GiB`
-  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MiB`
-  return `${Math.ceil(bytes / 1024)} KiB`
-}
+import { formatBytes } from '../../shared/format.js'
 
 export function renderBackups(app, { requestJson, responseError, setStatus }) {
   const page = app.querySelector('#page')
@@ -40,7 +36,7 @@ export function renderBackups(app, { requestJson, responseError, setStatus }) {
       date.textContent = new Date(backup.created).toLocaleString()
       dateCell.append(date)
       const sizeCell = document.createElement('td')
-      sizeCell.textContent = formatSize(backup.size_bytes)
+      sizeCell.textContent = formatBytes(backup.size_bytes, { minimumUnit: 'KiB', roundUp: true })
       const downloadCell = document.createElement('td')
       const download = document.createElement('a')
       download.className = 'auth-button auth-button-secondary backup-download'

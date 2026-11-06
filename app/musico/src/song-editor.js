@@ -1,5 +1,7 @@
 import { mountArtworkPicker } from './artwork.js'
 import { MAX_IMAGE_BYTES } from '../../shared/media-limits.js'
+import { mediaThumbnailUrl, uploadMediaImage } from '../../shared/media-client.js'
+import { versionHeader } from './api.js'
 
 export function mountSongEditor(container, { requestJson, responseError, onSaved }) {
   const dialog = document.createElement('dialog')
@@ -50,7 +52,7 @@ export function mountSongEditor(container, { requestJson, responseError, onSaved
       return
     }
     const image = document.createElement('img')
-    image.src = pendingArtwork?.preview ?? `/api/media/images/${artImageId}/thumbnail`
+    image.src = pendingArtwork?.preview ?? mediaThumbnailUrl(artImageId)
     image.alt = 'Selected album art'
     const label = document.createElement('span')
     label.textContent = 'Change album art'
@@ -161,12 +163,7 @@ export function mountSongEditor(container, { requestJson, responseError, onSaved
     save.disabled = true
     try {
       if (pendingArtwork) {
-        const response = await fetch('/api/media/images', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream', 'X-Image-Name': encodeURIComponent(pendingArtwork.name) },
-          body: pendingArtwork.blob,
-        })
-        const payload = await response.json().catch(() => null)
+        const [response, payload] = await uploadMediaImage(pendingArtwork.blob, pendingArtwork.name)
         if (!response.ok) throw new Error(responseError(response, payload))
         artImageId = payload.id
         clearPendingArtwork()
@@ -178,7 +175,7 @@ export function mountSongEditor(container, { requestJson, responseError, onSaved
         album: form.elements.album.value, genre: form.elements.genre.value,
         year: number('year'), track_number: number('track_number'), rating: number('rating'),
         art_image_id: artImageId,
-      }, { 'If-Match': `"v${current.version}"` })
+      }, versionHeader(current.version))
       if (!response.ok) throw new Error(responseError(response, updated))
       current = updated
       dialog.close()

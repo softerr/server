@@ -1,4 +1,5 @@
-import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
+import { listMediaImages, uploadMediaImage } from '../../shared/media-client.js'
+import { createMediaThumbnailBatcher } from '../../shared/media-thumbnails.js'
 
 export function mountArtworkPicker(page, { requestJson, responseError }) {
   const dialog = document.createElement('dialog')
@@ -16,24 +17,37 @@ export function mountArtworkPicker(page, { requestJson, responseError }) {
   const message = dialog.querySelector('[data-status]')
   let images = []
   let resolveChoice = null
-  let observer = null
+  const cache = new Map()
+  const batcher = createMediaThumbnailBatcher({
+    isActive: () => dialog.open,
+    onResult(id, src) {
+      cache.set(id, src)
+      if (cache.size > 160) cache.delete(cache.keys().next().value)
+      const preview = grid.querySelector(`img[data-image-id="${id}"]`)
+      if (preview) preview.src = src
+    },
+  })
+  const observer = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue
+      observer.unobserve(entry.target)
+      batcher.enqueue(Number(entry.target.dataset.imageId))
+    }
+  }, { root: grid, rootMargin: '120px' }) : null
 
   function choose(id) {
     dialog.close()
+    observer?.disconnect()
+    batcher.clear()
     resolveChoice?.(id)
     resolveChoice = null
   }
 
   function draw() {
     const query = search.value.toLocaleLowerCase().trim()
+    const visible = images.filter((item) => item.name.toLocaleLowerCase().includes(query))
     observer?.disconnect()
-    observer = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue
-        entry.target.src = entry.target.dataset.src
-        observer.unobserve(entry.target)
-      }
-    }, { root: grid, rootMargin: '120px' }) : null
+    batcher.retain(visible.map((image) => image.id))
     grid.replaceChildren()
     const empty = document.createElement('button')
     empty.type = 'button'
@@ -41,26 +55,28 @@ export function mountArtworkPicker(page, { requestJson, responseError }) {
     empty.innerHTML = '<span class="musico-empty-art">×</span><span>No album art</span>'
     empty.addEventListener('click', () => choose(null))
     grid.append(empty)
-    for (const image of images.filter((item) => item.name.toLocaleLowerCase().includes(query))) {
+    for (const image of visible) {
       const item = document.createElement('button')
       item.type = 'button'
       item.className = 'musico-art-choice'
       const thumbnail = document.createElement('img')
-      thumbnail.dataset.src = `/api/media/images/${image.id}/thumbnail`
+      thumbnail.dataset.imageId = String(image.id)
       thumbnail.alt = ''
       thumbnail.loading = 'lazy'
       const name = document.createElement('span')
       name.textContent = image.name
       item.append(thumbnail, name)
-      if (observer) observer.observe(thumbnail)
-      else thumbnail.src = thumbnail.dataset.src
+      const cached = cache.get(image.id)
+      if (cached) thumbnail.src = cached
+      else if (observer) observer.observe(thumbnail)
+      else batcher.enqueue(image.id)
       item.addEventListener('click', () => choose(image.id))
       grid.append(item)
     }
   }
 
   async function reload() {
-    const [response, payload] = await requestJson('GET', '/api/media/images')
+    const [response, payload] = await listMediaImages(requestJson)
     if (!response.ok) throw new Error(responseError(response, payload))
     images = payload.images ?? []
     draw()
@@ -74,16 +90,10 @@ export function mountArtworkPicker(page, { requestJson, responseError }) {
     const file = input.files?.[0]
     input.value = ''
     if (!file) return
-    if (file.size > MAX_IMAGE_BYTES) { message.textContent = `Image must be at most ${MAX_IMAGE_SIZE_LABEL}.`; return }
     input.disabled = true
     message.textContent = 'Uploading image…'
     try {
-      const response = await fetch('/api/media/images', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream', 'X-Image-Name': encodeURIComponent(file.name) },
-        body: file,
-      })
-      const payload = await response.json().catch(() => null)
+      const [response, payload] = await uploadMediaImage(file)
       if (!response.ok) throw new Error(responseError(response, payload))
       choose(payload.id)
     } catch (error) { message.textContent = error.message }

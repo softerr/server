@@ -1,6 +1,7 @@
 import { moveDownIcon, moveUpIcon } from './icons.js'
 import { submitAttempt } from './submit-attempt.js'
 import { showMissingImageWhenUnavailable } from './missing-image.js'
+import { mediaImageUrl } from '../../shared/media-client.js'
 
 const templateNames = {
   multiple_choice: 'Multiple choice', one_choice: 'One choice', number: 'Number',
@@ -10,7 +11,7 @@ const templateNames = {
   categorize: 'Categorize',
 }
 
-const imageUrl = (id) => `/api/media/images/${id}`
+const imageUrl = mediaImageUrl
 
 function element(tag, className = '', text) {
   const node = document.createElement(tag)

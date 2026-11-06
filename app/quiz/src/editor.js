@@ -1,5 +1,6 @@
 import { mountQuestionEditor } from './questions.js'
 import { openQuizPreview } from './preview.js'
+import { listMediaImages, mediaImageUrl } from '../../shared/media-client.js'
 
 export function renderQuizEditor(app, { currentUser, requestJson, responseError, setStatus }) {
   const quizId = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('quiz')
@@ -320,7 +321,7 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
       const [quizResult, questionsResult, imagesResult] = await Promise.all([
         requestJson('GET', `/api/quiz/quizzes/${quizId}`),
         requestJson('GET', `/api/quiz/quizzes/${quizId}/questions`),
-        requestJson('GET', '/api/media/images'),
+        listMediaImages(requestJson),
       ])
       if (!app.contains(form)) return
       const [quizResponse, quiz] = quizResult
@@ -349,7 +350,7 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
         const details = imageDetails.get(id)
         const name = details?.name
         if (typeof name !== 'string') throw new Error('Could not export image name')
-        const response = await fetch(`/api/media/images/${id}`)
+        const response = await fetch(mediaImageUrl(id))
         if (!response.ok) throw new Error('Could not export image')
         const bytes = new Uint8Array(await response.arrayBuffer())
         let binary = ''

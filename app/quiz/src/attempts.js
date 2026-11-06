@@ -1,5 +1,6 @@
 import { buildQuestion } from './play.js'
 import { showMissingImageWhenUnavailable } from './missing-image.js'
+import { mediaImageUrl } from '../../shared/media-client.js'
 
 function element(tag, className = '', text) {
   const node = document.createElement(tag)
@@ -38,7 +39,7 @@ function answerContent(text, imageId) {
   if (imageId) {
     const image = element('img', 'review-answer-image')
     showMissingImageWhenUnavailable(image)
-    image.src = `/api/media/images/${imageId}`
+    image.src = mediaImageUrl(imageId)
     image.alt = text || 'Answer image'
     content.append(image)
   }

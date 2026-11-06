@@ -1,14 +1,10 @@
 import { imageIcon, noImageIcon, removeIcon, uploadImageIcon } from './icons.js'
-import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
+import { formatBytes } from '../../shared/format.js'
+import { listMediaImages, mediaImageUrl, mediaThumbnailUrl, uploadMediaImage } from '../../shared/media-client.js'
+import { createMediaThumbnailBatcher } from '../../shared/media-thumbnails.js'
 
-const imageUrl = (id) => `/api/media/images/${id}`
-const thumbnailUrl = (id) => `${imageUrl(id)}/thumbnail`
-
-function formatBytes(bytes) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KiB`
-  return `${(bytes / 1048576).toFixed(1)} MiB`
-}
+const imageUrl = mediaImageUrl
+const thumbnailUrl = mediaThumbnailUrl
 
 export function mountImageLibrary(section, { requestJson, responseError, setStatus }) {
   const dialog = document.createElement('dialog')
@@ -81,15 +77,22 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   const selectedIds = new Set()
   const pickers = new Set()
   const imageLoads = new Map()
-  const pendingImages = new Set()
-  const activeBatches = new Set()
   const visiblePreviews = new Map()
   let loadTimer = null
-  let batchTimer = null
   let sourceMode = 'local'
   let onlineResults = []
   let onlineSearchTimer = null
   let onlineSearchController = null
+  const batcher = createMediaThumbnailBatcher({
+    isActive: () => dialog.open,
+    onResult(id, url) {
+      const load = imageLoads.get(id)
+      if (!load) return
+      load.url = url
+      const preview = visiblePreviews.get(id)
+      if (preview) preview.src = url
+    },
+  })
   const imageObserver = new IntersectionObserver((entries) => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue
@@ -97,78 +100,14 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       const id = Number(entry.target.dataset.libraryPreviewId)
       if (imageLoads.has(id)) continue
       imageLoads.set(id, { url: null })
-      pendingImages.add(id)
+      batcher.enqueue(id)
     }
-    if (pendingImages.size && batchTimer === null) batchTimer = setTimeout(flushImages, 0)
   }, { root: dialog, rootMargin: '80px' })
-
-  async function loadBatch(ids) {
-    const batch = { ids, controller: new AbortController(), loads: new Map(ids.map((id) => [id, imageLoads.get(id)])) }
-    activeBatches.add(batch)
-    try {
-      const response = await fetch('/api/media/thumbnails', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_ids: ids }), signal: batch.controller.signal,
-      })
-      if (!response.ok) throw new Error('Thumbnail batch failed')
-      const payload = await response.json()
-      if (!Array.isArray(payload.images)) throw new Error('Invalid thumbnail batch')
-      const received = new Set()
-      for (const image of payload.images) {
-        if (!ids.includes(image.id) || !/^image\/(png|jpeg|webp)$/.test(image.mime_type)
-          || typeof image.data !== 'string') continue
-        const load = imageLoads.get(image.id)
-        if (!load || load !== batch.loads.get(image.id)) continue
-        load.url = `data:${image.mime_type};base64,${image.data}`
-        const preview = visiblePreviews.get(image.id)
-        if (preview) preview.src = load.url
-        received.add(image.id)
-      }
-      for (const id of ids) {
-        if (received.has(id)) continue
-        const load = imageLoads.get(id)
-        if (!load || load !== batch.loads.get(id)) continue
-        load.url = thumbnailUrl(id)
-        const preview = visiblePreviews.get(id)
-        if (preview) preview.src = load.url
-      }
-    } catch {
-      if (!batch.controller.signal.aborted) {
-        for (const id of ids) {
-          const load = imageLoads.get(id)
-          if (!load || load !== batch.loads.get(id)) continue
-          load.url = thumbnailUrl(id)
-          const preview = visiblePreviews.get(id)
-          if (preview) preview.src = load.url
-        }
-      }
-    } finally {
-      activeBatches.delete(batch)
-      for (const id of ids) {
-        if (imageLoads.get(id) === batch.loads.get(id) && !imageLoads.get(id)?.url) imageLoads.delete(id)
-      }
-      flushImages()
-    }
-  }
-
-  function flushImages() {
-    clearTimeout(batchTimer)
-    batchTimer = null
-    if (!dialog.open) return
-    while (activeBatches.size < 2 && pendingImages.size) {
-      const ids = [...pendingImages].slice(0, 32)
-      for (const id of ids) pendingImages.delete(id)
-      loadBatch(ids)
-    }
-  }
 
   function stopImageLoads() {
     clearTimeout(loadTimer)
-    clearTimeout(batchTimer)
-    batchTimer = null
     imageObserver.disconnect()
-    for (const batch of activeBatches) batch.controller.abort()
-    pendingImages.clear()
+    batcher.clear()
     imageLoads.clear()
     visiblePreviews.clear()
   }
@@ -391,18 +330,12 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       : images
     const visibleIds = new Set(visibleImages.map((image) => image.id))
     clearTimeout(loadTimer)
-    clearTimeout(batchTimer)
-    batchTimer = null
     imageObserver.disconnect()
     visiblePreviews.clear()
-    for (const id of pendingImages) imageLoads.delete(id)
-    pendingImages.clear()
-    for (const [id, load] of imageLoads) {
+    batcher.retain(visibleIds)
+    for (const id of imageLoads.keys()) {
       if (visibleIds.has(id)) continue
       imageLoads.delete(id)
-    }
-    for (const batch of activeBatches) {
-      if (!batch.ids.some((id) => visibleIds.has(id))) batch.controller.abort()
     }
     const emptyTile = document.createElement('div')
     emptyTile.className = 'image-library-item'
@@ -529,7 +462,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
 
   async function refresh() {
     try {
-      const [response, payload] = await requestJson('GET', '/api/media/images')
+      const [response, payload] = await listMediaImages(requestJson)
       if (!response.ok) {
         usageBars.hidden = true
         usageMessage.hidden = false
@@ -579,22 +512,12 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     try {
       for (const [index, file] of files.entries()) {
         setStatus(status, `Uploading ${index + 1} of ${files.length}…`)
-        if (file.size > MAX_IMAGE_BYTES) {
-          failures.push(`${file.name}: image must be at most ${MAX_IMAGE_SIZE_LABEL}`)
-          continue
-        }
         try {
-          const response = await fetch('/api/media/images', {
-            method: 'POST', headers: {
-              'Content-Type': 'application/octet-stream',
-              'X-Image-Name': encodeURIComponent(file.name),
-            }, body: file,
-          })
-          const payload = await response.json().catch(() => null)
+          const [response, payload] = await uploadMediaImage(file)
           if (response.ok && Number.isInteger(payload?.id)) uploaded.push(payload.id)
           else failures.push(`${file.name}: ${responseError(response, payload)}`)
-        } catch {
-          failures.push(`${file.name}: could not upload`)
+        } catch (error) {
+          failures.push(`${file.name}: ${error instanceof RangeError ? error.message : 'could not upload'}`)
         }
       }
       if (!await refresh()) return

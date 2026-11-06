@@ -289,34 +289,16 @@
 .user-dialog {
   width: min(440px, calc(100vw - 32px));
   padding: 28px;
-  box-sizing: border-box;
-  border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--panel);
-  color: var(--text);
-  text-align: left;
-}
-
-.user-dialog::backdrop {
-  background: #121212cc;
 }
 
 .user-dialog h2 {
-  margin: 0 0 20px;
-  color: var(--text-h);
   font-size: 24px;
   text-transform: uppercase;
 }
 
 .user-dialog > p {
   margin: 0 0 20px;
-}
-
-.user-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 10px;
 }
 
 .media-page {

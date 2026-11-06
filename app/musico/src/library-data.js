@@ -1,17 +1,11 @@
+import { versionHeader, loadJson } from './api.js'
+
 function key(track) {
   return `${track.original_name}\u0000${track.size_bytes}`
 }
 
-function versionHeader(version, kind = 'v') {
-  if (!Number.isSafeInteger(version) || version < 1) throw new Error('Reload your library before importing.')
-  return { 'If-Match': `"${kind}${version}"` }
-}
-
-async function json(requestJson, responseError, method, path, body, headers = {}) {
-  const [response, payload] = await requestJson(method, path, body, headers)
-  if (!response.ok) throw new Error(responseError(response, payload))
-  return payload
-}
+const json = (requestJson, responseError, method, path, body, headers = {}) =>
+  loadJson(requestJson, method, path, body, responseError, headers)
 
 export async function exportLibrary(requestJson, responseError) {
   const [library, index] = await Promise.all([

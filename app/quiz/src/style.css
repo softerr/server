@@ -113,25 +113,9 @@
 #explore-more { margin-top: 20px; }
 
 .icon-action {
-  display: grid;
-  place-items: center;
   width: 32px;
   height: 32px;
   padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text);
-  cursor: pointer;
-}
-
-.icon-action svg {
-  width: 24px;
-  height: 24px;
-}
-
-.icon-action:hover,
-.icon-action:focus-visible {
-  color: var(--accent);
 }
 
 .icon-action:focus-visible {
@@ -142,29 +126,13 @@
   stroke-width: 2.6;
 }
 
-.icon-action:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 .quiz-dialog {
   width: min(420px, calc(100vw - 32px));
   padding: 28px;
-  box-sizing: border-box;
-  border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--panel);
-  color: var(--text);
-  text-align: left;
-}
-
-.quiz-dialog::backdrop {
-  background: #121212cc;
 }
 
 .quiz-dialog h2 {
-  margin: 0 0 20px;
-  color: var(--text-h);
   font-size: 24px;
   text-transform: uppercase;
 }
@@ -176,13 +144,6 @@
 .quiz-dialog form {
   display: grid;
   gap: 16px;
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 10px;
 }
 
 .dialog-actions .auth-button {

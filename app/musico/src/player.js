@@ -1,3 +1,5 @@
+import { mediaImageUrl, mediaThumbnailUrl } from '../../shared/media-client.js'
+
 const modes = ['Shuffle', 'Loop', 'Order', 'Single', 'Repeat']
 const icon = (paths, viewBox = '0 0 24 24', strokeWidth = 1.8) => `<svg viewBox="${viewBox}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`
 const modeIcons = {
@@ -130,7 +132,7 @@ export function createPlayer(requestJson) {
       art.dataset.imageId = artId
       art.hidden = !artId
       artPlaceholder.hidden = !!artId
-      if (artId) art.src = `/api/media/images/${artId}/thumbnail`
+      if (artId) art.src = mediaThumbnailUrl(artId)
       else art.removeAttribute('src')
     }
     root.querySelector('[data-current]').textContent = clock(audio.currentTime)
@@ -153,7 +155,7 @@ export function createPlayer(requestJson) {
     if ('mediaSession' in navigator && typeof MediaMetadata !== 'undefined') {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: queue[index].title, artist: queue[index].artist, album: queue[index].album,
-        artwork: queue[index].art_image_id ? [{ src: `/api/media/images/${queue[index].art_image_id}`, sizes: '512x512' }] : [],
+        artwork: queue[index].art_image_id ? [{ src: mediaImageUrl(queue[index].art_image_id), sizes: '512x512' }] : [],
       })
     }
     update()

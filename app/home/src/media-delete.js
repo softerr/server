@@ -1,3 +1,5 @@
+import { mediaImageUrl } from '../../shared/media-client.js'
+
 export function createMediaDeletion(page, { requestJson, responseError, notify }) {
   const dialog = document.createElement('dialog')
   dialog.className = 'user-dialog media-delete-dialog'
@@ -82,7 +84,7 @@ export function createMediaDeletion(page, { requestJson, responseError, notify }
     const failures = []
     for (const id of ids) {
       try {
-        const [response, payload] = await requestJson('DELETE', `/api/media/images/${id}${forceIds.has(id) ? '?force=1' : ''}`)
+        const [response, payload] = await requestJson('DELETE', `${mediaImageUrl(id)}${forceIds.has(id) ? '?force=1' : ''}`)
         if (!page.isConnected) return
         if (response.ok) { selected.delete(id); deleted++ }
         else failures.push(responseError(response, payload))

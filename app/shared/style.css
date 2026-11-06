@@ -58,6 +58,44 @@ h1 {
   flex-direction: column;
 }
 
+:where(.quiz-dialog, .user-dialog, .musico-dialog) {
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+}
+
+:where(.quiz-dialog, .user-dialog, .musico-dialog)::backdrop {
+  background: rgb(0 0 0 / 75%);
+}
+
+:where(.quiz-dialog, .user-dialog, .musico-dialog) h2 {
+  margin: 0 0 20px;
+  color: var(--text-h);
+}
+
+:where(.icon-action, .musico-icon-action) {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+:where(.icon-action, .musico-icon-action) svg { width: 24px; height: 24px; }
+:where(.icon-action, .musico-icon-action):hover,
+:where(.icon-action, .musico-icon-action):focus-visible { color: var(--accent); }
+:where(.icon-action, .musico-icon-action):disabled { opacity: 0.4; cursor: not-allowed; }
+
+:where(.dialog-actions, .user-dialog-actions, .musico-dialog-actions) {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .site-header {
   border-bottom: 1px solid var(--border);
   background: var(--nav);
