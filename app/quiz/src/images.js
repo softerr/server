@@ -1,7 +1,7 @@
 import { imageIcon, noImageIcon, removeIcon, uploadImageIcon } from './icons.js'
-import { formatBytes } from '../../shared/format.js'
 import { listMediaImages, mediaImageUrl, mediaThumbnailUrl, uploadMediaImage } from '../../shared/media-client.js'
 import { createMediaThumbnailBatcher } from '../../shared/media-thumbnails.js'
+import { updateImageUsage } from '../../shared/image-usage.js'
 
 const imageUrl = mediaImageUrl
 const thumbnailUrl = mediaThumbnailUrl
@@ -57,11 +57,6 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   const usage = dialog.querySelector('.image-library-usage')
   const usageBars = usage.querySelector('.image-library-usage-bars')
   const usageMessage = usage.querySelector('.image-library-usage-message')
-  const countLabel = usage.querySelector('[data-image-count]')
-  const countBar = usage.querySelector('[data-image-count-bar]')
-  const storageLabel = usage.querySelector('[data-image-storage]')
-  const storageBar = usage.querySelector('[data-image-storage-bar]')
-  const perImageLabel = usage.querySelector('[data-image-per-limit]')
   const search = dialog.querySelector('[data-image-search]')
   const searchLabel = dialog.querySelector('[data-search-label]')
   const description = dialog.querySelector('[data-library-description]')
@@ -472,13 +467,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       }
       images = payload.images
       for (const id of selectedIds) if (!images.some((image) => image.id === id)) selectedIds.delete(id)
-      countLabel.textContent = `${payload.usage.count} / ${payload.limits.count}`
-      countBar.max = payload.limits.count
-      countBar.value = payload.usage.count
-      storageLabel.textContent = `${formatBytes(payload.usage.bytes)} / ${formatBytes(payload.limits.bytes)}`
-      storageBar.max = payload.limits.bytes
-      storageBar.value = payload.usage.bytes
-      perImageLabel.textContent = `${formatBytes(payload.limits.per_image_bytes)} max per image`
+      updateImageUsage(usage, payload)
       usageBars.hidden = false
       usageMessage.hidden = true
       render()

@@ -1,4 +1,5 @@
 import { versionHeader, loadJson } from './api.js'
+import { downloadBlob } from '../../shared/download.js'
 
 function key(track) {
   return `${track.original_name}\u0000${track.size_bytes}`
@@ -30,14 +31,7 @@ export async function exportLibrary(requestJson, responseError) {
     playlists,
   }
   const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `musico-library-${new Date().toISOString().slice(0, 10)}.json`
-  document.body.append(link)
-  link.click()
-  link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 60000)
+  downloadBlob(blob, `musico-library-${new Date().toISOString().slice(0, 10)}.json`, 60000)
 }
 
 export async function importLibrary(file, requestJson, responseError, onProgress) {

@@ -7,9 +7,9 @@ export function listMediaImages(requestJson) {
   return requestJson('GET', '/api/media/images')
 }
 
-export async function uploadMediaImage(file, name = file.name) {
+export async function uploadMediaImage(file, name = file.name, path = '/api/media/images') {
   if (file.size > MAX_IMAGE_BYTES) throw new RangeError(`Image must be at most ${MAX_IMAGE_SIZE_LABEL}.`)
-  const response = await fetch('/api/media/images', {
+  const response = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream', 'X-Image-Name': encodeURIComponent(name) },
     body: file,

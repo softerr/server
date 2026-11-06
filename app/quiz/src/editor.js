@@ -1,6 +1,7 @@
 import { mountQuestionEditor } from './questions.js'
 import { openQuizPreview } from './preview.js'
 import { listMediaImages, mediaImageUrl } from '../../shared/media-client.js'
+import { downloadBlob } from '../../shared/download.js'
 
 export function renderQuizEditor(app, { currentUser, requestJson, responseError, setStatus }) {
   const quizId = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('quiz')
@@ -381,17 +382,7 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
         .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '').slice(0, 64) || 'quiz'
       const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], { type: 'application/json;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${filename}.json`
-      document.body.append(link)
-      try {
-        link.click()
-      } finally {
-        link.remove()
-        setTimeout(() => URL.revokeObjectURL(url), 1000)
-      }
+      downloadBlob(blob, `${filename}.json`)
     } catch {
       if (app.contains(form)) setStatus(saveAllStatus, 'Could not export this quiz. Please try again.', true)
     } finally {
@@ -418,17 +409,7 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
         setStatus(saveAllStatus, responseError(response, await response.json().catch(() => null)), true)
         return
       }
-      const url = URL.createObjectURL(await response.blob())
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `quiz-${quizId}.zip`
-      document.body.append(link)
-      try {
-        link.click()
-      } finally {
-        link.remove()
-        setTimeout(() => URL.revokeObjectURL(url), 1000)
-      }
+      downloadBlob(await response.blob(), `quiz-${quizId}.zip`)
     } catch {
       if (app.contains(form)) setStatus(saveAllStatus, 'Could not export this quiz. Please try again.', true)
     } finally {

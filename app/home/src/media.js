@@ -1,12 +1,14 @@
 import { mediaImageUrl, uploadMediaImage } from '../../shared/media-client.js'
 const imageUrl = mediaImageUrl
-import { renderSharedMedia, renameIcon } from './shared-media.js'
+import { renderSharedMedia } from './shared-media.js'
 import { createMediaThumbnailLoader } from './media-thumbnails.js'
-import { formatBytes, formatImageDetails, mediaImageIcon } from './media-format.js'
+import { formatImageDetails, mediaImageIcon } from './media-format.js'
 import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
 import { createPageNotice } from '../../shared/page-notice.js'
 import { createMediaDeletion } from './media-delete.js'
 import { renderAudioMedia } from './audio-media.js'
+import { updateImageUsage } from '../../shared/image-usage.js'
+import { editIcon as renameIcon } from '../../shared/icons.js'
 
 const viewOptions = [
   ['list', 'List', '<rect x="3" y="4" width="4" height="4"/><path d="M10 6h11"/><rect x="3" y="10" width="4" height="4"/><path d="M10 12h11"/><rect x="3" y="16" width="4" height="4"/><path d="M10 18h11"/>'],
@@ -275,15 +277,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
     for (const id of selected) {
       if (!images.some((image) => image.id === id && image.scope === 'personal')) selected.delete(id)
     }
-    usage.querySelector('[data-image-count]').textContent = `${payload.usage.count} / ${payload.limits.count}`
-    const countBar = usage.querySelector('[data-image-count-bar]')
-    countBar.max = payload.limits.count
-    countBar.value = payload.usage.count
-    usage.querySelector('[data-image-storage]').textContent = `${formatBytes(payload.usage.bytes)} / ${formatBytes(payload.limits.bytes)}`
-    const storageBar = usage.querySelector('[data-image-storage-bar]')
-    storageBar.max = payload.limits.bytes
-    storageBar.value = payload.usage.bytes
-    usage.querySelector('[data-image-per-limit]').textContent = `${formatBytes(payload.limits.per_image_bytes)} max per image`
+    updateImageUsage(usage, payload)
     usage.hidden = false
     render()
     return true

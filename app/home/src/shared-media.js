@@ -1,11 +1,9 @@
 import { formatImageDetails, mediaImageIcon } from './media-format.js'
 import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
-import { MAX_IMAGE_BYTES, MAX_IMAGE_SIZE_LABEL } from '../../shared/media-limits.js'
-import { mediaImageUrl } from '../../shared/media-client.js'
+import { mediaImageUrl, uploadMediaImage } from '../../shared/media-client.js'
+import { editIcon as renameIcon, deleteIcon } from '../../shared/icons.js'
 
 const imageUrl = mediaImageUrl
-export const renameIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4.5-1 11-11a2.12 2.12 0 0 0-3-3l-11 11L4 20Z" /></svg>'
-const deleteIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>'
 const folderIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'
 const ungroupedIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m5 20 14-14"/></svg>'
 const createFolderIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v6m-3-3h6"/></svg>'
@@ -317,23 +315,14 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
       for (const [index, file] of files.entries()) {
         if (!section.isConnected) return
         notify(`Uploading ${index + 1} of ${files.length} to ${target}: ${file.name}…`, 'info')
-        if (file.size > MAX_IMAGE_BYTES) {
-          failures.push(`${file.name}: image must be at most ${MAX_IMAGE_SIZE_LABEL}`)
-          continue
-        }
         try {
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/octet-stream', 'X-Image-Name': encodeURIComponent(file.name) },
-            body: file,
-          })
-          const payload = await response.json().catch(() => null)
+          const [response, payload] = await uploadMediaImage(file, file.name, url)
           if (!response.ok) {
             failures.push(`${file.name}: ${responseError(response, payload)}`)
           } else if (response.status === 201) uploaded++
           else existing++
-        } catch {
-          failures.push(`${file.name}: could not upload`)
+        } catch (error) {
+          failures.push(`${file.name}: ${error instanceof RangeError ? error.message : 'could not upload'}`)
         }
       }
       if (!section.isConnected) return

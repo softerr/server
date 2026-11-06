@@ -36,6 +36,19 @@ test('image upload preserves the filename in the request header', async () => {
   } finally { globalThis.fetch = originalFetch }
 })
 
+test('shared image uploads use the selected group endpoint', async () => {
+  const originalFetch = globalThis.fetch
+  let path
+  globalThis.fetch = (url) => {
+    path = url
+    return Promise.resolve({ ok: true, json: async () => ({ id: 7 }) })
+  }
+  try {
+    await uploadMediaImage({ name: 'cover.png', size: 42 }, 'cover.png', '/api/media/groups/5/images')
+    assert.equal(path, '/api/media/groups/5/images')
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('thumbnail batches ignore results from a replaced search', async () => {
   const originalFetch = globalThis.fetch
   const requests = []

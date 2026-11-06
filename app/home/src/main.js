@@ -4,8 +4,7 @@ import { renderMedia } from './media.js'
 import { renderBackups } from './backups.js'
 import { renderTokens } from './tokens.js'
 import { createPageNotice } from '../../shared/page-notice.js'
-
-const deleteIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>'
+import { deleteIcon } from '../../shared/icons.js'
 
 function renderUsers(app, { currentUser, requestJson, responseError, setStatus }) {
   app.querySelector('#page').innerHTML = `
