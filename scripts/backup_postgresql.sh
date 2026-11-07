@@ -32,7 +32,9 @@ if ! flock -n 9; then
   exit 1
 fi
 mega mega-whoami >/dev/null
-mega mega-mkdir -p "${MEGA_DIR}"
+if ! mega mega-ls -l "${MEGA_DIR}" >/dev/null 2>&1; then
+  mega mega-mkdir -p "${MEGA_DIR}"
+fi
 
 partial=''
 restore_db=''

@@ -143,7 +143,9 @@ if ! runuser -u www-data -- env HOME="${mega_home}" mega-whoami >/dev/null 2>&1;
     exit 1
   fi
 fi
-runuser -u www-data -- env HOME="${mega_home}" mega-mkdir -p /softerr-backups
+if ! runuser -u www-data -- env HOME="${mega_home}" mega-ls -l /softerr-backups >/dev/null 2>&1; then
+  runuser -u www-data -- env HOME="${mega_home}" mega-mkdir -p /softerr-backups
+fi
 echo "MEGA backup session is ready."
 if [[ ! -s "${password_file}" ]]; then
   umask 077
