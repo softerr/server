@@ -12,6 +12,7 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/tls_certificate.sh"
 source "${SCRIPT_DIR}/lib/deploy_checks.sh"
 source "${SCRIPT_DIR}/lib/app_registry.sh"
+source "${SCRIPT_DIR}/lib/apt_locks.sh"
 load_app_registry "${REPO_ROOT}"
 BOOTSTRAP_CONFIG="${REPO_ROOT}/configs/nginx/softerr-bootstrap.conf"
 
@@ -27,6 +28,7 @@ if ! command -v apt-get >/dev/null 2>&1; then
   echo "This script requires Debian or Ubuntu with apt-get." >&2
   exit 1
 fi
+remove_duplicate_mega_apt_source
 
 public_host="${TLS_HOST}"
 cert_file="${TLS_CERT_FILE}"

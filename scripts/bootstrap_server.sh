@@ -41,6 +41,16 @@ if ! command -v apt-get >/dev/null 2>&1; then
   exit 1
 fi
 
+remove_duplicate_mega_apt_source() {
+  local bootstrap_source=/etc/apt/sources.list.d/softerr-mega.list
+  if [[ -f "${bootstrap_source}" ]] \
+    && grep -Rql -- 'meganz-archive-keyring.gpg' /etc/apt/sources.list.d; then
+    echo "Removing duplicate MEGA APT source created by bootstrap..."
+    rm -f -- "${bootstrap_source}" /etc/apt/keyrings/softerr-mega.gpg
+  fi
+}
+remove_duplicate_mega_apt_source
+
 if ! command -v sshd >/dev/null 2>&1 || ! command -v ssh-keygen >/dev/null 2>&1 \
   || ! command -v openssl >/dev/null 2>&1 || ! command -v visudo >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
@@ -118,6 +128,7 @@ if ! command -v mega-login >/dev/null 2>&1; then
     "${mega_repository}" > /etc/apt/sources.list.d/softerr-mega.list
   apt-get update
   apt-get install -y megacmd
+  remove_duplicate_mega_apt_source
 fi
 mega_home=/var/lib/softerr-mega
 install -d -o www-data -g www-data -m 700 "${mega_home}"

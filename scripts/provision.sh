@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/app_registry.sh"
+source "${SCRIPT_DIR}/lib/apt_locks.sh"
 load_app_registry "${REPO_ROOT}"
 declare -A SCHEMA_APPLIED=()
 
@@ -174,6 +175,7 @@ run_component() {
 
 main() {
   require_root
+  remove_duplicate_mega_apt_source
   split_components "${PROVISION_COMPONENTS:-all}"
   local component
   for component in "${COMPONENTS[@]}"; do

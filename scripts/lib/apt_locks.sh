@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 
+remove_duplicate_mega_apt_source() {
+  local bootstrap_source=/etc/apt/sources.list.d/softerr-mega.list
+  if [[ -f "${bootstrap_source}" ]] \
+    && grep -Rql -- 'meganz-archive-keyring.gpg' /etc/apt/sources.list.d; then
+    echo "Removing duplicate MEGA APT source created by bootstrap..."
+    rm -f -- "${bootstrap_source}" /etc/apt/keyrings/softerr-mega.gpg
+  fi
+}
+
 wait_for_apt_locks() {
   local timeout="${APT_LOCK_TIMEOUT_SECONDS:-300}"
   local waited=0
