@@ -125,7 +125,7 @@ backup_wait_seconds=0
 while kill -0 "${backup_start_pid}" 2>/dev/null; do
   sleep 1
   backup_wait_seconds=$((backup_wait_seconds + 1))
-  if (( backup_wait_seconds % 10 == 0 )) && kill -0 "${backup_start_pid}" 2>/dev/null; then
+  if (( backup_wait_seconds % 60 == 0 )) && kill -0 "${backup_start_pid}" 2>/dev/null; then
     backup_stage="$(journalctl --quiet --no-pager --output=cat --unit=softerr-backup-postgresql.service \
       --since="${backup_started}" -n 1 2>/dev/null || true)"
     echo "Initial backup and restore checks are still running: ${backup_stage:-waiting for service output}"

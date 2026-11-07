@@ -39,6 +39,7 @@ fi
 partial=''
 restore_db=''
 restore_created=false
+progress_log=''
 cleanup() {
   local result=$?
   trap - EXIT
@@ -46,9 +47,33 @@ cleanup() {
     postgres dropdb --if-exists -- "${restore_db}" || result=1
   fi
   [[ -z "${partial}" ]] || rm -f -- "${partial}"
+  [[ -z "${progress_log}" ]] || rm -f -- "${progress_log}"
   exit "${result}"
 }
 trap cleanup EXIT
+
+upload_to_mega() {
+  local archive="$1" name="${1##*/}" pid elapsed=0 progress
+  progress_log="$(mktemp -- "${BACKUP_DIR}/.mega-upload.XXXXXXXX.log")"
+  mega mega-put "${archive}" "${MEGA_DIR}" >"${progress_log}" 2>&1 &
+  pid=$!
+  while kill -0 "${pid}" 2>/dev/null; do
+    sleep 5
+    ((elapsed += 5))
+    if (( elapsed % 60 == 0 )) && kill -0 "${pid}" 2>/dev/null; then
+      progress="$(tail -c 8192 "${progress_log}" | tr '\r' '\n' |
+        sed -nE 's/.*\(([0-9]+)\/([0-9]+) MB: *([0-9]+(\.[0-9]+)?) *%\).*/\3% (\1\/\2 MB)/p' | tail -n 1)"
+      echo "MEGA upload ${name}: ${progress:-still transferring}"
+    fi
+  done
+  if ! wait "${pid}"; then
+    echo "MEGA upload failed: ${name}" >&2
+    tail -c 8192 "${progress_log}" | tr '\r' '\n' | tail -n 20 >&2
+    return 1
+  fi
+  rm -f -- "${progress_log}"
+  progress_log=''
+}
 
 upload_verified() {
   local archive="$1" name="${1##*/}" listing matches size
@@ -62,7 +87,7 @@ upload_verified() {
     fi
   else
     echo "Uploading ${name} to MEGA..."
-    mega mega-put "${archive}" "${MEGA_DIR}"
+    upload_to_mega "${archive}"
     listing="$(remote_files)"
     matches="$(awk -v name="${name}" '$1 == name {print $2}' <<< "${listing}")"
     if [[ "${matches}" != "${size}" ]]; then
