@@ -8,8 +8,8 @@ if [[ "$(id -un)" != postgres ]]; then
 fi
 
 BACKUP_DIR=/var/backups/softerr
-RETENTION_DAYS=10
-RETENTION_COUNT=10
+RETENTION_DAYS=7
+RETENTION_COUNT=7
 APP_REGISTRY_FILE=/etc/softerr/apps.tsv
 source /usr/local/lib/softerr/app_registry.sh
 load_app_registry /etc/softerr
@@ -55,7 +55,7 @@ prune_backups() {
 }
 
 backup_database() {
-  local db_name="$1" check_sql="$2" partial_name archive
+  local db_name="$1" check_sql="$2" compression="${3:-6}" partial_name archive started
   partial="$(mktemp -- "${BACKUP_DIR}/.${db_name}-${stamp}.XXXXXXXX.partial")"
   partial_name="${partial##*/}"
   archive="${BACKUP_DIR}/${partial_name#.}"
@@ -63,14 +63,18 @@ backup_database() {
   restore_db="softerr_restore_check_${db_name}_$(date -u +%s)_$$"
 
   echo "Backing up ${db_name}..."
-  pg_dump --format=custom --dbname="${db_name}" --file="${partial}"
+  started=$SECONDS
+  pg_dump --format=custom --compress="${compression}" --dbname="${db_name}" --file="${partial}"
+  echo "Dumped ${db_name} in $((SECONDS - started)) seconds."
 
   echo "Restoring backup into temporary database ${restore_db}..."
+  started=$SECONDS
   createdb --template=template0 -- "${restore_db}"
   restore_created=true
   pg_restore --exit-on-error --dbname="${restore_db}" -- "${partial}"
   psql -X -v ON_ERROR_STOP=1 --dbname="${restore_db}" -Atqc "${check_sql}" >/dev/null
   dropdb -- "${restore_db}"
+  echo "Restored and checked ${db_name} in $((SECONDS - started)) seconds."
   restore_created=false
   restore_db=''
 
@@ -90,7 +94,7 @@ backup_database() {
 backup_database auth \
   'SELECT 1 FROM public."user", public.user_token, public.verification_email_outbox, public.approval_email_outbox LIMIT 0'
 backup_database media \
-  'SELECT i.id, i.blob_id, b.sha256 FROM public.image i, public.image_blob b LIMIT 0'
+  'SELECT i.id, i.blob_id, b.sha256 FROM public.image i, public.image_blob b LIMIT 0' 0
 for app in "${WEB_APPS[@]}"; do
   [[ -z "${APP_DATABASES[$app]}" ]] && continue
   backup_database "${APP_DATABASES[$app]}" "${APP_BACKUP_CHECKS[$app]}"

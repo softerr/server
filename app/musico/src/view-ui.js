@@ -67,7 +67,7 @@ export function renderTrackRow(track, onPlay, onDelete, removeLabel = 'Delete', 
     main.append(art)
   }
   const detail = document.createElement('span')
-  detail.textContent = [track.artist, track.album, track.genre, track.year, track.rating === null ? '' : `★ ${track.rating}/10`, formatAudioBytes(track.size_bytes)].filter(Boolean).join(' · ')
+  detail.textContent = [track.artist, track.album, track.genre, track.year, track.rating === null ? '' : `★ ${track.rating}/10`].filter(Boolean).join(' · ')
   info.append(name, detail)
   main.append(info)
   const actions = document.createElement('div')
