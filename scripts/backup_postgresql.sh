@@ -9,6 +9,7 @@ fi
 
 BACKUP_DIR=/var/backups/softerr
 RETENTION_DAYS=30
+RETENTION_COUNT=15
 APP_REGISTRY_FILE=/etc/softerr/apps.tsv
 source /usr/local/lib/softerr/app_registry.sh
 load_app_registry /etc/softerr
@@ -39,6 +40,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
+prune_backups() {
+  local db_name="$1" index
+  local -a archives=()
+
+  find "${BACKUP_DIR}" -maxdepth 1 -type f -name "${db_name}-*.dump" \
+    -mmin "+$((RETENTION_DAYS * 1440))" -delete
+  mapfile -d '' -t archives < <(
+    find "${BACKUP_DIR}" -maxdepth 1 -type f -name "${db_name}-*.dump" -printf '%f\0' | sort -zr
+  )
+  for ((index = RETENTION_COUNT; index < ${#archives[@]}; index++)); do
+    rm -f -- "${BACKUP_DIR}/${archives[index]}"
+  done
+}
+
 backup_database() {
   local db_name="$1" check_sql="$2" partial_name archive
   partial="$(mktemp -- "${BACKUP_DIR}/.${db_name}-${stamp}.XXXXXXXX.partial")"
@@ -68,8 +83,7 @@ backup_database() {
   chmod 640 -- "${partial}"
   mv -- "${partial}" "${archive}"
   partial=''
-  find "${BACKUP_DIR}" -maxdepth 1 -type f -name "${db_name}-*.dump" \
-    -mmin "+$((RETENTION_DAYS * 1440))" -delete
+  prune_backups "${db_name}"
   echo "Verified backup: ${archive}"
 }
 

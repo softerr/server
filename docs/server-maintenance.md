@@ -133,7 +133,7 @@ sudo -u postgres psql -d auth -c "\copy (SELECT * FROM public.user_token ORDER B
 
 ## 6. Verified database backups
 
-PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after 03:00 server time, dumps `auth`, `quiz`, and `media`, restores each dump into a temporary database, checks the expected tables, and only then publishes the archives under `/var/backups/softerr`. The directory is writable only by `postgres`; `www-data` has read-only access so an authenticated admin can download a complete set from **Home → Backups**. Verified archives are kept for 30 days. A failed dump or restore leaves earlier backups in place and makes the service fail. Keep enough free disk space for each archive, its temporary restored database, and the ZIP assembled for a download.
+PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after 03:00 server time, dumps `auth`, `media`, `quiz`, and `musico`, restores each dump into a temporary database, checks the expected tables, and only then publishes the archives under `/var/backups/softerr`. The directory is writable only by `postgres`; `www-data` has read-only access so an authenticated admin can download a complete set from **Home → Backups**. Verified archives are kept for up to 30 days, with at most 15 archives per database. A failed dump or restore leaves earlier backups in place and makes the service fail. Keep enough free disk space for each archive, its temporary restored database, and the ZIP assembled for a download.
 
 Check the timer, run a backup now, and inspect the result:
 
