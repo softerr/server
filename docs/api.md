@@ -337,7 +337,7 @@ key to its local user. The API creates the local user on the first quiz create.
   side. Send the original filename in the required `X-Image-Name` header, encoded
   with `encodeURIComponent` or equivalent. Names may be up to 255 UTF-8 bytes and
   cannot contain path separators or control characters. Personal storage is limited
-  to 512 images and 32 MiB across apps. Uploading identical bytes again returns
+  to 512 images and 64 MiB across apps. Uploading identical bytes again returns
   an existing personal or shared image ID and its first uploaded name. A shared
   match does not consume personal storage.
 - `POST /api/media/images/{imageId}/publish` requires an admin session and an

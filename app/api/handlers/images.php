@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 const MEDIA_IMAGE_MAX_BYTES = 6291456;
-const MEDIA_PERSONAL_MAX_BYTES = 33554432;
+const MEDIA_PERSONAL_MAX_BYTES = 67108864;
 const MEDIA_PERSONAL_MAX_COUNT = 512;
 const MEDIA_THUMBNAIL_MAX_SIDE = 320;
 const QUIZ_IMPORT_MAX_BYTES = 50331648;
@@ -233,7 +233,7 @@ function saveMediaImage($db, int $authUserId, string $name, string $bytes,
     $used = pg_fetch_assoc($usage);
     if ((int) $used['total'] >= MEDIA_PERSONAL_MAX_COUNT
         || (int) $used['bytes'] + strlen($bytes) > MEDIA_PERSONAL_MAX_BYTES) {
-        respond(409, ['error' => 'Image library is full (' . MEDIA_PERSONAL_MAX_COUNT . ' images or 32 MiB)']);
+        respond(409, ['error' => 'Image library is full (' . MEDIA_PERSONAL_MAX_COUNT . ' images or 64 MiB)']);
     }
 
     $blobId = mediaBlobId($db, $hash, $bytes, $mime, $width, $height);
