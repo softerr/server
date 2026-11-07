@@ -137,6 +137,8 @@ PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after
 
 The media archive skips PostgreSQL dump compression because most stored images and audio are already compressed. This reduces backup CPU work but may increase archive size. Its restore check uses two parallel jobs. The backup log reports dump, restore, check, and temporary-database removal durations separately.
 
+Server setup reuses a complete MEGA backup set from the past two days when the daily timer is enabled and its last backup succeeded. It runs the full backup and restore check during first-time setup or if that check fails. Data changed after the reused backup is not covered until the next scheduled backup.
+
 Check the timer, run a backup now, and inspect the result:
 
 ```bash

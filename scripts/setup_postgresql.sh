@@ -117,29 +117,64 @@ install -m 755 "${BACKUP_SCRIPT_FILE}" /usr/local/lib/softerr/backup_postgresql.
 install -m 644 "${BACKUP_SERVICE_FILE}" /etc/systemd/system/softerr-backup-postgresql.service
 install -m 644 "${BACKUP_TIMER_FILE}" /etc/systemd/system/softerr-backup-postgresql.timer
 systemctl daemon-reload
-echo "Starting initial database backups and restore checks; this can take several minutes..."
-backup_started="$(date '+%Y-%m-%d %H:%M:%S')"
-systemctl start softerr-backup-postgresql.service &
-backup_start_pid=$!
-backup_wait_seconds=0
-while kill -0 "${backup_start_pid}" 2>/dev/null; do
-  sleep 1
-  backup_wait_seconds=$((backup_wait_seconds + 1))
-  if (( backup_wait_seconds % 60 == 0 )) && kill -0 "${backup_start_pid}" 2>/dev/null; then
-    backup_stage="$(journalctl --quiet --no-pager --output=cat --unit=softerr-backup-postgresql.service \
-      --since="${backup_started}" -n 1 2>/dev/null || true)"
-    echo "Initial backup and restore checks are still running: ${backup_stage:-waiting for service output}"
+complete_mega_backup_set_exists() {
+  local listing name stamp database key cutoff
+  local -a databases=(auth media) stamps=()
+  local -A counts=()
+  for database in "${WEB_APPS[@]}"; do
+    [[ -z "${APP_DATABASES[$database]}" ]] || databases+=("${APP_DATABASES[$database]}")
+  done
+  listing="$(runuser -u www-data -- env HOME=/var/lib/softerr-mega \
+    mega-ls -l /softerr-backups 2>/dev/null)" || return 1
+  cutoff="$(date -u -d '2 days ago' +%Y%m%dT%H%M%SZ)"
+  while IFS= read -r name; do
+    if [[ "${name}" =~ ^([a-z][a-z0-9_]*)-([0-9]{8}T[0-9]{6}Z)\.[A-Za-z0-9]{8}\.dump$ ]]; then
+      key="${BASH_REMATCH[2]},${BASH_REMATCH[1]}"
+      counts["${key}"]=$(( ${counts[${key}]:-0} + 1 ))
+      stamps+=("${BASH_REMATCH[2]}")
+    fi
+  done < <(awk '{print $NF}' <<< "${listing}")
+  for stamp in "${stamps[@]}"; do
+    [[ "${stamp}" > "${cutoff}" ]] || continue
+    for database in "${databases[@]}"; do
+      key="${stamp},${database}"
+      [[ "${counts[${key}]:-0}" == 1 ]] || continue 2
+    done
+    return 0
+  done
+  return 1
+}
+
+if systemctl is-enabled --quiet softerr-backup-postgresql.timer \
+  && [[ "$(systemctl show --value -p Result softerr-backup-postgresql.service)" == success ]] \
+  && complete_mega_backup_set_exists; then
+  echo "A complete recent MEGA backup set exists; the daily timer will make the next backup."
+else
+  echo "Starting initial database backups and restore checks; this can take several minutes..."
+  backup_started="$(date '+%Y-%m-%d %H:%M:%S')"
+  systemctl start softerr-backup-postgresql.service &
+  backup_start_pid=$!
+  backup_wait_seconds=0
+  while kill -0 "${backup_start_pid}" 2>/dev/null; do
+    sleep 1
+    backup_wait_seconds=$((backup_wait_seconds + 1))
+    if (( backup_wait_seconds % 60 == 0 )) && kill -0 "${backup_start_pid}" 2>/dev/null; then
+      backup_stage="$(journalctl --quiet --no-pager --output=cat --unit=softerr-backup-postgresql.service \
+        --since="${backup_started}" -n 1 2>/dev/null || true)"
+      echo "Initial backup and restore checks are still running: ${backup_stage:-waiting for service output}"
+    fi
+  done
+  if ! wait "${backup_start_pid}"; then
+    journalctl --quiet --no-pager --output=cat --unit=softerr-backup-postgresql.service \
+      --since="${backup_started}" || true
+    echo "Initial database backup or restore check failed." >&2
+    exit 1
   fi
-done
-if ! wait "${backup_start_pid}"; then
   journalctl --quiet --no-pager --output=cat --unit=softerr-backup-postgresql.service \
     --since="${backup_started}" || true
-  echo "Initial database backup or restore check failed." >&2
-  exit 1
+  echo "Initial database backups and restore checks passed."
 fi
-journalctl --quiet --no-pager --output=cat --unit=softerr-backup-postgresql.service \
-  --since="${backup_started}" || true
-echo "Initial database backups and restore checks passed. Enabling daily timer..."
+echo "Enabling daily backup timer..."
 systemctl enable --now softerr-backup-postgresql.timer
 
 echo "Done."
