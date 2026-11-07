@@ -212,11 +212,11 @@ jobs:
         run: |
           set -euo pipefail
           sudo systemctl start softerr-backup-postgresql.service
-          test -n "$(find /var/lib/softerr-mega-test -maxdepth 1 -type f -name 'auth-*.dump' -print -quit)"
-          test -n "$(find /var/lib/softerr-mega-test -maxdepth 1 -type f -name 'quiz-*.dump' -print -quit)"
-          test -n "$(find /var/lib/softerr-mega-test -maxdepth 1 -type f -name 'media-*.dump' -print -quit)"
-          test -n "$(find /var/lib/softerr-mega-test -maxdepth 1 -type f -name 'musico-*.dump' -print -quit)"
-          test -z "$(find /var/backups/softerr -maxdepth 1 -type f -name '*.dump' -print -quit)"
+          test -n "$(sudo -u www-data find /var/lib/softerr-mega-test -maxdepth 1 -type f -name 'auth-*.dump' -print -quit)"
+          test -n "$(sudo -u www-data find /var/lib/softerr-mega-test -maxdepth 1 -type f -name 'quiz-*.dump' -print -quit)"
+          test -n "$(sudo -u www-data find /var/lib/softerr-mega-test -maxdepth 1 -type f -name 'media-*.dump' -print -quit)"
+          test -n "$(sudo -u www-data find /var/lib/softerr-mega-test -maxdepth 1 -type f -name 'musico-*.dump' -print -quit)"
+          test -z "$(sudo find /var/backups/softerr -maxdepth 1 -type f -name '*.dump' -print -quit)"
           test "$(sudo -u postgres psql -X -Atqc "SELECT count(*) FROM pg_database WHERE datname LIKE 'softerr_restore_check_%'")" = 0
 
       - name: Print service logs on failure
