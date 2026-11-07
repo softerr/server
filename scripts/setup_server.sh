@@ -65,7 +65,7 @@ else
   bash "${SCRIPT_DIR}/setup_tls_certificate.sh" "${public_host}"
 fi
 
-PROVISION_COMPONENTS=postgresql bash "${SCRIPT_DIR}/provision.sh"
+PROVISION_COMPONENTS=all bash "${SCRIPT_DIR}/provision.sh"
 if ! PGPASSWORD="${API_DB_PASSWORD}" PGCONNECT_TIMEOUT=5 psql -X -v ON_ERROR_STOP=1 \
   -h "${API_DB_HOST:-127.0.0.1}" -p "${API_DB_PORT:-5432}" \
   -U "${API_DB_USER:-auth_api}" -d "${API_DB_NAME:-auth}" \
@@ -90,10 +90,6 @@ for app in "${WEB_APPS[@]}"; do
     exit 1
   fi
 done
-components=php-fpm,email-worker,nginx,api
-for app in "${WEB_APPS[@]}"; do components+=",${app}"; done
-PROVISION_COMPONENTS="${components}" bash "${SCRIPT_DIR}/provision.sh"
-
 systemctl is-active --quiet nginx
 systemctl is-active --quiet postgresql
 systemctl is-active --quiet softerr-send-email.timer
