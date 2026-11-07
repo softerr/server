@@ -142,6 +142,11 @@ jobs:
           command -v jq
           command -v psql
 
+      - name: Check backup access from PHP user
+        run: |
+          sudo -u www-data env -i HOME=/var/lib/softerr-mega PATH=/usr/local/bin:/usr/bin:/bin \
+            php -r 'require "/var/www/api/handlers/backups.php"; $listing = backupMegaCommand(["mega-ls", "-l", "/softerr-backups"]); if (!str_contains($listing, "auth-")) exit(1);'
+
       - name: Check timezone precedence
         run: php tests/api/timezone.php
 
@@ -217,6 +222,7 @@ jobs:
       - name: Print service logs on failure
         if: failure()
         run: |
+          sudo tail -n 100 /var/log/php*-fpm.log || true
           sudo journalctl -u nginx --no-pager -n 300 || true
           sudo journalctl -u postgresql --no-pager -n 300 || true
           sudo journalctl -u softerr-prune-user-tokens.service --no-pager -n 100 || true

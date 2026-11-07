@@ -34,14 +34,27 @@ function authorizeBackupDownload(): void
 
 function backupMegaCommand(array $command): string
 {
+    $executable = '/usr/local/bin/' . $command[0];
+    if (!is_executable($executable)) $executable = '/usr/bin/' . $command[0];
+    if (!is_executable($executable)) {
+        error_log('MEGA backup command is missing: ' . $command[0]);
+        respond(503, ['error' => 'Backup storage is unavailable']);
+    }
+    $command[0] = $executable;
     $output = tempnam(sys_get_temp_dir(), 'mega-output-');
     $errors = tempnam(sys_get_temp_dir(), 'mega-errors-');
-    if ($output === false || $errors === false) respond(503, ['error' => 'Backup storage is unavailable']);
+    if ($output === false || $errors === false) {
+        error_log('Could not create temporary MEGA command output files');
+        respond(503, ['error' => 'Backup storage is unavailable']);
+    }
     try {
         $process = @proc_open($command, [0 => ['file', '/dev/null', 'r'],
             1 => ['file', $output, 'w'], 2 => ['file', $errors, 'w']], $pipes, null,
             ['HOME' => BACKUP_MEGA_HOME, 'PATH' => '/usr/local/bin:/usr/bin:/bin']);
-        if (!is_resource($process)) respond(503, ['error' => 'Backup storage is unavailable']);
+        if (!is_resource($process)) {
+            error_log('Could not launch MEGA backup command: ' . $command[0]);
+            respond(503, ['error' => 'Backup storage is unavailable']);
+        }
         $status = proc_close($process);
         if ($status !== 0) {
             error_log('MEGA backup command failed: ' . implode(' ', array_slice($command, 0, 2)) . ': ' . substr((string) file_get_contents($errors), 0, 500));
