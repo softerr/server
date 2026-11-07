@@ -8,8 +8,8 @@ if [[ "$(id -un)" != postgres ]]; then
 fi
 
 BACKUP_DIR=/var/backups/softerr
-RETENTION_DAYS=30
-RETENTION_COUNT=15
+RETENTION_DAYS=10
+RETENTION_COUNT=10
 APP_REGISTRY_FILE=/etc/softerr/apps.tsv
 source /usr/local/lib/softerr/app_registry.sh
 load_app_registry /etc/softerr
