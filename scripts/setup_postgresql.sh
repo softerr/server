@@ -97,6 +97,11 @@ install -m 644 "${PRUNE_TIMER_FILE}" /etc/systemd/system/softerr-prune-user-toke
 systemctl daemon-reload
 systemctl enable --now softerr-prune-user-tokens.timer
 
+echo "Checking MEGA backup session..."
+if ! runuser -u www-data -- env HOME=/var/lib/softerr-mega mega-whoami >/dev/null 2>&1; then
+  echo "MEGA backup session is unavailable. Run bootstrap_server.sh interactively first." >&2
+  exit 1
+fi
 echo "Installing verified database backup timer..."
 echo "Installing backup script and database registry..."
 install -d -m 755 /usr/local/lib/softerr
@@ -105,7 +110,7 @@ install -m 644 "${SCRIPT_DIR}/lib/app_registry.sh" /usr/local/lib/softerr/app_re
 echo "Preparing backup directory and existing archives..."
 install -d -o postgres -g www-data -m 2750 /var/backups/softerr
 chmod 2750 /var/backups/softerr
-# Existing verified archives become available to the web API for admin downloads.
+# Existing verified archives remain readable by the MEGA uploader during migration.
 find /var/backups/softerr -maxdepth 1 -type f -name '*.dump' \
   -exec chgrp www-data -- {} + -exec chmod 640 -- {} +
 install -m 755 "${BACKUP_SCRIPT_FILE}" /usr/local/lib/softerr/backup_postgresql.sh

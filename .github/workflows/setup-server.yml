@@ -11,7 +11,7 @@ jobs:
   setup-server:
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 60
+    timeout-minutes: 240
 
     steps:
       - name: Checkout repository

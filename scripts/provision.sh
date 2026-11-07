@@ -64,7 +64,7 @@ SQL
     install -m 644 "${REPO_ROOT}/configs/apps.tsv" /etc/softerr/apps.tsv
     install -m 644 "${SCRIPT_DIR}/lib/app_registry.sh" /usr/local/lib/softerr/app_registry.sh
     install -m 755 "${SCRIPT_DIR}/backup_postgresql.sh" /usr/local/lib/softerr/backup_postgresql.sh
-    if ! find /var/backups/softerr -maxdepth 1 -type f -name "${database}-*.dump" -print -quit | grep -q .; then
+    if ! runuser -u www-data -- env HOME=/var/lib/softerr-mega mega-ls -l /softerr-backups | grep -Eq " ${database}-[0-9]{8}T[0-9]{6}Z\.[A-Za-z0-9]{8}\.dump$"; then
       systemctl start softerr-backup-postgresql.service
     fi
   fi

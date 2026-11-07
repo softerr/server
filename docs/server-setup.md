@@ -4,7 +4,7 @@ First-time setup has one server script and one GitHub workflow. Later deployment
 
 ## 1. Bootstrap the server
 
-Copy only `scripts/bootstrap_server.sh` to a Debian or Ubuntu server. Run it from a trusted console or administrator login, replacing the address and email with your own. Add the SSH port as a third argument if it is not `22`:
+Copy only `scripts/bootstrap_server.sh` to a Debian or Ubuntu server. Run it interactively from a trusted console or administrator login, replacing the address and email with your own. It installs MEGAcmd and opens its interactive shell once. Enter `login YOUR_MEGA_EMAIL` there, provide the password and 2FA code at its prompts, then enter `exit --only-shell`. The session is stored on the server for unattended backups. Add the SSH port as a third argument if it is not `22`:
 
 ```bash
 sudo bash bootstrap_server.sh YOUR_PUBLIC_IP you@example.com
@@ -35,7 +35,7 @@ For verification email delivery, also add your mail provider settings as product
 In GitHub, run **Actions → Set Up Server → Run workflow**. It builds home, quiz, and Musico, uploads the API and configuration, and runs `scripts/setup_server.sh` remotely. The remote script:
 
 1. Serves HTTP temporarily for the certificate challenge and obtains a certificate for the host in `SERVER_HOST`.
-2. Sets up the shared `auth` and `media` databases plus app-specific `quiz` and `musico` databases, PHP-FPM, and the email worker, runs verified backups of all four databases, and configures the final HTTPS Nginx site.
+2. Sets up the shared `auth` and `media` databases plus app-specific `quiz` and `musico` databases, PHP-FPM, and the email worker, runs restore-checked backups of all four databases and uploads them to MEGA, and configures the final HTTPS Nginx site.
 3. Deploys the API, home, quiz, and Musico.
 4. Checks the database backup, token cleanup, and mail timers, HTTPS home, quiz, and Musico pages, and API readiness endpoint.
 

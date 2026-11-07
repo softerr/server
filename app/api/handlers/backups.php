@@ -1,7 +1,8 @@
 <?php
 declare(strict_types=1);
 
-const BACKUP_DIRECTORY = '/var/backups/softerr';
+const BACKUP_MEGA_DIRECTORY = '/softerr-backups';
+const BACKUP_MEGA_HOME = '/var/lib/softerr-mega';
 const BACKUP_APP_REGISTRY = '/etc/softerr/apps.tsv';
 
 function backupDatabases(): array
@@ -31,18 +32,40 @@ function authorizeBackupDownload(): void
     if ($user['role'] !== 'admin') respond(403, ['error' => 'Admin access required']);
 }
 
+function backupMegaCommand(array $command): string
+{
+    $output = tempnam(sys_get_temp_dir(), 'mega-output-');
+    $errors = tempnam(sys_get_temp_dir(), 'mega-errors-');
+    if ($output === false || $errors === false) respond(503, ['error' => 'Backup storage is unavailable']);
+    try {
+        $process = @proc_open($command, [0 => ['file', '/dev/null', 'r'],
+            1 => ['file', $output, 'w'], 2 => ['file', $errors, 'w']], $pipes, null,
+            ['HOME' => BACKUP_MEGA_HOME, 'PATH' => '/usr/local/bin:/usr/bin:/bin']);
+        if (!is_resource($process)) respond(503, ['error' => 'Backup storage is unavailable']);
+        $status = proc_close($process);
+        if ($status !== 0) {
+            error_log('MEGA backup command failed: ' . implode(' ', array_slice($command, 0, 2)) . ': ' . substr((string) file_get_contents($errors), 0, 500));
+            respond(503, ['error' => 'Backup storage is unavailable']);
+        }
+        return (string) file_get_contents($output);
+    } finally {
+        @unlink($output);
+        @unlink($errors);
+    }
+}
+
 function availableBackupSets(): array
 {
     $backupDatabases = backupDatabases();
     $databasePattern = implode('|', array_map(static fn (string $name): string => preg_quote($name, '/'), $backupDatabases));
-    $names = @scandir(BACKUP_DIRECTORY);
-    if ($names === false) respond(503, ['error' => 'Backup storage is unavailable']);
+    $listing = backupMegaCommand(['mega-ls', '-l', BACKUP_MEGA_DIRECTORY]);
     $candidates = [];
-    foreach ($names as $name) {
+    foreach (preg_split('/\r?\n/', $listing) as $line) {
+        $fields = preg_split('/\s+/', trim($line));
+        if (count($fields) < 5 || !ctype_digit($fields[2])) continue;
+        $name = end($fields);
         if (!preg_match('/^(' . $databasePattern . ')-(\d{8}T\d{6}Z)\.[A-Za-z0-9]{8}\.dump$/D', $name, $match)) continue;
-        $path = BACKUP_DIRECTORY . '/' . $name;
-        if (is_link($path) || !is_file($path)) continue;
-        $candidates[$match[2]][$match[1]][] = $path;
+        $candidates[$match[2]][$match[1]][] = ['name' => $name, 'size' => (int) $fields[2]];
     }
     krsort($candidates, SORT_STRING);
     $sets = [];
@@ -50,9 +73,7 @@ function availableBackupSets(): array
         $files = [];
         foreach ($backupDatabases as $database) {
             if (count($databases[$database] ?? []) !== 1) continue 2;
-            $path = $databases[$database][0];
-            if (!is_readable($path)) respond(503, ['error' => 'Backup archive is not readable']);
-            $files[$database] = $path;
+            $files[$database] = $databases[$database][0];
         }
         $sets[$stamp] = $files;
     }
@@ -65,11 +86,7 @@ function handleListBackups(): never
     $backups = [];
     foreach (availableBackupSets() as $stamp => $files) {
         $size = 0;
-        foreach ($files as $path) {
-            $bytes = @filesize($path);
-            if ($bytes === false) respond(503, ['error' => 'Backup archive is unavailable']);
-            $size += $bytes;
-        }
+        foreach ($files as $file) $size += $file['size'];
         $backups[] = [
             'id' => $stamp,
             'created' => substr($stamp, 0, 4) . '-' . substr($stamp, 4, 2) . '-'
@@ -87,16 +104,28 @@ function handleDownloadBackup(string $stamp): never
     $files = availableBackupSets()[$stamp] ?? null;
     if ($files === null) respond(404, ['error' => 'Backup not found']);
     set_time_limit(0);
-    $path = tempnam(sys_get_temp_dir(), 'softerr-backup-');
-    if ($path === false) respond(500, ['error' => 'Could not prepare backup download']);
-    register_shutdown_function(static fn () => @unlink($path));
+    $directory = sys_get_temp_dir() . '/softerr-backup-' . bin2hex(random_bytes(12));
+    if (!@mkdir($directory, 0700)) respond(500, ['error' => 'Could not prepare backup download']);
+    $path = $directory . '/backup.zip';
+    register_shutdown_function(static function () use ($directory): void {
+        foreach (glob($directory . '/*') ?: [] as $file) @unlink($file);
+        @rmdir($directory);
+    });
+    foreach ($files as $file) {
+        backupMegaCommand(['mega-get', BACKUP_MEGA_DIRECTORY . '/' . $file['name'], $directory]);
+        $download = $directory . '/' . $file['name'];
+        clearstatcache(true, $download);
+        if (!is_file($download) || filesize($download) !== $file['size']) {
+            respond(503, ['error' => 'Backup archive is unavailable']);
+        }
+    }
     $zip = new ZipArchive();
     if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
         respond(500, ['error' => 'Could not prepare backup download']);
     }
     foreach (backupDatabases() as $database) {
         $name = $database . '.dump';
-        if (!$zip->addFile($files[$database], $name)
+        if (!$zip->addFile($directory . '/' . $files[$database]['name'], $name)
             || !$zip->setCompressionName($name, ZipArchive::CM_STORE)) {
             $zip->close();
             respond(500, ['error' => 'Could not prepare backup download']);

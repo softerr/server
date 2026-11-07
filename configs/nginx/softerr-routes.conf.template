@@ -89,6 +89,7 @@ location = /api/media.php {
 }
 
 location ~ ^/api/(index|auth)\.php$ {
+    fastcgi_read_timeout 4h;
     root /var/www;
     internal;
     include snippets/fastcgi-php.conf;

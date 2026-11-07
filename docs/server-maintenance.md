@@ -133,9 +133,9 @@ sudo -u postgres psql -d auth -c "\copy (SELECT * FROM public.user_token ORDER B
 
 ## 6. Verified database backups
 
-PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after 03:00 server time, dumps `auth`, `media`, `quiz`, and `musico`, restores each dump into a temporary database, checks the expected tables, and only then publishes the archives under `/var/backups/softerr`. The directory is writable only by `postgres`; `www-data` has read-only access so an authenticated admin can download a complete set from **Home → Backups**. Verified archives are kept for up to 7 days, with at most 7 archives per database. A failed dump or restore leaves earlier backups in place and makes the service fail. Keep enough free disk space for each archive, its temporary restored database, and the ZIP assembled for a download.
+PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after 03:00 server time, dumps `auth`, `media`, `quiz`, and `musico`, restores each dump into a temporary database, checks the expected tables, then uploads it to `/softerr-backups` in MEGA. The temporary local dump is removed after MEGA reports the expected file size. If upload fails, the verified dump remains in `/var/backups/softerr` for retry on the next run. Existing local backups are also uploaded on the next run. MEGA keeps up to 7 days and 7 archives per database, except `media`, which keeps one. A failed dump, restore, or upload makes the service fail. Keep enough temporary disk space for a dump, its restored database, and an admin download ZIP. The MEGA session belongs to `www-data` under `/var/lib/softerr-mega`; bootstrap opens the interactive MEGAcmd shell once; use `login YOUR_MEGA_EMAIL`, answer its password and 2FA prompts, then `exit --only-shell`. Do not log this account out while automated backups are in use.
 
-The media archive skips PostgreSQL dump compression because most stored images and audio are already compressed. This reduces backup CPU work but may increase archive size. The backup log reports dump and restore-check durations separately.
+The media archive skips PostgreSQL dump compression because most stored images and audio are already compressed. This reduces backup CPU work but may increase archive size. Its restore check uses two parallel jobs. The backup log reports dump, restore, check, and temporary-database removal durations separately.
 
 Check the timer, run a backup now, and inspect the result:
 
@@ -143,10 +143,10 @@ Check the timer, run a backup now, and inspect the result:
 sudo systemctl list-timers softerr-backup-postgresql.timer
 sudo systemctl start softerr-backup-postgresql.service
 sudo journalctl -u softerr-backup-postgresql.service -n 100 --no-pager
-sudo ls -lh /var/backups/softerr/*.dump
+sudo -u www-data env HOME=/var/lib/softerr-mega mega-ls -l /softerr-backups
 ```
 
-These are local backups. Copy them to storage outside the server for protection against host or disk loss. An admin can download a complete `auth`, `quiz`, and `media` set as one ZIP from the Home app. Keep the ZIP private because it contains account data and password hashes. The database role and password also need to be recreated from the bootstrap and setup workflow during disaster recovery. After deploying this feature to an existing server, run **Setup PostgreSQL On Server** to grant the web API read access to existing verified archives.
+An admin can list and download a complete backup set as a ZIP from **Home → Backups**. The server downloads the selected archives to a temporary directory to assemble the ZIP, then removes those temporary files. Keep the ZIP private because it contains account data and password hashes. The database role and password also need to be recreated during disaster recovery. To move an existing server to MEGA backups, rerun `bootstrap_server.sh` interactively to install MEGAcmd and sign in, then run **Setup PostgreSQL On Server**.
 
 ## 7. Restore a backup for inspection
 
@@ -154,9 +154,13 @@ The scheduled job performs a full restore check automatically. To inspect a sele
 
 ```bash
 sudo -u postgres createdb -T template0 auth_recovery_check
-sudo -u postgres pg_restore --exit-on-error -d auth_recovery_check /var/backups/softerr/AUTH_ARCHIVE.dump
+sudo install -d -o www-data -g postgres -m 750 /var/backups/softerr/restore
+sudo -u www-data env HOME=/var/lib/softerr-mega mega-get /softerr-backups/AUTH_ARCHIVE.dump /var/backups/softerr/restore
+sudo -u postgres pg_restore --exit-on-error -d auth_recovery_check /var/backups/softerr/restore/AUTH_ARCHIVE.dump
 sudo -u postgres psql -d auth_recovery_check -c 'SELECT COUNT(*) FROM public."user";'
 sudo -u postgres dropdb auth_recovery_check
+sudo rm -f /var/backups/softerr/restore/AUTH_ARCHIVE.dump
+sudo rmdir /var/backups/softerr/restore
 ```
 
 This does not modify the live `auth` database. For a production recovery, keep the application stopped while validating and switching databases.

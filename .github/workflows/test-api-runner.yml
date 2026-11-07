@@ -112,6 +112,15 @@ jobs:
           DB_PASS="runner_$(date +%s)_$RANDOM"
           echo "API_DB_PASSWORD=${DB_PASS}" >> "$GITHUB_ENV"
 
+      - name: Prepare isolated MEGA test storage
+        run: |
+          sudo install -d -o www-data -g www-data -m 700 /var/lib/softerr-mega-test
+          sudo install -d -o www-data -g www-data -m 700 /var/lib/softerr-mega
+          sudo install -m 755 tests/db/fake_mega.sh /usr/local/bin/mega-test-fake
+          for command in mega-whoami mega-mkdir mega-put mega-get mega-rm mega-ls; do
+            sudo ln -s /usr/local/bin/mega-test-fake "/usr/local/bin/${command}"
+          done
+
       - name: Provision runner via setup scripts
         run: |
           set -euo pipefail
@@ -198,10 +207,11 @@ jobs:
         run: |
           set -euo pipefail
           sudo systemctl start softerr-backup-postgresql.service
-          sudo -u postgres sh -c 'find /var/backups/softerr -maxdepth 1 -type f -name "auth-*.dump" | grep -q .'
-          sudo -u postgres sh -c 'find /var/backups/softerr -maxdepth 1 -type f -name "quiz-*.dump" | grep -q .'
-          sudo -u postgres sh -c 'find /var/backups/softerr -maxdepth 1 -type f -name "media-*.dump" | grep -q .'
-          sudo -u postgres sh -c 'find /var/backups/softerr -maxdepth 1 -type f -name "musico-*.dump" | grep -q .'
+          test -n "$(find /var/lib/softerr-mega-test -maxdepth 1 -type f -name 'auth-*.dump' -print -quit)"
+          test -n "$(find /var/lib/softerr-mega-test -maxdepth 1 -type f -name 'quiz-*.dump' -print -quit)"
+          test -n "$(find /var/lib/softerr-mega-test -maxdepth 1 -type f -name 'media-*.dump' -print -quit)"
+          test -n "$(find /var/lib/softerr-mega-test -maxdepth 1 -type f -name 'musico-*.dump' -print -quit)"
+          test -z "$(find /var/backups/softerr -maxdepth 1 -type f -name '*.dump' -print -quit)"
           test "$(sudo -u postgres psql -X -Atqc "SELECT count(*) FROM pg_database WHERE datname LIKE 'softerr_restore_check_%'")" = 0
 
       - name: Print service logs on failure

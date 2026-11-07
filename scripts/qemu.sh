@@ -229,6 +229,18 @@ EOF
 bootstrap_vm() {
   local bootstrap_output line workflow_key_b64="" known_hosts="" db_password=""
   local workflow_user="" workflow_port="" workflow_host=""
+  echo "Preparing local MEGA stand-in in VM..."
+  ssh "${SSH_OPTIONS[@]}" "${SSH_TARGET}" \
+    'sudo tee /usr/local/bin/mega-test-fake >/dev/null' \
+    < "${REPO_ROOT}/tests/db/fake_mega.sh"
+  ssh "${SSH_OPTIONS[@]}" "${SSH_TARGET}" 'sudo bash -s' <<'SH'
+set -euo pipefail
+chmod 755 /usr/local/bin/mega-test-fake
+install -d -o www-data -g www-data -m 700 /var/lib/softerr-mega-test /var/lib/softerr-mega
+for command in mega-login mega-whoami mega-mkdir mega-put mega-get mega-rm mega-ls; do
+  ln -sfn /usr/local/bin/mega-test-fake "/usr/local/bin/${command}"
+done
+SH
   echo "Running server bootstrap in VM..."
   if ! bootstrap_output="$(ssh "${SSH_OPTIONS[@]}" "${SSH_TARGET}" \
     "sudo bash -s -- 127.0.0.1 qemu@example.test ${SSH_PORT}" \

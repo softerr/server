@@ -1,13 +1,12 @@
 [Unit]
-Description=Back up and restore-check the auth, quiz, and media PostgreSQL databases
+Description=Restore-check and upload PostgreSQL backups to MEGA
 Requires=postgresql.service
 After=postgresql.service
 
 [Service]
 Type=oneshot
-User=postgres
-Group=postgres
+User=root
+Group=root
 ExecStart=/usr/local/lib/softerr/backup_postgresql.sh
-TimeoutStartSec=30min
+TimeoutStartSec=4h
 NoNewPrivileges=true
-PrivateTmp=true

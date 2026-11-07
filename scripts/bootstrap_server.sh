@@ -96,6 +96,55 @@ if [[ ! -r "${private_key}" || ! -r "${host_key}" ]]; then
 fi
 
 install -d -m 755 /etc/softerr
+if ! command -v mega-login >/dev/null 2>&1; then
+  . /etc/os-release
+  case "${ID}" in
+    ubuntu) mega_release="xUbuntu_${VERSION_ID}" ;;
+    debian) mega_release="Debian_${VERSION_ID}" ;;
+    *) echo "MEGAcmd setup supports Ubuntu and Debian." >&2; exit 1 ;;
+  esac
+  mega_repository="https://mega.nz/linux/repo/${mega_release}"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y ca-certificates curl gnupg
+  install -d -m 755 /etc/apt/keyrings
+  mega_key_stage="$(mktemp)"
+  trap 'rm -f -- "${mega_key_stage}"' EXIT
+  curl -fsSL "${mega_repository}/Release.key" | gpg --dearmor > "${mega_key_stage}"
+  install -m 644 "${mega_key_stage}" /etc/apt/keyrings/softerr-mega.gpg
+  rm -f -- "${mega_key_stage}"
+  trap - EXIT
+  printf 'deb [signed-by=/etc/apt/keyrings/softerr-mega.gpg] %s/ ./\n' \
+    "${mega_repository}" > /etc/apt/sources.list.d/softerr-mega.list
+  apt-get update
+  apt-get install -y megacmd
+fi
+mega_home=/var/lib/softerr-mega
+install -d -o www-data -g www-data -m 700 "${mega_home}"
+if ! runuser -u www-data -- env HOME="${mega_home}" mega-whoami >/dev/null 2>&1; then
+  if [[ ! -t 0 ]]; then
+    echo "Run bootstrap interactively to sign in to MEGA with your 2FA code." >&2
+    exit 1
+  fi
+  read -r -p 'MEGA account email: ' mega_email
+  if [[ ! "${mega_email}" =~ ^[^[:space:]]+@[^[:space:]]+$ ]]; then
+    echo "Enter a valid MEGA account email." >&2
+    exit 1
+  fi
+  if ! command -v mega-cmd >/dev/null 2>&1; then
+    echo "MEGAcmd's interactive shell (mega-cmd) is missing." >&2
+    exit 1
+  fi
+  echo "In the MEGAcmd shell, enter: login ${mega_email}"
+  echo "It will prompt for your password and 2FA code. After login, enter: exit --only-shell"
+  runuser -u www-data -- env HOME="${mega_home}" mega-cmd
+  if ! runuser -u www-data -- env HOME="${mega_home}" mega-whoami >/dev/null 2>&1; then
+    echo "MEGA login did not complete. Rerun bootstrap to try again." >&2
+    exit 1
+  fi
+fi
+runuser -u www-data -- env HOME="${mega_home}" mega-mkdir -p /softerr-backups
+echo "MEGA backup session is ready."
 if [[ ! -s "${password_file}" ]]; then
   umask 077
   openssl rand -hex 32 > "${password_file}"
