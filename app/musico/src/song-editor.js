@@ -3,6 +3,21 @@ import { MAX_IMAGE_BYTES } from '../../shared/media-limits.js'
 import { mediaThumbnailUrl, uploadMediaImage } from '../../shared/media-client.js'
 import { versionHeader } from './api.js'
 
+function albumArtworkName(match, mimeType) {
+  const parts = [match.artistName, match.collectionName || match.trackName]
+    .map((value) => String(value || '').trim()).filter(Boolean)
+  const base = parts.join(' - ').replace(/[\/\\\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim()
+  const fallback = `Artwork ${match.collectionId || match.trackId}`
+  let name = ''
+  const encoder = new TextEncoder()
+  for (const character of base || fallback) {
+    if (encoder.encode(name + character).length > 240) break
+    name += character
+  }
+  const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[mimeType]
+  return `${name.trimEnd()}.${extension}`
+}
+
 export function mountSongEditor(container, { requestJson, responseError, onSaved }) {
   const dialog = document.createElement('dialog')
   dialog.className = 'musico-dialog musico-edit-song-dialog'
@@ -141,9 +156,7 @@ export function mountSongEditor(container, { requestJson, responseError, onSaved
           if (!dialog.open || current?.id !== lookupTrackId) return
           pendingArtwork = {
             blob: cover,
-            name: `Album art - ${match.collectionId || match.trackId || current.id}.${{
-              'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
-            }[cover.type]}`,
+            name: albumArtworkName(match, cover.type),
             preview: URL.createObjectURL(cover),
           }
           renderArt()

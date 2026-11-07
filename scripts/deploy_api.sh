@@ -110,6 +110,11 @@ verify_api_release() {
     verify_local_app_route "${APP_HEALTH_ROUTES[$app]}" auth-required || return 1
   done
 }
+if [[ -f "${api_release}/apps/musico/backfill_artwork_names.php" ]]; then
+  echo "Renaming existing generic Musico artwork files..."
+  chmod 755 "${api_release}"
+  sudo -u postgres "php${php_version}" "${api_release}/apps/musico/backfill_artwork_names.php"
+fi
 if ! atomic_deploy_dir "${api_release}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}" verify_api_release; then
   restart_api_fpm || true
   exit 1

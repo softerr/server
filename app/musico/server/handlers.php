@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/artwork_names.php';
+
 const MUSICO_TRACK_MAX_BYTES = MEDIA_AUDIO_MAX_BYTES;
 const MUSICO_USER_MAX_BYTES = MEDIA_AUDIO_USER_MAX_BYTES;
 const MUSICO_ANALYSIS_COLUMNS = ['duration_ms', 'bit_rate', 'sample_rate_hz', 'bit_depth',
@@ -640,11 +642,13 @@ function handleUpdateMusicoTrack(array $authUser, int $id): never
     $db = connectMusicoDb();
     beginMusicoMutation($db, $authUser);
     assertMusicoVersion($db, $authUser, 'track', $id, $expected);
+    $mediaDb = null;
     if ($artImageId !== null) {
         if (@pg_query_params($db, 'SELECT pg_advisory_xact_lock($1::bigint)', [-$artImageId]) === false) {
             respond(500, ['error' => 'Could not check album art']);
         }
-        $image = @pg_query_params(connectMediaDb(),
+        $mediaDb = connectMediaDb();
+        $image = @pg_query_params($mediaDb,
             'SELECT 1 FROM public.image WHERE id = $1 AND (owner_auth_user_id = $2 OR shared = TRUE)',
             [$artImageId, $authUser['id']]);
         if ($image === false) respond(500, ['error' => 'Could not check album art']);
@@ -665,6 +669,14 @@ function handleUpdateMusicoTrack(array $authUser, int $id): never
     if ($row === false) respond(404, ['error' => 'Track not found']);
     recordMusicoChange($db, $authUser, 'track', $id);
     finishMusicoMutation($db);
+    if ($mediaDb !== null) {
+        try {
+            renameGenericMusicoArtwork($mediaDb, $artImageId, (int) $authUser['id'],
+                $artist, $album, $title);
+        } catch (RuntimeException $error) {
+            error_log($error->getMessage());
+        }
+    }
     header('ETag: "v' . $row['version'] . '"');
     respond(200, publicMusicoTrack($row, (int) $authUser['id']));
 }

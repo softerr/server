@@ -372,7 +372,7 @@ test_musico_shared_track_playlists() {
   printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=' \
     | base64 -d > "${art_file}"
   response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/octet-stream' \
-    -H 'X-Image-Name: musico-art.png' --data-binary @"${art_file}" -w $'\n%{http_code}' \
+    -H 'X-Image-Name: album-art.png' --data-binary @"${art_file}" -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images")"
   art_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
   rm -f "${art_file}"
@@ -392,6 +392,15 @@ test_musico_shared_track_playlists() {
     return 1
   fi
   track_version="$(jq -r '.version' <<<"${response%$'\n'*}")"
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images")"
+  if [[ "${response##*$'\n'}" != 200 ]] || ! jq -e --argjson id "${art_id}" \
+    '.images | any(.id == $id and .name == "Test artist - Test album.png")' \
+    <<<"${response%$'\n'*}" >/dev/null; then
+    rm -f "${cookie_file}" "${audio_file}"
+    fail_test "Musico artwork was not named after its album: ${response}"
+    return 1
+  fi
   response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
     --data "{\"image_ids\":[${art_id}]}" -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/usage")"
