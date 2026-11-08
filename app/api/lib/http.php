@@ -73,3 +73,10 @@ function connectMusicoDb()
     return $conn;
 }
 
+function connectMdbDb()
+{
+    [$conn, $error] = openMdbDb();
+    if ($conn === false) respond(500, ['error' => $error]);
+    return $conn;
+}
+

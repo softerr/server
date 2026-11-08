@@ -1,0 +1,479 @@
+@import '../../shared/style.css';
+
+.mdb-page {
+  width: min(100%, 1100px);
+  margin: 0 auto;
+  padding: 48px 24px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.mdb-heading .section-title { margin: 0 0 24px; }
+
+.mdb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.mdb-card {
+  box-sizing: border-box;
+  min-height: 152px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text-h);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mdb-card:hover,
+.mdb-card:focus-visible { border-color: var(--accent); }
+
+.mdb-card-icon svg {
+  width: 40px;
+  height: 40px;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mdb-card h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.mdb-card-create {
+  border-style: dashed;
+  color: var(--text-grey);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mdb-card-create:hover,
+.mdb-card-create:focus-visible { border-color: var(--accent); }
+.mdb-card-create strong { color: var(--text-h); font-size: 18px; }
+.mdb-create-icon { color: var(--accent); font-size: 40px; line-height: 1; }
+
+.mdb-dialog {
+  width: min(100% - 32px, 430px);
+  padding: 24px;
+  border-radius: 7px;
+}
+
+.mdb-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.mdb-dialog .mdb-dialog-heading h2 { margin: 0; }
+.mdb-dialog-delete,
+.mdb-row-delete {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-grey);
+  cursor: pointer;
+}
+.mdb-dialog-delete svg,
+.mdb-row-delete svg { width: 19px; height: 19px; }
+.mdb-dialog-delete:hover,
+.mdb-dialog-delete:focus-visible,
+.mdb-row-delete:hover,
+.mdb-row-delete:focus-visible { color: var(--accent); }
+.mdb-dialog-delete:focus-visible,
+.mdb-row-delete:focus-visible { outline: 1px solid var(--accent); }
+
+.mdb-dialog form { display: grid; gap: 16px; }
+.mdb-import-dialog { width: min(100% - 32px, 620px); }
+.mdb-import-dialog > p { margin: 0 0 16px; color: var(--text-grey); }
+.mdb-import-columns { display: grid; gap: 10px; max-height: 50vh; overflow-y: auto; }
+.mdb-import-column {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--field);
+}
+.mdb-import-column > span { overflow-wrap: anywhere; }
+.mdb-import-column small {
+  color: var(--text-grey);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+.mdb-import-relation-fields { display: grid; gap: 12px; width: 100%; }
+.mdb-import-relation-fields[hidden] { display: none; }
+.mdb-import-relation-fields .field { margin: 0; }
+.mdb-dialog .form-status { margin: 0 !important; }
+.mdb-dialog .dialog-actions { margin-top: 4px; }
+.mdb-dialog .auth-button { width: auto; }
+.mdb-dialog .field[hidden] { display: none; }
+.mdb-dialog .field select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--field);
+  color: var(--text-h);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.mdb-dialog .field select {
+  appearance: none;
+  padding-right: 42px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23757575' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 6 5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+.mdb-dialog .field select option { background: var(--panel); color: var(--text-h); }
+.mdb-dialog .field select:focus-visible { border-color: var(--accent); outline: 1px solid var(--accent); }
+
+.mdb-column-option-list { display: grid; gap: 8px; max-height: 40vh; overflow-y: auto; }
+.mdb-column-option { display: flex; align-items: center; gap: 8px; }
+.mdb-column-option input { min-width: 0; flex: 1; }
+.mdb-column-option-remove {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-grey);
+  cursor: pointer;
+}
+.mdb-column-option-remove svg { width: 19px; height: 19px; }
+.mdb-column-option-remove:hover,
+.mdb-column-option-remove:focus-visible { color: var(--accent); }
+.mdb-column-option-remove:focus-visible { outline: 1px solid var(--accent); }
+.mdb-column-option-placeholder {
+  box-sizing: border-box;
+  width: 100%;
+  padding-right: 44px;
+}
+.mdb-column-option-placeholder input { border-style: dashed; cursor: text; }
+.mdb-column-option-placeholder input::placeholder { color: var(--text-grey); }
+.mdb-column-option-placeholder:hover input { border-color: var(--accent); }
+
+.mdb-option-list { display: grid; gap: 8px; max-height: 55vh; overflow-y: auto; }
+.mdb-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.mdb-option input { accent-color: var(--accent); }
+.mdb-option-placeholder {
+  box-sizing: border-box;
+  width: 100%;
+  background: var(--field);
+  border-style: dashed;
+  cursor: text;
+}
+.mdb-option-placeholder::before { content: ''; flex: none; width: 13px; }
+.mdb-option-placeholder:hover { background: #262626; }
+.mdb-option-placeholder input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-h);
+  font: inherit;
+  cursor: text;
+}
+.mdb-option-placeholder input::placeholder { color: var(--text-grey); }
+.mdb-option-placeholder:focus-within { border-color: var(--accent); }
+.mdb-option-draft { cursor: default; }
+.mdb-option-draft input[type="text"],
+.mdb-option-draft select {
+  min-width: 0;
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--field);
+  color: var(--text-h);
+  font: inherit;
+}
+.mdb-option-draft input[type="text"]:focus-visible,
+.mdb-option-draft select:focus-visible { border-color: var(--accent); outline: 1px solid var(--accent); }
+.mdb-related-blank-label { flex: 1; color: var(--text-grey); }
+
+.mdb-editor {
+  width: min(100%, 1800px);
+  padding: 24px 16px 16px;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#app:has(.mdb-editor) { height: 100dvh; min-height: 0; }
+#page:has(.mdb-editor) { min-height: 0; }
+
+.mdb-editor .back-button { flex: none; text-decoration: none; }
+
+.mdb-editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.mdb-editor-heading-main { display: flex; flex: 1; align-items: center; gap: 16px; min-width: 0; }
+.mdb-editor-heading .section-title {
+  margin: 0;
+  min-width: 0;
+  font-size: clamp(24px, 3vw, 32px);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+#mdb-import-button {
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.mdb-table-area {
+  --mdb-grid-line: rgb(85 85 85 / 42%);
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.mdb-data-table {
+  --mdb-row-height: 38px;
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+  font-size: 14px;
+}
+
+.mdb-data-table th,
+.mdb-data-table td {
+  padding: 0;
+  border-right: 1px solid var(--mdb-grid-line);
+  border-bottom: 1px solid var(--mdb-grid-line);
+  vertical-align: middle;
+}
+
+.mdb-data-table th:last-child,
+.mdb-data-table td:last-child { border-right: 0; }
+.mdb-data-table tr:last-child td,
+.mdb-data-table tr:last-child th { border-bottom: 0; }
+
+.mdb-data-table th {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-h);
+  background: #292929;
+}
+
+.mdb-data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.mdb-data-table th:first-child {
+  text-align: center;
+  color: var(--text-grey);
+}
+
+.mdb-data-table thead th:first-child { color: var(--text-grey); }
+.mdb-data-table tbody th { font-size: 12px; font-weight: 500; background: #191919; }
+.mdb-data-table tbody tr.mdb-data-row:hover td { background: #242424; }
+
+.mdb-column-name-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.mdb-column-heading-content { display: flex; align-items: center; min-width: 0; }
+.mdb-drag-handle {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: var(--mdb-row-height);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-grey);
+  cursor: grab;
+  touch-action: none;
+}
+.mdb-drag-handle svg { width: 14px; height: 18px; }
+.mdb-drag-handle:hover,
+.mdb-drag-handle:focus-visible { color: var(--accent); background: #323232; }
+.mdb-drag-handle:active { cursor: grabbing; }
+.mdb-drag-handle:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.mdb-row-heading { white-space: nowrap; }
+.mdb-column-heading .mdb-drag-handle { height: 46px; }
+.mdb-row-heading .mdb-drag-handle { display: inline-grid; width: 28px; vertical-align: middle; }
+.mdb-row-heading > span { display: inline-block; min-width: 28px; vertical-align: middle; text-align: center; }
+.mdb-row-heading .mdb-row-delete { vertical-align: middle; }
+.mdb-column-heading[data-drop-side="before"] { box-shadow: inset 3px 0 var(--accent); }
+.mdb-column-heading[data-drop-side="after"] { box-shadow: inset -3px 0 var(--accent); }
+.mdb-data-row[data-drop-side="before"] > * { box-shadow: inset 0 3px var(--accent); }
+.mdb-data-row[data-drop-side="after"] > * { box-shadow: inset 0 -3px var(--accent); }
+
+.mdb-column-name-button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mdb-column-name-button svg { width: 16px; height: 16px; flex: none; color: var(--text-grey); }
+.mdb-column-name-button:hover,
+.mdb-column-name-button:focus-visible { color: var(--accent); background: #323232; }
+.mdb-column-name-button:hover svg,
+.mdb-column-name-button:focus-visible svg { color: var(--accent); }
+.mdb-column-name-button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+.mdb-data-table .mdb-cell-control,
+.mdb-data-table .mdb-multi-button {
+  display: block;
+  width: 100%;
+  min-height: var(--mdb-row-height);
+  box-sizing: border-box;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-h);
+  font: inherit;
+}
+
+.mdb-data-table select.mdb-cell-control { cursor: pointer; padding-right: 26px; }
+.mdb-date-cell { display: flex; position: relative; align-items: center; min-width: 0; }
+.mdb-date-cell .mdb-cell-control { flex: 1; min-width: 0; }
+.mdb-date-button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 38px;
+  height: var(--mdb-row-height);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-grey);
+  cursor: pointer;
+}
+.mdb-date-button svg { width: 19px; height: 19px; }
+.mdb-date-button:hover,
+.mdb-date-button:focus-visible { color: var(--accent); background: #242424; }
+.mdb-date-button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.mdb-date-button:disabled { opacity: 0.5; cursor: wait; }
+.mdb-date-native-picker {
+  position: absolute;
+  right: 38px;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.mdb-data-table input[type="checkbox"].mdb-cell-control {
+  width: 20px;
+  min-height: 20px;
+  height: 20px;
+  margin: 9px auto;
+  padding: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.mdb-data-table .mdb-multi-button { text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mdb-data-table .mdb-cell-control:hover:not(:disabled),
+.mdb-data-table .mdb-multi-button:hover:not(:disabled) { background: #242424; }
+.mdb-data-table .mdb-cell-control:focus-visible,
+.mdb-data-table .mdb-multi-button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  background: #242424;
+}
+
+.mdb-data-table .mdb-cell-control:disabled,
+.mdb-data-table .mdb-multi-button:disabled { opacity: 0.6; }
+
+.mdb-data-table .mdb-row-placeholder td { background: #191919; }
+
+.mdb-data-table td.mdb-column-placeholder,
+.mdb-data-table td.mdb-empty-column { height: var(--mdb-row-height); }
+.mdb-data-table td.mdb-column-placeholder { background: #1b1b1b; }
+
+.mdb-placeholder-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--mdb-row-height);
+  padding: 7px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-grey);
+  text-align: left;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.mdb-placeholder-button span { color: var(--accent); font-size: 22px; line-height: 1; }
+.mdb-column-placeholder .mdb-placeholder-button {
+  justify-content: center;
+  min-height: 48px;
+  padding: 0;
+}
+.mdb-row-placeholder .mdb-placeholder-button { padding-left: 122px; }
+.mdb-placeholder-button:hover,
+.mdb-placeholder-button:focus-visible { background: var(--field); color: var(--text-h); }
+.mdb-column-placeholder .mdb-placeholder-button:hover,
+.mdb-column-placeholder .mdb-placeholder-button:focus-visible { background: #323232; }
+.mdb-placeholder-button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.mdb-placeholder-button:disabled { opacity: 0.5; cursor: wait; }
+
+@media (max-width: 600px) {
+  .mdb-page { padding: 28px 16px; }
+  .mdb-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+}

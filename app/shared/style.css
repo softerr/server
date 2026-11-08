@@ -58,7 +58,7 @@ h1 {
   flex-direction: column;
 }
 
-:where(.quiz-dialog, .user-dialog, .musico-dialog) {
+:where(.quiz-dialog, .user-dialog, .musico-dialog, .mdb-dialog) {
   box-sizing: border-box;
   border: 1px solid var(--border);
   background: var(--panel);
@@ -66,11 +66,11 @@ h1 {
   text-align: left;
 }
 
-:where(.quiz-dialog, .user-dialog, .musico-dialog)::backdrop {
+:where(.quiz-dialog, .user-dialog, .musico-dialog, .mdb-dialog)::backdrop {
   background: rgb(0 0 0 / 75%);
 }
 
-:where(.quiz-dialog, .user-dialog, .musico-dialog) h2 {
+:where(.quiz-dialog, .user-dialog, .musico-dialog, .mdb-dialog) h2 {
   margin: 0 0 20px;
   color: var(--text-h);
 }

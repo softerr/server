@@ -10,9 +10,83 @@ Content type:
 
 The API uses separate PHP entrypoints: `/api/auth/*` is handled by the shared
 auth app, `/api/quiz/*` by the quiz app, `/api/media/*` by the shared media app,
-`/api/musico/*` by Musico,
+`/api/musico/*` by Musico, `/api/mdb/*` by MDB,
 and `/api/` by the readiness endpoint.
 The PHP files are internal to Nginx and are not public API URLs.
+
+## MDB databases
+
+MDB uses the shared browser login. `GET /api/mdb/databases` lists databases
+created by the signed-in account. `POST /api/mdb/databases` with
+`{"name":"My database"}` creates one and returns its ID, name, and creation
+time. Names are unique per account without regard to case. MDB stores an
+app-local user linked to the shared auth user ID; each created database belongs
+to that local user. A created database is a workspace record in the `mdb`
+PostgreSQL database. Click it to edit its single table.
+`GET /api/mdb/databases/{databaseId}` returns its columns, rows, and cell values.
+Add a column with `POST /api/mdb/databases/{databaseId}/columns` and a name
+plus `type`: `text`, `number`, `date`, `checkbox`, `select`, `multi_select`,
+`relation`, or `multi_relation`. Select columns also need an `options` array
+of unique strings. Relation columns need `relation_database_id` pointing to a
+database owned by the same account. Add a row with
+`POST /api/mdb/databases/{databaseId}/rows`.
+Relation and multi-relation columns may set `relation_display_column_id` to a
+column ID in that related database. The chosen column supplies each linked
+row's label without a row-number prefix. Empty values display as `—`. `null`
+keeps automatic labels. Changing the display column does not change the linked
+row IDs.
+Save a cell with `PUT /api/mdb/databases/{databaseId}/rows/{rowId}/cells/{columnId}`
+and `{"value":...}`. Text, number, date, and select values are strings;
+checkbox values are booleans, multi-select values are arrays of option strings,
+relation values are row IDs or `null`, and multi-relation values are arrays of
+unique row IDs from the selected database. Empty values clear cells. All routes
+require the owner's browser session.
+Drag row or column handles in the editor to change their order. The equivalent
+API calls are `PUT /api/mdb/databases/{databaseId}/rows/order` and
+`PUT /api/mdb/databases/{databaseId}/columns/order` with
+`{"ids":[...all IDs in the desired order...]}`. Reordering preserves cell values.
+Click a column header to edit its name and settings with
+`PATCH /api/mdb/databases/{databaseId}/columns/{columnId}`. Existing values
+remain attached to the column ID. A populated column cannot change type or
+related database. Options in use cannot be removed. To rename an option while
+preserving cell values, send the new `options` array and
+`"option_renames":[{"from":"Old","to":"New"}]` in the PATCH body.
+Select and multi-select cells use the same option picker. Select cells allow
+one choice or **No option**; both pickers let you add options before saving.
+Delete a column with `DELETE /api/mdb/databases/{databaseId}/columns/{columnId}`
+or a row with `DELETE /api/mdb/databases/{databaseId}/rows/{rowId}`. Deletion
+removes that item's cells and closes the gap in its position numbers. Deleting
+a row clears single relations to it and removes it from multi-relations. If a
+deleted column supplied relation labels, those relations use automatic labels.
+In a multi-relation cell, **Choose related rows** includes an add-row placeholder.
+Enter values to create rows in the related database and select them. The app
+uses the relation's display column when it is text, number, date, or select;
+otherwise it uses the first suitable column or offers blank rows. The API
+creates up to 100 rows atomically with
+`POST /api/mdb/databases/{databaseId}/rows/batch` and
+`{"column_id":123,"values":["First","Second"]}`. Use a null `column_id`
+and null values for blank rows.
+To import CSV into an open database, use the **Import CSV** button. The first
+row supplies column names. Existing columns match by name without regard to
+case; missing columns are created. Number, date, and checkbox types are
+suggested when unambiguous. The app lets you review types for new columns.
+`POST /api/mdb/databases/{databaseId}/import/preview` accepts a multipart
+`file` and returns column suggestions without changing data. Then
+`POST /api/mdb/databases/{databaseId}/import` accepts the same file and a
+`types` form field containing a JSON object of chosen types keyed by column
+name. For each relation or multi-relation column, also send a `relations` JSON
+object keyed by CSV column name with `database_id` and `lookup_column_id`.
+Existing relations keep their related database; new relations use the selected
+one and show values from the lookup column. Import searches for an exact value
+in that column. If none exists, it creates a related row with that value. If
+multiple related rows match, the import fails so it cannot choose the wrong
+row. Multi-relation CSV cells contain comma-separated values. Lookup columns
+may be text, number, date, or select. Import adds new select options, appends
+rows not already present by their imported values, and rolls back the whole
+import if any value is invalid.
+Multi-select cells use comma-separated option names. CSV files may use comma,
+semicolon, or tab separators; the file limit is 8 MiB, 100 columns, and
+10,000 nonempty rows, with at most 100,000 cells.
 
 ## Mobile login
 

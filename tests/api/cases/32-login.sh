@@ -193,7 +193,7 @@ test_auth_login_session_lifecycle() {
       fail_test "API database role could update account email: ${permission_result}"
       return 1
     fi
-    target_name="api_role_target_${API_TEST_RUN_ID}_$(date +%s)_${RANDOM}"
+    target_name="api_role_target_${API_TEST_RUN_ID}_${RANDOM}"
     target_email="${target_name}@example.test"
     api_request POST /api/auth/signup "$(jq -nc --arg username "${target_name}" --arg email "${target_email}" \
       '{username:$username,email:$email,password:"test_password_123"}')"
@@ -253,7 +253,7 @@ test_auth_login_session_lifecycle() {
             $names[] = $entry["name"];
           }
           sort($names);
-          exit($names === ["auth.dump", "media.dump", "musico.dump", "quiz.dump"] ? 0 : 1);
+          exit($names === ["auth.dump", "mdb.dump", "media.dump", "musico.dump", "quiz.dump"] ? 0 : 1);
         ' "${backup_zip}"; then
           rm -f "${backup_zip}" "${cookie_file}"
           fail_test "admin backup download was incomplete: HTTP ${backup_status}"

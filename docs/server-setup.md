@@ -32,21 +32,21 @@ For verification email delivery, also add your mail provider settings as product
 
 ## 3. Run one workflow
 
-In GitHub, run **Actions → Set Up Server → Run workflow**. It builds home, quiz, and Musico, uploads the API and configuration, and runs `scripts/setup_server.sh` remotely. The remote script:
+In GitHub, run **Actions → Set Up Server → Run workflow**. It builds home, quiz, Musico, and MDB, uploads the API and configuration, and runs `scripts/setup_server.sh` remotely. The remote script:
 
 1. Serves HTTP temporarily for the certificate challenge and obtains a certificate for the host in `SERVER_HOST`.
-2. Sets up the shared `auth` and `media` databases plus app-specific `quiz` and `musico` databases, PHP-FPM, and the email worker, runs restore-checked backups of all four databases and uploads them to MEGA, and configures the final HTTPS Nginx site.
-3. Deploys the API, home, quiz, and Musico.
-4. Checks the database backup, token cleanup, and mail timers, HTTPS home, quiz, and Musico pages, and API readiness endpoint.
+2. Sets up the shared `auth` and `media` databases plus app-specific `quiz`, `musico`, and `mdb` databases, PHP-FPM, and the email worker, runs restore-checked backups of all five databases and uploads them to MEGA, and configures the final HTTPS Nginx site.
+3. Deploys the API, home, quiz, Musico, and MDB.
+4. Checks the database backup, token cleanup, and mail timers, HTTPS pages for all web apps, and API readiness endpoint.
 
 The workflow fails at the step that needs attention. Rerunning it reapplies the database schema, Nginx configuration, and apps without deleting user accounts; expired verification tokens are pruned. It reuses a valid certificate with an active renewal timer. Once it succeeds, the site is available over HTTPS at the host in `SERVER_HOST`.
 
-PostgreSQL setup uses `configs/postgresql/init.sql` for the API role and databases, then applies `auth.sql` to `auth`, `quiz.sql` to `quiz`, `media.sql` to `media`, and `musico.sql` to `musico`.
+PostgreSQL setup uses `configs/postgresql/init.sql` for the API role and shared databases, then applies the auth and media schemas and each app schema from `configs/apps.tsv`, including MDB's app-local users and databases.
 
 To make the first admin, sign up and verify that account, then run the SQL command in [Server maintenance](server-maintenance.md). New accounts require approval in the home Users page after email verification. Verification queues an email for each active admin.
 
 ## Later updates
 
-Use **Deploy Apps On Server** to deploy `api`, `home`, `quiz`, `musico`, or `all` without repeating server setup. The home, quiz, and Musico apps build on the GitHub runner; only their built files are uploaded. API deployment reapplies the auth, quiz, media, and Musico schemas before publishing the new code. Deploying Musico also deploys its API endpoint. Each app is checked through Nginx after publication and restored to its previous release if the check fails. Use **Setup Nginx On Server** after web server configuration or runtime settings change. The latter workflow runs PHP-FPM and email worker setup before Nginx setup. Those workflows use the same pinned SSH host key and production secrets.
+Use **Deploy Apps On Server** to deploy `api`, `home`, `quiz`, `musico`, `mdb`, or `all` without repeating server setup. The web apps build on the GitHub runner; only their built files are uploaded. API deployment reapplies the auth, media, and app schemas before publishing the new code. Deploying an app also deploys its API endpoint. Each app is checked through Nginx after publication and restored to its previous release if the check fails. Use **Setup Nginx On Server** after adding a new web route or changing web server configuration or runtime settings. The latter workflow runs PHP-FPM and email worker setup before Nginx setup. Those workflows use the same pinned SSH host key and production secrets.
 
-The **Test Deployment** workflow checks shell syntax, atomic app replacement, both web app builds, and Nginx configuration. The **Test API On Runner** and **Test API In QEMU** workflows exercise the API with local Mailpit, including email rejection and resend behavior. Require their jobs in branch protection if they should block merges.
+The **Test Deployment** workflow checks shell syntax, atomic app replacement, web app builds, and Nginx configuration. The **Test API On Runner** and **Test API In QEMU** workflows exercise the API with local Mailpit, including email rejection and resend behavior. Require their jobs in branch protection if they should block merges.

@@ -55,10 +55,10 @@ Default access:
 `start` does:
 - boots VM
 - runs `bootstrap_server.sh` and checks the workflow user's SSH key, pinned host key, and deployment sudo access
-- rebuilds home and quiz from current source when provisioning includes those apps
+- rebuilds selected web apps from current source
 - syncs repo into VM (`/home/<VM_USER>/server`; default `/home/ubuntu/server`)
 - runs `scripts/provision.sh` with default `PROVISION_COMPONENTS=all`
-- checks that `/` returns HTTP 200 after home deployment, `/quiz` and `/quiz/` after quiz deployment, and `/musico` and `/musico/` after Musico deployment
+- checks the deployed routes for Home, Quiz, Musico, and MDB
 
 ## 4. Apply a component to the running VM
 
@@ -68,7 +68,7 @@ After editing a component, run:
 bash scripts/qemu.sh apply nginx
 ```
 
-`apply` reruns the idempotent bootstrap check, syncs the repository, and runs the selected component through `scripts/provision.sh`. Applying `home`, `quiz`, `all`, or `apps` rebuilds the selected web apps first. Home and quiz applies check their routes afterward.
+`apply` reruns the idempotent bootstrap check, syncs the repository, and runs the selected component through `scripts/provision.sh`. Applying a web app, `all`, or `apps` rebuilds the selected web apps first and checks their routes afterward.
 
 Other examples:
 
@@ -89,7 +89,9 @@ Supported components:
 - `api`
 - `home`
 - `quiz`
-- `apps` (deploys `api`, `home`, then `quiz`; set `APP_LIST=api`, `APP_LIST=home`, or `APP_LIST=quiz` to select one)
+- `musico`
+- `mdb`
+- `apps` (deploys `api` and all registered web apps; set `APP_LIST=api` or an app ID to select one)
 
 ## 5. Run API tests in QEMU (one command)
 

@@ -277,6 +277,10 @@ startAuthApp({
             <span class="app-card-title">Musico</span>
             <span class="app-card-description">Open Musico</span>
           </a>
+          <a class="app-card" href="/mdb/">
+            <span class="app-card-title">MDB</span>
+            <span class="app-card-description">Your database workspace</span>
+          </a>
         </div>
       </main>
     `

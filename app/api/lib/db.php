@@ -55,3 +55,8 @@ function openMusicoDb(): array
     return openDb(3, 'musico');
 }
 
+function openMdbDb(): array
+{
+    return openDb(3, 'mdb');
+}
+

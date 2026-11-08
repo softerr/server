@@ -236,6 +236,26 @@ function handleDeleteUser(int $targetId): never
         respond(500, ['error' => 'Failed to delete Musico data']);
     }
 
+    $mdbDb = connectMdbDb();
+    if (@pg_query($mdbDb, 'BEGIN') === false) {
+        respond(500, ['error' => 'Failed to delete MDB data']);
+    }
+    foreach ($accountIds as $accountId) {
+        if (@pg_query_params($mdbDb, 'SELECT pg_advisory_xact_lock($1)', [$accountId]) === false) {
+            @pg_query($mdbDb, 'ROLLBACK');
+            respond(500, ['error' => 'Failed to delete MDB data']);
+        }
+    }
+    $mdbDelete = @pg_query_params($mdbDb,
+        'DELETE FROM public."user" WHERE auth_user_id = ANY($1::bigint[])', [$accountIdArray]);
+    if ($mdbDelete === false) {
+        @pg_query($mdbDb, 'ROLLBACK');
+        respond(500, ['error' => 'Failed to delete MDB data']);
+    }
+    if (@pg_query($mdbDb, 'COMMIT') === false) {
+        respond(500, ['error' => 'Failed to delete MDB data']);
+    }
+
     $mediaDb = connectMediaDb();
     if (@pg_query($mediaDb, 'BEGIN') === false) {
         respond(500, ['error' => 'Failed to delete user images']);

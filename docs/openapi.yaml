@@ -17,6 +17,7 @@ tags:
   - name: Administration
   - name: Quizzes
   - name: Musico
+  - name: MDB
   - name: Media
 paths:
   /:
@@ -25,7 +26,7 @@ paths:
       operationId: getReadiness
       summary: Check API readiness
       description: |
-        Checks the verification URL configuration, ZIP support, all four PostgreSQL
+        Checks the verification URL configuration, ZIP support, all five PostgreSQL
         databases, and their required schemas. It does not check email delivery.
         Use `/api/`; Nginx redirects `/api` to `/api/`.
       responses:
@@ -47,6 +48,476 @@ paths:
               example:
                 status: unavailable
                 error: Database connection failed
+
+  /mdb/databases:
+    get:
+      tags: [MDB]
+      operationId: listMdbDatabases
+      summary: List databases created by the current account
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Databases owned by the current account, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [databases]
+                properties:
+                  databases:
+                    type: array
+                    items: {$ref: '#/components/schemas/MdbDatabase'}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      tags: [MDB]
+      operationId: createMdbDatabase
+      summary: Create a database in the current account
+      description: Names must be unique within an account, ignoring case. The database is a logical MDB record; it does not create a separate PostgreSQL database.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, minLength: 1, maxLength: 100}
+      responses:
+        '201':
+          description: Database created.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MdbDatabase'}
+        '400': {description: Invalid database name or JSON body.}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '409': {description: A database with this name already exists.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    get:
+      tags: [MDB]
+      operationId: getMdbDatabase
+      summary: Open a database table
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Database metadata, columns, and rows with saved cell values.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [database, columns, rows]
+                properties:
+                  database: {$ref: '#/components/schemas/MdbDatabase'}
+                  columns:
+                    type: array
+                    items: {$ref: '#/components/schemas/MdbColumn'}
+                  rows:
+                    type: array
+                    items: {$ref: '#/components/schemas/MdbRow'}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '404': {description: Database not found in this account.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/columns:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    post:
+      tags: [MDB]
+      operationId: addMdbColumn
+      summary: Add a typed column to a database table
+      description: Column names are unique within a database, ignoring case. Select types require options; relation types require the ID of a database owned by the same account. Relation types may specify a column from that database to display for linked rows.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MdbColumnInput'}
+      responses:
+        '201':
+          description: Column created.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MdbColumn'}
+        '400': {description: Invalid column settings.}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '404': {description: Database not found in this account.}
+        '409': {description: A column with this name already exists.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/columns/{columnId}:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+      - name: columnId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    patch:
+      tags: [MDB]
+      operationId: updateMdbColumn
+      summary: Edit a column
+      description: Column names are unique within a database, ignoring case. A type or related database cannot change while the column contains values. The relation display column may change without clearing values. Options in use cannot be removed unless renamed with option_renames; renames update saved cell values.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MdbColumnInput'}
+      responses:
+        '200':
+          description: Column updated.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MdbColumn'}
+        '400': {description: Invalid column settings.}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '404': {description: Database or column not found in this account.}
+        '409': {description: Duplicate column name or incompatible change to a populated column.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      tags: [MDB]
+      operationId: deleteMdbColumn
+      summary: Delete a column and its cells
+      description: Remaining columns are renumbered. Relations displaying this column fall back to automatic labels.
+      security:
+        - sessionCookie: []
+      responses:
+        '204': {description: Column deleted.}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '404': {description: Database or column not found in this account.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/columns/order:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    put:
+      tags: [MDB]
+      operationId: reorderMdbColumns
+      summary: Reorder database columns
+      description: Send every column ID exactly once in the desired order. Cell values stay attached to their column IDs.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MdbOrder'}
+      responses:
+        '200':
+          description: Column order saved.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MdbOrder'}
+        '400': {description: Invalid or duplicate IDs.}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '404': {description: Database not found in this account.}
+        '409': {description: IDs do not match the current columns.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/import/preview:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    post:
+      tags: [MDB]
+      operationId: previewMdbCsvImport
+      summary: Inspect a CSV file before importing it
+      description: Detects existing columns and unambiguous new column types. Columns with a null type require a choice during import. Does not change data.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '200':
+          description: CSV preview.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [row_count, columns]
+                properties:
+                  row_count: {type: integer, minimum: 0}
+                  columns:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, existing, type, candidates, samples, relation_database_id, relation_display_column_id]
+                      properties:
+                        name: {type: string}
+                        existing: {type: boolean}
+                        type: {type: [string, 'null']}
+                        candidates: {type: array, items: {type: string}}
+                        samples: {type: array, items: {type: string}}
+                        relation_database_id: {type: [integer, 'null'], format: int64}
+                        relation_display_column_id: {type: [integer, 'null'], format: int64}
+        '400': {description: Invalid CSV file.}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '404': {description: Database not found in this account.}
+        '413': {description: CSV exceeds size or row limits.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/import:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    post:
+      tags: [MDB]
+      operationId: importMdbCsv
+      summary: Import CSV columns and rows
+      description: Adds missing columns, extends select options, and appends only rows whose imported values are not already present. The import is atomic. The types field maps new column names to text, number, date, checkbox, select, multi_select, relation, or multi_relation. The relations field selects a related database and lookup column for each relation. Missing lookup values create related rows; duplicate matches reject the import.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+                types: {type: string, description: JSON object keyed by CSV column name.}
+                relations: {type: string, description: 'JSON object keyed by CSV column name; each value contains database_id and lookup_column_id.'}
+      responses:
+        '200':
+          description: Import completed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [columns_added, rows_added, rows_skipped, options_added, related_rows_added]
+                properties:
+                  columns_added: {type: integer, minimum: 0}
+                  rows_added: {type: integer, minimum: 0}
+                  rows_skipped: {type: integer, minimum: 0}
+                  options_added: {type: integer, minimum: 0}
+                  related_rows_added: {type: integer, minimum: 0}
+        '400': {description: Invalid CSV file, column type, or cell value.}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '404': {description: Database not found in this account.}
+        '409': {description: No room to add rows.}
+        '413': {description: CSV exceeds size or row limits.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/rows:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    post:
+      tags: [MDB]
+      operationId: addMdbRow
+      summary: Add an empty row to a database table
+      security:
+        - sessionCookie: []
+      responses:
+        '201':
+          description: Row created.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MdbRow'}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '404': {description: Database not found in this account.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/rows/batch:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    post:
+      tags: [MDB]
+      operationId: addMdbRows
+      summary: Add related rows together
+      description: Creates 1 to 100 rows atomically. If column_id is null, every value must be null and the rows are blank. Otherwise the column must be text, number, date, or select, and each value is saved in that column.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [column_id, values]
+              properties:
+                column_id: {type: [integer, 'null'], format: int64, minimum: 1}
+                values:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: {type: [string, 'null']}
+      responses:
+        '201':
+          description: Rows created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rows]
+                properties:
+                  rows:
+                    type: array
+                    items: {$ref: '#/components/schemas/MdbRow'}
+        '400': {description: Invalid column or value.}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '404': {description: Database not found in this account.}
+        '409': {description: No room to add rows.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/rows/{rowId}:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+      - name: rowId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    delete:
+      tags: [MDB]
+      operationId: deleteMdbRow
+      summary: Delete a row and its cells
+      description: Remaining rows are renumbered. Single relations to this row are cleared; multi-relations remove this row from their selected IDs.
+      security:
+        - sessionCookie: []
+      responses:
+        '204': {description: Row deleted.}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '404': {description: Database or row not found in this account.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/rows/{rowId}/cells/{columnId}:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+      - name: rowId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+      - name: columnId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    put:
+      tags: [MDB]
+      operationId: saveMdbCell
+      summary: Save a typed cell
+      description: Text, number, date, and select values use strings. Checkbox uses a boolean, multi-select uses an array of option strings, relation uses a related row ID or null, and multi-relation uses an array of unique related row IDs. Empty values clear a cell.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value]
+              properties:
+                value: {$ref: '#/components/schemas/MdbCellValue'}
+      responses:
+        '200':
+          description: Cell saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [row_id, column_id, value]
+                properties:
+                  row_id: {type: integer, format: int64, minimum: 1}
+                  column_id: {type: integer, format: int64, minimum: 1}
+                  value: {$ref: '#/components/schemas/MdbCellValue'}
+        '400': {description: Invalid cell value.}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '404': {description: Database, row, or column not found in this account.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/rows/order:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    put:
+      tags: [MDB]
+      operationId: reorderMdbRows
+      summary: Reorder database rows
+      description: Send every row ID exactly once in the desired order. Cell values stay attached to their row IDs.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MdbOrder'}
+      responses:
+        '200':
+          description: Row order saved.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MdbOrder'}
+        '400': {description: Invalid or duplicate IDs.}
+        '401': {description: No active session.}
+        '403': {description: API and mobile tokens cannot access MDB.}
+        '404': {description: Database not found in this account.}
+        '409': {description: IDs do not match the current rows.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
 
   /musico/me:
     put:
@@ -1207,7 +1678,7 @@ paths:
       tags: [Administration]
       operationId: listBackups
       summary: List complete, restore-checked database backup sets
-      description: Requires a current admin session. Each set contains auth, media, quiz, and musico archives from one backup run, newest first. Archives are stored on MEGA and downloaded to the server temporarily for ZIP creation. Responses are not cached.
+      description: Requires a current admin session. Each set contains auth, media, quiz, musico, and mdb archives from one backup run, newest first. Archives are stored on MEGA and downloaded to the server temporarily for ZIP creation. Responses are not cached.
       security:
         - sessionCookie: []
       responses:
@@ -3583,6 +4054,67 @@ components:
             error: Verification email is not configured
 
   schemas:
+    MdbDatabase:
+      type: object
+      required: [id, name, created]
+      properties:
+        id: {type: integer, format: int64, minimum: 1}
+        name: {type: string, minLength: 1, maxLength: 100}
+        created: {type: string}
+    MdbColumn:
+      type: object
+      required: [id, name, position, type, options, relation_database_id, relation_display_column_id]
+      properties:
+        id: {type: integer, format: int64, minimum: 1}
+        name: {type: string, minLength: 1, maxLength: 100}
+        position: {type: integer, minimum: 1}
+        type: {type: string, enum: [text, number, date, checkbox, select, multi_select, relation, multi_relation]}
+        options: {type: array, items: {type: string}, uniqueItems: true}
+        relation_database_id: {type: [integer, 'null'], format: int64, minimum: 1}
+        relation_display_column_id: {type: [integer, 'null'], format: int64, minimum: 1}
+    MdbColumnInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100}
+        type: {type: string, enum: [text, number, date, checkbox, select, multi_select, relation, multi_relation], default: text}
+        options: {type: array, items: {type: string, minLength: 1, maxLength: 100}, uniqueItems: true}
+        option_renames:
+          type: array
+          description: On column updates, map existing option names to their new names so saved cell values follow the rename.
+          items:
+            type: object
+            required: [from, to]
+            properties:
+              from: {type: string, minLength: 1, maxLength: 100}
+              to: {type: string, minLength: 1, maxLength: 100}
+        relation_database_id: {type: [integer, 'null'], format: int64, minimum: 1}
+        relation_display_column_id: {type: [integer, 'null'], format: int64, minimum: 1}
+    MdbCellValue:
+      oneOf:
+        - {type: string, maxLength: 60000}
+        - {type: boolean}
+        - {type: array, items: {type: string}, uniqueItems: true}
+        - {type: array, items: {type: integer, format: int64, minimum: 1}, uniqueItems: true}
+        - {type: integer, format: int64, minimum: 1}
+        - {type: 'null'}
+    MdbOrder:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          uniqueItems: true
+          items: {type: integer, format: int64, minimum: 1}
+    MdbRow:
+      type: object
+      required: [id, position, values]
+      properties:
+        id: {type: integer, format: int64, minimum: 1}
+        position: {type: integer, format: int64, minimum: 1}
+        values:
+          type: object
+          additionalProperties: {$ref: '#/components/schemas/MdbCellValue'}
     MusicoCursor:
       type: string
       description: Opaque change-feed cursor. `0` denotes an empty history; other values identify a specific change-log entry and must be sent back unchanged.

@@ -133,15 +133,20 @@ jobs:
           routes = routes.replace('__WEB_APP_ROUTES__', web_routes).replace('__APP_API_ROUTES__', api_routes)
           assert 'location = /musico {' in routes
           assert 'location /musico/ {' in routes
+          assert 'location = /mdb {' in routes
+          assert 'location /mdb/ {' in routes
           assert 'location = /api/quiz.php {' in routes
           assert 'location = /api/media.php {' in routes
           assert 'location = /api/musico.php {' in routes
+          assert 'location = /api/mdb.php {' in routes
           assert 'location ~ ^/api/(index|auth)\\.php$ {' in routes
           assert 'location /api/auth/' in routes
           assert 'location /api/quiz/' in routes
           assert 'location /api/media/' in routes
           assert 'location ~ ^/api/media/audio(?:/|$) {' in routes
           assert 'location /api/musico/' in routes
+          assert 'location /api/mdb/' in routes
+          assert routes.count('client_max_body_size 10m;') == 2
           assert routes.count('client_max_body_size 26m;') == 4
           assert 'location ~ ^/api/quiz/quizzes/import/*$ {' in routes
           assert 'client_max_body_size 48m;' in routes
