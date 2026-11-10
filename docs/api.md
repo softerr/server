@@ -52,6 +52,28 @@ unique row IDs from the selected database. Image values are media image IDs or
 can be chosen. The editor shows thumbnails and lets users pick or upload an
 image. Empty values clear cells. All routes
 require the owner's browser session or an API token with the matching MDB scope.
+An API token with `mdb:read` and read access to one of the owner's databases can
+propose cell edits without `mdb:write`: `POST /api/mdb/databases/{databaseId}/suggestions`
+with a title and 1–100 changes. Each change supplies `row_id`, `column_id`,
+`before` (the current value, or `null` for an empty cell), `value` (the proposed
+value), and `reason`. Values use the same types as cell writes. An optional
+UUID `request_id` makes retries safe. The server rejects stale or invalid
+changes and limits each database to 100 pending suggestions; the token cannot
+accept its own proposal. In the database editor,
+**Suggestions** shows the diff and the token name. The owner can accept or
+decline the whole batch. Acceptance checks every original cell again and
+applies all changes in one transaction, or returns 409 if anything changed.
+The owner can also use `GET /api/mdb/databases/{databaseId}/suggestions`,
+`GET /api/mdb/databases/{databaseId}/suggestions/{suggestionId}`, and
+`POST /api/mdb/databases/{databaseId}/suggestions/{suggestionId}/accept` or
+`/decline` with a browser session.
+
+```bash
+curl -H "Authorization: Bearer $MDB_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"title":"Correct movie title","changes":[{"row_id":42,"column_id":7,"before":"Old title","value":"Correct title","reason":"Corrected spelling"}]}' \
+  https://YOUR_HOST/api/mdb/databases/3/suggestions
+```
+
 Drag row or column handles in the editor to change their order. The equivalent
 API calls are `PUT /api/mdb/databases/{databaseId}/rows/order` and
 `PUT /api/mdb/databases/{databaseId}/columns/order` with

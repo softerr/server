@@ -8,6 +8,7 @@ import { showMissingImageWhenUnavailable } from '../../shared/missing-image.js'
 import { parsePastedDate } from './date-parse.js'
 import { sortRowsByColumn } from './sort-rows.js'
 import { filterRowsByQuery } from './filter-rows.js'
+import { setupMdbSuggestions } from './suggestions.js'
 
 const databaseIcon = `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
   <ellipse cx="24" cy="10" rx="17" ry="6" />
@@ -150,6 +151,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
           </label>
           <button id="mdb-import-button" class="auth-button auth-button-secondary" type="button">Import CSV</button>
           <button id="mdb-export-button" class="auth-button auth-button-secondary" type="button" disabled>Export CSV</button>
+          <button id="mdb-suggestions-button" class="auth-button auth-button-secondary" type="button">Suggestions</button>
           <input id="mdb-import-file" type="file" accept=".csv,text/csv" hidden />
         </div>
       </header>
@@ -2096,6 +2098,8 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       button.disabled = false
     }
   }
+  setupMdbSuggestions(page, { endpoint, requestJson, responseError, setStatus, notice,
+    refresh, waitForWrites: () => Promise.all([...pendingWrites]) })
   refresh()
 }
 

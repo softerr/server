@@ -55,6 +55,34 @@ CREATE TABLE IF NOT EXISTS public.database_cell (
 CREATE INDEX IF NOT EXISTS database_cell_column_idx
     ON public.database_cell (database_id, column_id);
 
+CREATE TABLE IF NOT EXISTS public.cell_suggestion (
+    id BIGSERIAL PRIMARY KEY,
+    database_id BIGINT NOT NULL REFERENCES public.user_database(id) ON DELETE CASCADE,
+    token_id BIGINT NOT NULL,
+    proposer_name VARCHAR(100) NOT NULL,
+    title VARCHAR(100) NOT NULL,
+    request_id UUID,
+    request_sha256 CHAR(64),
+    status VARCHAR(16) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'accepted', 'declined')),
+    created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TIMESTAMPTZ,
+    UNIQUE (token_id, request_id)
+);
+CREATE INDEX IF NOT EXISTS cell_suggestion_database_idx
+    ON public.cell_suggestion (database_id, id DESC);
+CREATE TABLE IF NOT EXISTS public.cell_suggestion_change (
+    suggestion_id BIGINT NOT NULL REFERENCES public.cell_suggestion(id) ON DELETE CASCADE,
+    row_id BIGINT NOT NULL,
+    column_id BIGINT NOT NULL,
+    column_name VARCHAR(100) NOT NULL,
+    column_type VARCHAR(16) NOT NULL,
+    before_value TEXT,
+    proposed_value JSONB NOT NULL,
+    reason VARCHAR(500) NOT NULL,
+    PRIMARY KEY (suggestion_id, row_id, column_id)
+);
+
 GRANT CONNECT ON DATABASE mdb TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public."user" TO auth_api;
@@ -63,6 +91,9 @@ GRANT SELECT, INSERT, DELETE ON TABLE public.database_column, public.database_ro
 GRANT UPDATE (name, position, width, type, options, relation_database_id, relation_display_column_id) ON TABLE public.database_column TO auth_api;
 GRANT UPDATE (position) ON TABLE public.database_row TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.database_cell TO auth_api;
+GRANT SELECT, INSERT, UPDATE (status, reviewed_at) ON TABLE public.cell_suggestion TO auth_api;
+GRANT SELECT, INSERT ON TABLE public.cell_suggestion_change TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.user_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.user_database_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.database_column_id_seq, public.database_row_id_seq TO auth_api;
+GRANT USAGE, SELECT ON SEQUENCE public.cell_suggestion_id_seq TO auth_api;

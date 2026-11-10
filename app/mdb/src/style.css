@@ -125,6 +125,31 @@
 
 .mdb-dialog form { display: grid; gap: 16px; }
 .mdb-import-dialog { width: min(100% - 32px, 620px); }
+.mdb-suggestions-dialog { width: min(100% - 32px, 900px); max-height: min(86dvh, 800px); display: flex; flex-direction: column; gap: 14px; }
+.mdb-suggestions-dialog:not([open]) { display: none; }
+.mdb-suggestions-dialog .mdb-dialog-heading { margin-bottom: 0; }
+.mdb-suggestions-dialog .mdb-dialog-heading button { font-size: 25px; line-height: 1; }
+.mdb-suggestions-layout { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 16px; min-height: 180px; overflow: hidden; }
+.mdb-suggestions-list, .mdb-suggestion-detail { overflow-y: auto; min-height: 0; }
+.mdb-suggestions-list { display: grid; align-content: start; gap: 6px; border-right: 1px solid var(--border); padding-right: 12px; }
+.mdb-suggestion-entry { display: grid; gap: 4px; width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--field); color: var(--text-h); text-align: left; font: inherit; cursor: pointer; }
+.mdb-suggestion-entry.selected { border-color: var(--accent); }
+.mdb-suggestion-entry span, .mdb-suggestion-meta, .mdb-suggestion-reason { color: var(--text-grey); font-size: 13px; }
+.mdb-suggestion-detail { padding-right: 4px; }
+.mdb-suggestion-detail h3 { margin: 0 0 5px; }
+.mdb-suggestion-detail h4 { margin: 0 0 8px; font-size: 14px; }
+.mdb-suggestion-change { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); }
+.mdb-suggestion-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.mdb-suggestion-values > div { min-width: 0; }
+.mdb-suggestion-values span { color: var(--text-grey); font-size: 12px; }
+.mdb-suggestion-values p { min-height: 36px; margin: 4px 0 0; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--field); overflow-wrap: anywhere; white-space: pre-wrap; }
+.mdb-suggestion-reason { margin: 10px 0 0; overflow-wrap: anywhere; }
+.mdb-suggestion-actions { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
+@media (max-width: 640px) {
+  .mdb-suggestions-layout { grid-template-columns: 1fr; overflow-y: auto; }
+  .mdb-suggestions-list { max-height: 150px; border-right: 0; border-bottom: 1px solid var(--border); padding: 0 0 12px; }
+  .mdb-suggestion-detail { overflow: visible; }
+}
 .mdb-import-dialog > p { margin: 0 0 16px; color: var(--text-grey); }
 .mdb-import-columns { display: grid; gap: 10px; max-height: 50vh; overflow-y: auto; }
 .mdb-import-column {

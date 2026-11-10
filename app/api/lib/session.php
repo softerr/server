@@ -167,6 +167,9 @@ function currentApiTokenUser(string $authorization): array
         $scope = ($method === 'GET' || ($method === 'POST'
             && in_array($path, ['/api/media/thumbnails', '/api/media/images/usage'], true)))
             ? 'media:read' : 'media:write';
+    } elseif (is_string($path) && $method === 'POST'
+        && preg_match('#^/api/mdb/databases/[1-9][0-9]*/suggestions$#D', $path) === 1) {
+        $scope = 'mdb:read';
     } elseif (is_string($path)) {
         foreach (TOKEN_APPS as $app => $_) {
             if (str_starts_with($path, "/api/$app/")) {

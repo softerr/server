@@ -9,13 +9,17 @@ require_once __DIR__ . '/lib/url.php';
 require_once __DIR__ . '/lib/session.php';
 require_once __DIR__ . '/apps/mdb/databases.php';
 require_once __DIR__ . '/apps/mdb/csv_import.php';
+require_once __DIR__ . '/apps/mdb/suggestions.php';
 
 $path = apiRequestPath('/api/mdb');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $requestUser = currentSessionUser();
 $resourceId = is_string($path) && preg_match('#^/databases/([1-9][0-9]*)(?:/|$)#D', $path, $resourceMatch)
     ? filter_var($resourceMatch[1], FILTER_VALIDATE_INT) : null;
-$authUser = appAccessUser($requestUser, 'mdb', $method !== 'GET', $resourceId ?: null);
+$submittingSuggestion = $method === 'POST' && is_string($path)
+    && preg_match('#^/databases/[1-9][0-9]*/suggestions$#D', $path) === 1;
+$authUser = appAccessUser($requestUser, 'mdb', $method !== 'GET' && !$submittingSuggestion,
+    $resourceId ?: null);
 if ($path === '/databases') {
     $user = $authUser;
     if ($method === 'GET') handleListMdbDatabases($user);
@@ -26,6 +30,26 @@ if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)$#D', $path, $matc
     $id = filter_var($match[1], FILTER_VALIDATE_INT);
     if ($id === false) respond(404, ['error' => 'Not found']);
     if ($method === 'GET') handleGetMdbDatabase($authUser, $id);
+    respond(405, ['error' => 'Method not allowed']);
+}
+if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)/suggestions$#D', $path, $match)) {
+    $id = filter_var($match[1], FILTER_VALIDATE_INT);
+    if ($id === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'POST') handleCreateMdbSuggestion($requestUser, $id);
+    if ($method === 'GET') handleListMdbSuggestions($requestUser, $id);
+    respond(405, ['error' => 'Method not allowed']);
+}
+if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)/suggestions/([1-9][0-9]*)(?:/(accept|decline))?$#D', $path, $match)) {
+    $databaseId = filter_var($match[1], FILTER_VALIDATE_INT);
+    $suggestionId = filter_var($match[2], FILTER_VALIDATE_INT);
+    if ($databaseId === false || $suggestionId === false) respond(404, ['error' => 'Not found']);
+    if (($match[3] ?? '') === '' && $method === 'GET') {
+        handleGetMdbSuggestion($requestUser, $databaseId, $suggestionId);
+    }
+    if (($match[3] ?? '') !== '' && $method === 'POST') {
+        handleReviewMdbSuggestion($requestUser, $databaseId, $suggestionId,
+            $match[3] === 'accept' ? 'accepted' : 'declined');
+    }
     respond(405, ['error' => 'Method not allowed']);
 }
 if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)/(columns|rows)$#D', $path, $match)) {
