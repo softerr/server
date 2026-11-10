@@ -24,6 +24,7 @@ function publicMdbColumn(array $row): array
     $options = json_decode((string) $row['options'], true);
     return ['id' => (int) $row['id'], 'name' => $row['name'],
         'position' => (int) $row['position'], 'type' => $row['type'],
+        'width' => $row['width'] === null ? null : (int) $row['width'],
         'options' => is_array($options) ? array_values($options) : [],
         'relation_database_id' => $row['relation_database_id'] === null
             ? null : (int) $row['relation_database_id'],
@@ -35,7 +36,7 @@ function mdbColumnSettings(array $payload, ?array $current = null): array
 {
     $type = $payload['type'] ?? ($current['type'] ?? 'text');
     if (!is_string($type) || !in_array($type,
-        ['text', 'number', 'date', 'checkbox', 'select', 'multi_select', 'relation', 'multi_relation'], true)) {
+        ['text', 'number', 'date', 'checkbox', 'select', 'multi_select', 'relation', 'multi_relation', 'image'], true)) {
         respond(400, ['error' => 'Invalid column type']);
     }
     $options = $payload['options'] ?? ($current === null
@@ -91,13 +92,29 @@ function mdbPublicCellValue(string $type, string $stored): mixed
         'multi_select' => json_decode($stored, true) ?: [],
         'multi_relation' => json_decode($stored, true) ?: [],
         'relation' => (int) $stored,
+        'image' => (int) $stored,
         default => $stored,
     };
 }
 
-function mdbCellStorage($db, array $column, mixed $value): array
+function mdbCellStorage($db, array $column, mixed $value, ?int $authUserId = null): array
 {
     $type = $column['type'];
+    if ($type === 'image') {
+        if ($value === null) return [null, null];
+        if (!is_int($value) || $value < 1 || $authUserId === null) {
+            respond(400, ['error' => 'Choose an image from your library']);
+        }
+        if (@pg_query_params($db, 'SELECT pg_advisory_xact_lock($1::bigint)', [-$value]) === false) {
+            respond(500, ['error' => 'Failed to check image']);
+        }
+        $image = @pg_query_params(connectMediaDb(),
+            'SELECT 1 FROM public.image WHERE id = $1
+             AND (owner_auth_user_id = $2 OR shared = TRUE)', [$value, $authUserId]);
+        if ($image === false) respond(500, ['error' => 'Failed to check image']);
+        if (pg_num_rows($image) === 0) respond(400, ['error' => 'Choose an image from your library']);
+        return [(string) $value, $value];
+    }
     if ($type === 'checkbox') {
         if (!is_bool($value)) respond(400, ['error' => 'Checkbox value must be true or false']);
         return [$value ? 'true' : null, $value];
@@ -193,7 +210,7 @@ function mdbBeginWrite($db, array $user, int $databaseId): void
         respond(500, ['error' => 'Failed to edit database']);
     }
     $active = @pg_query_params(connectDb(),
-        'SELECT 1 FROM public."user" WHERE id = $1 AND account_kind = \'human\'
+        'SELECT 1 FROM public."user" WHERE id = $1
          AND verified = TRUE AND approved_at IS NOT NULL AND deleting = FALSE', [$user['id']]);
     if ($active === false) respond(500, ['error' => 'Failed to authorize account']);
     if (pg_num_rows($active) === 0) respond(401, ['error' => 'Not authenticated']);
@@ -224,7 +241,7 @@ function handleCreateMdbDatabase(array $user): never
         respond(500, ['error' => 'Failed to create database']);
     }
     $active = @pg_query_params(connectDb(),
-        'SELECT 1 FROM public."user" WHERE id = $1 AND account_kind = \'human\'
+        'SELECT 1 FROM public."user" WHERE id = $1
          AND verified = TRUE AND approved_at IS NOT NULL AND deleting = FALSE', [$user['id']]);
     if ($active === false) respond(500, ['error' => 'Failed to authorize account']);
     if (pg_num_rows($active) === 0) respond(401, ['error' => 'Not authenticated']);
@@ -250,14 +267,30 @@ function handleGetMdbDatabase(array $user, int $databaseId): never
 {
     $db = connectMdbDb();
     $database = mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
+    $paged = isset($_GET['limit']);
+    if (!$paged && isset($_GET['after'])) respond(400, ['error' => 'Invalid row cursor']);
+    if ($paged) {
+        $limit = filter_var($_GET['limit'], FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1, 'max_range' => 200]]);
+        $after = filter_var($_GET['after'] ?? '0', FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 0]]);
+        if ($limit === false || $after === false) respond(400, ['error' => 'Invalid row page']);
+    }
     $columnsResult = @pg_query_params($db,
-        'SELECT id, name, position, type, options, relation_database_id, relation_display_column_id FROM public.database_column
+        'SELECT id, name, position, width, type, options, relation_database_id, relation_display_column_id FROM public.database_column
          WHERE database_id = $1 ORDER BY position', [$databaseId]);
-    $rowsResult = @pg_query_params($db,
-        'SELECT r.id, r.position, v.column_id, v.value
-         FROM public.database_row r
-         LEFT JOIN public.database_cell v ON v.database_id = r.database_id AND v.row_id = r.id
-         WHERE r.database_id = $1 ORDER BY r.position, v.column_id', [$databaseId]);
+    $rowsResult = $paged
+        ? @pg_query_params($db,
+            'SELECT r.id, r.position, v.column_id, v.value
+             FROM (SELECT id, database_id, position FROM public.database_row
+                   WHERE database_id = $1 AND position > $2 ORDER BY position LIMIT $3) r
+             LEFT JOIN public.database_cell v ON v.database_id = r.database_id AND v.row_id = r.id
+             ORDER BY r.position, v.column_id', [$databaseId, $after, $limit + 1])
+        : @pg_query_params($db,
+            'SELECT r.id, r.position, v.column_id, v.value
+             FROM public.database_row r
+             LEFT JOIN public.database_cell v ON v.database_id = r.database_id AND v.row_id = r.id
+             WHERE r.database_id = $1 ORDER BY r.position, v.column_id', [$databaseId]);
     if ($columnsResult === false || $rowsResult === false) {
         respond(500, ['error' => 'Failed to load database table']);
     }
@@ -280,8 +313,16 @@ function handleGetMdbDatabase(array $user, int $databaseId): never
     }
     foreach ($rows as &$row) $row['values'] = (object) $row['values'];
     unset($row);
-    respond(200, ['database' => publicMdbDatabase($database), 'columns' => $columns,
-        'rows' => array_values($rows)]);
+    $rows = array_values($rows);
+    $nextAfter = null;
+    if ($paged && count($rows) > $limit) {
+        $rows = array_slice($rows, 0, $limit);
+        $nextAfter = (string) $rows[count($rows) - 1]['position'];
+    }
+    $payload = ['database' => publicMdbDatabase($database), 'columns' => $columns,
+        'rows' => $rows];
+    if ($paged) $payload['next_after'] = $nextAfter;
+    respond(200, $payload);
 }
 
 function handleAddMdbColumn(array $user, int $databaseId): never
@@ -297,7 +338,7 @@ function handleAddMdbColumn(array $user, int $databaseId): never
              (database_id, name, position, type, options, relation_database_id, relation_display_column_id)
          SELECT $1, $2, COALESCE(MAX(position), 0) + 1, $3, $4::jsonb, $5, $6
          FROM public.database_column WHERE database_id = $1
-         ON CONFLICT DO NOTHING RETURNING id, name, position, type, options, relation_database_id, relation_display_column_id',
+         ON CONFLICT DO NOTHING RETURNING id, name, position, width, type, options, relation_database_id, relation_display_column_id',
         [$databaseId, $name, $type, json_encode($options), $relationId, $displayId]);
     if ($result === false) respond(500, ['error' => 'Failed to add column']);
     $row = pg_fetch_assoc($result);
@@ -313,7 +354,7 @@ function handleUpdateMdbColumn(array $user, int $databaseId, int $columnId): nev
     $db = connectMdbDb();
     mdbBeginWrite($db, $user, $databaseId);
     $current = @pg_query_params($db,
-        'SELECT id, name, position, type, options, relation_database_id, relation_display_column_id FROM public.database_column
+        'SELECT id, name, position, width, type, options, relation_database_id, relation_display_column_id FROM public.database_column
          WHERE database_id = $1 AND id = $2', [$databaseId, $columnId]);
     if ($current === false) respond(500, ['error' => 'Failed to update column']);
     $row = pg_fetch_assoc($current);
@@ -391,11 +432,32 @@ function handleUpdateMdbColumn(array $user, int $databaseId, int $columnId): nev
          SET name = $3, type = $4, options = $5::jsonb, relation_database_id = $6,
              relation_display_column_id = $7
          WHERE database_id = $1 AND id = $2
-         RETURNING id, name, position, type, options, relation_database_id, relation_display_column_id',
+         RETURNING id, name, position, width, type, options, relation_database_id, relation_display_column_id',
         [$databaseId, $columnId, $name, $type, json_encode($options), $relationId, $displayId]);
     if ($updated === false) respond(500, ['error' => 'Failed to update column']);
     $row = pg_fetch_assoc($updated);
     if (@pg_query($db, 'COMMIT') === false) respond(500, ['error' => 'Failed to update column']);
+    respond(200, publicMdbColumn($row));
+}
+
+function handleResizeMdbColumn(array $user, int $databaseId, int $columnId): never
+{
+    $payload = readJsonBody();
+    $width = $payload['width'] ?? null;
+    if (!is_int($width) || $width < 96 || $width > 1200) {
+        respond(400, ['error' => 'Column width must be between 96 and 1200 pixels']);
+    }
+    $db = connectMdbDb();
+    mdbBeginWrite($db, $user, $databaseId);
+    $updated = @pg_query_params($db,
+        'UPDATE public.database_column SET width = $3
+         WHERE database_id = $1 AND id = $2
+         RETURNING id, name, position, width, type, options, relation_database_id, relation_display_column_id',
+        [$databaseId, $columnId, $width]);
+    if ($updated === false) respond(500, ['error' => 'Failed to resize column']);
+    $row = pg_fetch_assoc($updated);
+    if ($row === false) respond(404, ['error' => 'Column not found']);
+    if (@pg_query($db, 'COMMIT') === false) respond(500, ['error' => 'Failed to resize column']);
     respond(200, publicMdbColumn($row));
 }
 
@@ -597,6 +659,49 @@ function mdbClearDeletedRowReferences($db, int $databaseId, int $rowId): void
     }
 }
 
+function handleGetMdbRowUsage(array $user, int $databaseId, int $rowId): never
+{
+    $db = connectMdbDb();
+    mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
+    $row = @pg_query_params($db,
+        'SELECT 1 FROM public.database_row WHERE database_id = $1 AND id = $2',
+        [$databaseId, $rowId]);
+    if ($row === false) respond(500, ['error' => 'Failed to check row']);
+    if (pg_num_rows($row) === 0) respond(404, ['error' => 'Row not found']);
+    $result = @pg_query_params($db,
+        'SELECT d.id AS database_id, d.name AS database_name,
+                r.id AS row_id, r.position AS row_position,
+                c.id AS column_id, c.name AS column_name, c.type
+         FROM public.database_column c
+         JOIN public.user_database d ON d.id = c.database_id
+         JOIN public."user" u ON u.id = d.user_id
+         JOIN public.database_cell cell
+           ON cell.database_id = c.database_id AND cell.column_id = c.id
+         JOIN public.database_row r
+           ON r.database_id = cell.database_id AND r.id = cell.row_id
+         WHERE u.auth_user_id = $1 AND c.relation_database_id = $2
+           AND CASE c.type
+             WHEN \'relation\' THEN cell.value = $3::text
+             WHEN \'multi_relation\' THEN cell.value::jsonb @> jsonb_build_array($3::bigint)
+             ELSE FALSE END
+         ORDER BY d.name, r.position, c.position',
+        [$user['id'], $databaseId, $rowId]);
+    if ($result === false) respond(500, ['error' => 'Failed to check row usage']);
+    $uses = [];
+    while (($usage = pg_fetch_assoc($result)) !== false) {
+        $uses[] = [
+            'database_id' => (int) $usage['database_id'],
+            'database_name' => $usage['database_name'],
+            'row_id' => (int) $usage['row_id'],
+            'row_position' => (int) $usage['row_position'],
+            'column_id' => (int) $usage['column_id'],
+            'column_name' => $usage['column_name'],
+            'type' => $usage['type'],
+        ];
+    }
+    respond(200, ['uses' => $uses]);
+}
+
 function handleDeleteMdbItem(array $user, int $databaseId, int $itemId, string $kind): never
 {
     $table = match ($kind) {
@@ -636,7 +741,7 @@ function handleSaveMdbCell(array $user, int $databaseId, int $rowId, int $column
     if ($members === false) respond(500, ['error' => 'Failed to save cell']);
     $column = pg_fetch_assoc($members);
     if ($column === false) respond(404, ['error' => 'Row or column not found']);
-    [$stored, $public] = mdbCellStorage($db, $column, $payload['value']);
+    [$stored, $public] = mdbCellStorage($db, $column, $payload['value'], (int) $user['id']);
     if ($stored === null) {
         $saved = @pg_query_params($db,
             'DELETE FROM public.database_cell WHERE database_id = $1 AND row_id = $2 AND column_id = $3',

@@ -95,6 +95,13 @@ if (is_string($path) && preg_match('#^/tokens/([1-9][0-9]*)/quiz-access$#D', $pa
     respond(405, ['error' => 'Method not allowed']);
 }
 
+if (is_string($path) && preg_match('#^/tokens/([1-9][0-9]*)/app-access$#D', $path, $tokenMatch)) {
+    $tokenId = filter_var($tokenMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($tokenId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'PATCH') handleUpdateApiTokenAppAccess($tokenId);
+    respond(405, ['error' => 'Method not allowed']);
+}
+
 if (is_string($path) && preg_match('#^/tokens/([1-9][0-9]*)$#D', $path, $tokenMatch)) {
     $tokenId = filter_var($tokenMatch[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($tokenId === false) respond(404, ['error' => 'Not found']);

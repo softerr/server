@@ -39,6 +39,8 @@ export function createMediaDeletion(page, { requestJson, responseError, notify }
         const item = document.createElement('li')
         item.textContent = place.kind === 'musico_track'
           ? `Musico · ${place.track_name} (song #${place.track_id})`
+          : place.kind === 'mdb_cell'
+            ? `MDB · ${place.database_name} · Row ${place.row_position} · ${place.column_name}`
           : `${place.quiz_name} · ${place.kind === 'attempt' ? `Saved attempt #${place.attempt_id}` : 'Current question'} · ${place.question_prompt} (question #${place.question_id})`
         list.append(item)
       }

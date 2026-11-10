@@ -9,6 +9,8 @@ test_mdb_database_library() (
   assert_status 401 || return 1
   api_request DELETE /api/mdb/databases/1/rows/1
   assert_status 401 || return 1
+  api_request GET /api/mdb/databases/1/rows/1/usage
+  assert_status 401 || return 1
   api_request DELETE /api/mdb/databases/1/columns/1
   assert_status 401 || return 1
 
@@ -59,6 +61,22 @@ test_mdb_database_library() (
   column_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
   [[ "${response##*$'\n'}" == 201 && "${column_id}" =~ ^[1-9][0-9]*$ ]] \
     || { fail_test "MDB could not add a column: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"width":320}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/columns/${column_id}/width")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e '.width == 320' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB could not resize a column: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e '.columns[0].width == 320' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB column width was not saved: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"width":95}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/columns/${column_id}/width")"
+  [[ "${response##*$'\n'}" == 400 ]] \
+    || { fail_test "MDB accepted an invalid column width: ${response}"; return 1; }
 
   response="$(curl -sS -b "${cookie_file}" -X POST -H 'Content-Type: application/json' \
     --data '{}' -w $'\n%{http_code}' \
@@ -289,6 +307,25 @@ test_mdb_database_library() (
   [[ "${response##*$'\n'}" == 200 ]] \
     || { fail_test "MDB could not save the second row: ${response}"; return 1; }
   response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}?limit=1")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson first "${row_id}" --arg heading "${column_id}" \
+      '(.rows | length) == 1 and .rows[0].id == $first and .rows[0].values[$heading] == "First entry"' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    && jq -e '.next_after == "1"' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB first row page was incorrect: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}?limit=1&after=1")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson second "${second_row_id}" --arg heading "${column_id}" \
+      '(.rows | length) == 1 and .rows[0].id == $second and .rows[0].values[$heading] == "Second entry" and .next_after == null' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB second row page was incorrect: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}?limit=201")"
+  [[ "${response##*$'\n'}" == 400 ]] \
+    || { fail_test "MDB accepted an oversized row page: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}")"
   column_order="$(jq -c '[.columns[].id] | reverse' <<<"${response%$'\n'*}")"
   row_order="$(jq -c '[.rows[].id] | reverse' <<<"${response%$'\n'*}")"
@@ -330,6 +367,22 @@ test_mdb_database_library() (
     "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/rows/${row_id}/cells/${typed_ids[multi_relation]}")"
   [[ "${response##*$'\n'}" == 200 ]] \
     || { fail_test "MDB could not prepare a related row deletion: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${other_id}/rows/${related_row_id}/usage")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson source "${database_id}" --argjson row "${row_id}" \
+      --argjson relation "${typed_ids[relation]}" --argjson multi "${typed_ids[multi_relation]}" \
+      '.uses | length == 2 and
+       all(.[]; .database_id == $source and .database_name == "Personal records"
+         and .row_id == $row and .row_position >= 1) and
+       ([.[].column_id] | sort) == ([$relation, $multi] | sort)' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB row usage did not list both relation cells: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/rows/${row_id}/usage")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e '.uses == []' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB row usage included unrelated cells: ${response}"; return 1; }
   response="$(curl -sS -b "${cookie_file}" -X DELETE -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/rows/${related_row_id}")"
   [[ "${response##*$'\n'}" == 404 ]] \
@@ -690,3 +743,90 @@ test_mdb_csv_relations() (
 )
 
 register_test_case test_mdb_csv_relations
+
+test_mdb_image_column() (
+  if [[ -z "${TEST_EMAIL}" ]]; then
+    skip_test 'login fixture unavailable; skipping MDB image column test'
+    return 200
+  fi
+  local cookie_file png_file response database_id column_id row_id image_id
+  cookie_file="$(mktemp)"
+  png_file="$(mktemp)"
+  trap 'rm -f -- "${cookie_file}" "${png_file}"' EXIT
+  response="$(curl -sS -c "${cookie_file}" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --arg email "${TEST_EMAIL}" '{email:$email,password:"test_password_123"}')" \
+    -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/auth/login")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "MDB image fixture login failed: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+    --data '{"name":"Image column test"}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases")"
+  database_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  [[ "${response##*$'\n'}" == 201 && "${database_id}" =~ ^[1-9][0-9]*$ ]] \
+    || { fail_test "MDB image database creation failed: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+    --data '{"name":"Artwork","type":"image"}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/columns")"
+  column_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  [[ "${response##*$'\n'}" == 201 && "${column_id}" =~ ^[1-9][0-9]*$ ]] \
+    || { fail_test "MDB image column creation failed: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+    --data '{}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/rows")"
+  row_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  [[ "${response##*$'\n'}" == 201 && "${row_id}" =~ ^[1-9][0-9]*$ ]] \
+    || { fail_test "MDB image row creation failed: ${response}"; return 1; }
+  php -r '$im=imagecreatetruecolor(1,1); $seed=crc32($argv[2]); $color=imagecolorallocate($im,($seed>>16)&255,($seed>>8)&255,$seed&255); imagefill($im,0,0,$color); imagepng($im,$argv[1]); imagedestroy($im);' \
+    "${png_file}" "${API_TEST_RUN_ID}"
+  response="$(curl -sS -b "${cookie_file}" -X POST -H 'Content-Type: application/octet-stream' \
+    -H "X-Image-Name: mdb-${API_TEST_RUN_ID}.png" --data-binary @"${png_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images")"
+  image_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  [[ "${response##*$'\n'}" == 201 && "${image_id}" =~ ^[1-9][0-9]*$ ]] \
+    || { fail_test "MDB image upload failed: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    --data '{"value":999999999999}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/rows/${row_id}/cells/${column_id}")"
+  [[ "${response##*$'\n'}" == 400 ]] \
+    || { fail_test "MDB accepted an unknown image: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    --data "{\"value\":${image_id}}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/rows/${row_id}/cells/${column_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson id "${image_id}" '.value == $id' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB could not save an image: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --arg key "${column_id}" --argjson id "${image_id}" \
+      '.rows[0].values[$key] == $id' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB image ID did not round-trip: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+    --data "{\"image_ids\":[${image_id}]}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/usage")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson database "${database_id}" --argjson row "${row_id}" \
+      '.images[0].uses | any(.[]; .kind == "mdb_cell" and .database_id == $database and .row_id == $row and .column_name == "Artwork")' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "Media usage omitted MDB image cell: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${image_id}")"
+  [[ "${response##*$'\n'}" == 409 ]] \
+    || { fail_test "Media deleted an image used by MDB without confirmation: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${image_id}?force=1")"
+  [[ "${response##*$'\n'}" == 204 ]] \
+    || { fail_test "Media could not force-delete an MDB image: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --arg key "${column_id}" --argjson id "${image_id}" \
+      '.rows[0].values[$key] == $id' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB lost the missing-image reference: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    --data '{"value":null}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/rows/${row_id}/cells/${column_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    || { fail_test "MDB could not clear a deleted image: ${response}"; return 1; }
+)
+
+register_test_case test_mdb_image_column

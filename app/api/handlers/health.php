@@ -23,7 +23,7 @@ function handleReadiness(): never
             t.hash, t.email_attempted_at, o.token_id, o.available_at, o.claimed_until, o.claim_id,
             a.applicant_id, a.recipient_id, a.available_at, a.claim_id,
             api.token_hash, api.read_owner_quizzes, api.edit_owner_quizzes,
-            api.quiz_permissions, activity.token_id, activity.status,
+            api.quiz_permissions, api.app_access, activity.token_id, activity.status,
             mobile.access_hash, mobile.refresh_hash, mobile.previous_refresh_hash,
             mobile.previous_refresh_until, mobile.rotation_nonce, mobile.password_fingerprint,
             mobile.access_expires, mobile.refresh_expires, mobile.revoked_at

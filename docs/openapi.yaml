@@ -55,6 +55,7 @@ paths:
       operationId: listMdbDatabases
       summary: List databases created by the current account
       security:
+        - apiBearer: []
         - sessionCookie: []
       responses:
         '200':
@@ -69,7 +70,7 @@ paths:
                     type: array
                     items: {$ref: '#/components/schemas/MdbDatabase'}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '500': {$ref: '#/components/responses/InternalError'}
     post:
       tags: [MDB]
@@ -77,6 +78,7 @@ paths:
       summary: Create a database in the current account
       description: Names must be unique within an account, ignoring case. The database is a logical MDB record; it does not create a separate PostgreSQL database.
       security:
+        - apiBearer: []
         - sessionCookie: []
       requestBody:
         required: true
@@ -95,7 +97,7 @@ paths:
               schema: {$ref: '#/components/schemas/MdbDatabase'}
         '400': {description: Invalid database name or JSON body.}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '409': {description: A database with this name already exists.}
         '413': {description: Request body is too large.}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -110,11 +112,22 @@ paths:
       tags: [MDB]
       operationId: getMdbDatabase
       summary: Open a database table
+      description: Omit limit for the complete table. With limit, rows are returned in position order; pass next_after as after to fetch the next page. Columns and database metadata are included on each page.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200}
+          description: Maximum number of rows to return. Required when using after.
+        - name: after
+          in: query
+          schema: {type: string, pattern: '^[0-9]+$'}
+          description: Row position cursor from the previous page's next_after value.
       security:
         - sessionCookie: []
+        - apiBearer: []
       responses:
         '200':
-          description: Database metadata, columns, and rows with saved cell values.
+          description: Database metadata, columns, and rows with saved cell values. Paged responses include next_after, which is null on the last page.
           content:
             application/json:
               schema:
@@ -128,8 +141,13 @@ paths:
                   rows:
                     type: array
                     items: {$ref: '#/components/schemas/MdbRow'}
+                  next_after:
+                    type: [string, 'null']
+                    pattern: '^[0-9]+$'
+                    description: Cursor for the next page; present only when limit is supplied.
+        '400': {description: Invalid row page or cursor.}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database not found in this account.}
         '500': {$ref: '#/components/responses/InternalError'}
 
@@ -145,6 +163,7 @@ paths:
       summary: Add a typed column to a database table
       description: Column names are unique within a database, ignoring case. Select types require options; relation types require the ID of a database owned by the same account. Relation types may specify a column from that database to display for linked rows.
       security:
+        - apiBearer: []
         - sessionCookie: []
       requestBody:
         required: true
@@ -159,7 +178,7 @@ paths:
               schema: {$ref: '#/components/schemas/MdbColumn'}
         '400': {description: Invalid column settings.}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database not found in this account.}
         '409': {description: A column with this name already exists.}
         '413': {description: Request body is too large.}
@@ -181,6 +200,7 @@ paths:
       summary: Edit a column
       description: Column names are unique within a database, ignoring case. A type or related database cannot change while the column contains values. The relation display column may change without clearing values. Options in use cannot be removed unless renamed with option_renames; renames update saved cell values.
       security:
+        - apiBearer: []
         - sessionCookie: []
       requestBody:
         required: true
@@ -195,7 +215,7 @@ paths:
               schema: {$ref: '#/components/schemas/MdbColumn'}
         '400': {description: Invalid column settings.}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database or column not found in this account.}
         '409': {description: Duplicate column name or incompatible change to a populated column.}
         '413': {description: Request body is too large.}
@@ -206,12 +226,52 @@ paths:
       summary: Delete a column and its cells
       description: Remaining columns are renumbered. Relations displaying this column fall back to automatic labels.
       security:
+        - apiBearer: []
         - sessionCookie: []
       responses:
         '204': {description: Column deleted.}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database or column not found in this account.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/columns/{columnId}/width:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+      - name: columnId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    patch:
+      tags: [MDB]
+      operationId: resizeMdbColumn
+      summary: Save a column width
+      security:
+        - apiBearer: []
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [width]
+              properties:
+                width: {type: integer, minimum: 96, maximum: 1200, description: Width in pixels.}
+      responses:
+        '200':
+          description: Column resized.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MdbColumn'}
+        '400': {description: Width is outside the supported range.}
+        '401': {description: No active session.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
+        '404': {description: Database or column not found in this account.}
+        '413': {description: Request body is too large.}
         '500': {$ref: '#/components/responses/InternalError'}
 
   /mdb/databases/{databaseId}/columns/order:
@@ -226,6 +286,7 @@ paths:
       summary: Reorder database columns
       description: Send every column ID exactly once in the desired order. Cell values stay attached to their column IDs.
       security:
+        - apiBearer: []
         - sessionCookie: []
       requestBody:
         required: true
@@ -240,7 +301,7 @@ paths:
               schema: {$ref: '#/components/schemas/MdbOrder'}
         '400': {description: Invalid or duplicate IDs.}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database not found in this account.}
         '409': {description: IDs do not match the current columns.}
         '413': {description: Request body is too large.}
@@ -258,6 +319,7 @@ paths:
       summary: Inspect a CSV file before importing it
       description: Detects existing columns and unambiguous new column types. Columns with a null type require a choice during import. Does not change data.
       security:
+        - apiBearer: []
         - sessionCookie: []
       requestBody:
         required: true
@@ -293,7 +355,7 @@ paths:
                         relation_display_column_id: {type: [integer, 'null'], format: int64}
         '400': {description: Invalid CSV file.}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database not found in this account.}
         '413': {description: CSV exceeds size or row limits.}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -310,6 +372,7 @@ paths:
       summary: Import CSV columns and rows
       description: Adds missing columns, extends select options, and appends only rows whose imported values are not already present. The import is atomic. The types field maps new column names to text, number, date, checkbox, select, multi_select, relation, or multi_relation. The relations field selects a related database and lookup column for each relation. Missing lookup values create related rows; duplicate matches reject the import.
       security:
+        - apiBearer: []
         - sessionCookie: []
       requestBody:
         required: true
@@ -338,7 +401,7 @@ paths:
                   related_rows_added: {type: integer, minimum: 0}
         '400': {description: Invalid CSV file, column type, or cell value.}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database not found in this account.}
         '409': {description: No room to add rows.}
         '413': {description: CSV exceeds size or row limits.}
@@ -355,6 +418,7 @@ paths:
       operationId: addMdbRow
       summary: Add an empty row to a database table
       security:
+        - apiBearer: []
         - sessionCookie: []
       responses:
         '201':
@@ -363,7 +427,7 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/MdbRow'}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database not found in this account.}
         '500': {$ref: '#/components/responses/InternalError'}
 
@@ -379,6 +443,7 @@ paths:
       summary: Add related rows together
       description: Creates 1 to 100 rows atomically. If column_id is null, every value must be null and the rows are blank. Otherwise the column must be text, number, date, or select, and each value is saved in that column.
       security:
+        - apiBearer: []
         - sessionCookie: []
       requestBody:
         required: true
@@ -408,7 +473,7 @@ paths:
                     items: {$ref: '#/components/schemas/MdbRow'}
         '400': {description: Invalid column or value.}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database not found in this account.}
         '409': {description: No room to add rows.}
         '413': {description: Request body is too large.}
@@ -430,11 +495,57 @@ paths:
       summary: Delete a row and its cells
       description: Remaining rows are renumbered. Single relations to this row are cleared; multi-relations remove this row from their selected IDs.
       security:
+        - apiBearer: []
         - sessionCookie: []
       responses:
         '204': {description: Row deleted.}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
+        '404': {description: Database or row not found in this account.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/rows/{rowId}/usage:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+      - name: rowId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    get:
+      tags: [MDB]
+      operationId: getMdbRowUsage
+      summary: List relation cells that reference a row
+      description: Searches the current account's MDB databases, including single and multi-relation cells. Each use identifies its database, row, and column.
+      security:
+        - apiBearer: []
+        - sessionCookie: []
+      responses:
+        '200':
+          description: All current relation cells that reference the row.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [uses]
+                properties:
+                  uses:
+                    type: array
+                    items:
+                      type: object
+                      required: [database_id, database_name, row_id, row_position, column_id, column_name, type]
+                      properties:
+                        database_id: {type: integer, format: int64}
+                        database_name: {type: string}
+                        row_id: {type: integer, format: int64}
+                        row_position: {type: integer, format: int64}
+                        column_id: {type: integer, format: int64}
+                        column_name: {type: string}
+                        type: {type: string, enum: [relation, multi_relation]}
+        '401': {description: No active session.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database or row not found in this account.}
         '500': {$ref: '#/components/responses/InternalError'}
 
@@ -458,6 +569,7 @@ paths:
       summary: Save a typed cell
       description: Text, number, date, and select values use strings. Checkbox uses a boolean, multi-select uses an array of option strings, relation uses a related row ID or null, and multi-relation uses an array of unique related row IDs. Empty values clear a cell.
       security:
+        - apiBearer: []
         - sessionCookie: []
       requestBody:
         required: true
@@ -482,7 +594,7 @@ paths:
                   value: {$ref: '#/components/schemas/MdbCellValue'}
         '400': {description: Invalid cell value.}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database, row, or column not found in this account.}
         '413': {description: Request body is too large.}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -499,6 +611,7 @@ paths:
       summary: Reorder database rows
       description: Send every row ID exactly once in the desired order. Cell values stay attached to their row IDs.
       security:
+        - apiBearer: []
         - sessionCookie: []
       requestBody:
         required: true
@@ -513,7 +626,7 @@ paths:
               schema: {$ref: '#/components/schemas/MdbOrder'}
         '400': {description: Invalid or duplicate IDs.}
         '401': {description: No active session.}
-        '403': {description: API and mobile tokens cannot access MDB.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database not found in this account.}
         '409': {description: IDs do not match the current rows.}
         '413': {description: Request body is too large.}
@@ -526,6 +639,7 @@ paths:
       summary: Get or create the current user's Musico account
       description: The Musico user is stored in the Musico database and linked to the shared auth user ID. Repeated requests return the same app-local ID.
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       responses:
@@ -555,6 +669,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403': {description: API token lacks permission for this operation.}
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -565,6 +680,7 @@ paths:
       summary: Get an initial library snapshot or changes after a cursor
       description: Without `after`, returns a consistent snapshot of track metadata, playlists with ordered track IDs, and an opaque cursor. Save that cursor after applying the snapshot. With `after`, returns up to `limit` changes; advance to `next_cursor` only after applying the page, then repeat while `has_more` is true. A cursor that no longer identifies the same change-log entry returns 409 with `reset_required`; discard the cursor and fetch a new snapshot. Upsert entries identify objects to fetch from the track or playlist detail endpoint. Delete entries are tombstones. Audio bytes are fetched separately.
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       parameters:
@@ -598,6 +714,7 @@ paths:
                 properties:
                   error: {type: string}
                   reset_required: {type: boolean, const: true}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
 
   /musico/tracks:
@@ -606,6 +723,7 @@ paths:
       operationId: listMusicoTracks
       summary: List your uploaded tracks
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       responses:
@@ -637,6 +755,7 @@ paths:
                       bytes: { type: integer, const: 6442450944 }
                       per_file_bytes: { type: integer, minimum: 1 }
         '401': {description: No active session.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
     post:
       tags: [Musico]
@@ -644,6 +763,7 @@ paths:
       summary: Upload one audio file
       description: MP3, Ogg, WAV, FLAC, and M4A are accepted. Each file is at most 24 MiB; each user's library is limited to 6 GiB. The server computes SHA-256 from the file bytes. Reuploading identical bytes for the same account returns the existing track without changing its metadata or consuming quota. Clients should send a new UUID in Idempotency-Key for each intended upload and reuse it when retrying that upload. Keys are retained for 30 days, including when the uploaded track is deleted.
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       parameters:
@@ -682,6 +802,7 @@ paths:
         '401': {description: No active session.}
         '409': {description: Idempotency-Key was reused for a different upload, or the original track was deleted.}
         '413': {description: File or user storage limit exceeded.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
 
   /musico/tracks/order:
@@ -691,6 +812,7 @@ paths:
       summary: Set the web library order from a phone
       description: Replaces the account's phone order. Submit the server track IDs in the same order as the phone's default Songs view. Songs absent from the list follow those supplied. The most recently synced phone determines the order.
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       requestBody:
@@ -719,6 +841,7 @@ paths:
         '400': {description: Invalid, duplicate, or unavailable track ID.}
         '401': {description: No active session.}
         '413': {description: Request body is too large.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
 
   /musico/tracks/from-media:
@@ -728,6 +851,7 @@ paths:
       summary: Add an owned Media audio file as a Musico song
       description: Returns the existing song if this audio file is already in Musico. The file remains in Media when the song is deleted.
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       requestBody:
@@ -746,6 +870,7 @@ paths:
         '401': {description: No active session.}
         '404': {description: Audio file not found in your Media library.}
         '413': {description: Request body is too large.}
+        '403': {description: API token lacks permission for this operation.}
         '500': {$ref: '#/components/responses/InternalError'}
 
   /musico/tracks/{trackId}:
@@ -759,6 +884,7 @@ paths:
       operationId: getMusicoTrack
       summary: Get one of your tracks by ID
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       responses:
@@ -769,6 +895,7 @@ paths:
               schema: { $ref: '#/components/schemas/MusicoTrack' }
         '401': {description: No active session.}
         '404': {description: Track not found or belongs to another account.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
     patch:
       tags: [Musico]
@@ -777,6 +904,7 @@ paths:
       parameters:
         - {$ref: '#/components/parameters/MusicoVersion'}
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       requestBody:
@@ -806,6 +934,7 @@ paths:
         '404': {description: Track not found in your library.}
         '412': {description: Track version changed; reload before retrying.}
         '428': {description: If-Match is required.}
+        '403': {description: API token lacks permission for this operation.}
         '500': {$ref: '#/components/responses/InternalError'}
     delete:
       tags: [Musico]
@@ -814,6 +943,7 @@ paths:
       parameters:
         - {$ref: '#/components/parameters/MusicoVersion'}
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       responses:
@@ -823,6 +953,7 @@ paths:
         '404': {description: Track not found in your library.}
         '412': {description: Track version changed; reload before retrying.}
         '428': {description: If-Match is required.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
 
   /musico/tracks/{trackId}/listen:
@@ -839,6 +970,7 @@ paths:
       parameters:
         - {$ref: '#/components/parameters/MusicoStatisticRequestId'}
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       requestBody:
@@ -867,6 +999,7 @@ paths:
         '404': {description: Track not found in your library.}
         '409': {description: Idempotency-Key was used for a different statistic request.}
         '428': {description: Idempotency-Key is required.}
+        '403': {description: API token lacks permission for this operation.}
         '500': {$ref: '#/components/responses/InternalError'}
 
   /musico/tracks/{trackId}/analysis:
@@ -883,6 +1016,7 @@ paths:
         - {$ref: '#/components/parameters/MusicoVersion'}
       description: Replaces the track's stored analysis. Values may be null when the browser cannot determine them.
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       requestBody:
@@ -907,6 +1041,7 @@ paths:
         '412': {description: Track version changed; reload before retrying.}
         '413': {description: Request body is too large.}
         '428': {description: If-Match is required.}
+        '403': {description: API token lacks permission for this operation.}
         '500': {$ref: '#/components/responses/InternalError'}
 
   /musico/tracks/{trackId}/restore-stats:
@@ -923,6 +1058,7 @@ paths:
         - {$ref: '#/components/parameters/MusicoStatsVersion'}
         - {$ref: '#/components/parameters/MusicoStatisticRequestId'}
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       requestBody:
@@ -953,6 +1089,7 @@ paths:
         '404': {description: Track not found in your library.}
         '412': {description: Statistics changed; reload before retrying.}
         '428': {description: If-Match or Idempotency-Key is required.}
+        '403': {description: API token lacks permission for this operation.}
         '500': {$ref: '#/components/responses/InternalError'}
 
   /musico/tracks/{trackId}/file:
@@ -967,6 +1104,7 @@ paths:
       summary: Stream an owned track
       description: Supports one byte range through the Range header and returns 206 with Content-Range for partial content.
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       responses:
@@ -989,6 +1127,7 @@ paths:
         '401': {description: No active session.}
         '404': {description: Track not found in your library.}
         '416': {description: Invalid or unsatisfiable range.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
 
   /musico/playlists:
@@ -997,6 +1136,7 @@ paths:
       operationId: listMusicoPlaylists
       summary: List your playlists
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       responses:
@@ -1012,6 +1152,7 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/MusicoPlaylist' }
         '401': {description: No active session.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
     post:
       tags: [Musico]
@@ -1019,6 +1160,7 @@ paths:
       summary: Create a playlist
       description: Send a new UUID in Idempotency-Key for each intended playlist and reuse it for retries. A repeated key and name returns the original playlist ID with its current state, even if it was later renamed. A key cannot be reused for a different name or after the playlist is deleted. Creation receipts last for the account's lifetime.
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       parameters:
@@ -1051,6 +1193,7 @@ paths:
         '401': {description: No active session.}
         '409': {description: Idempotency-Key was used for a different name or the original playlist was deleted.}
         '413': {description: Request body is too large.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
 
   /musico/playlists/{playlistId}:
@@ -1064,6 +1207,7 @@ paths:
       operationId: getMusicoPlaylist
       summary: Get a playlist and its tracks
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       responses:
@@ -1081,6 +1225,7 @@ paths:
                     items: { $ref: '#/components/schemas/MusicoTrack' }
         '401': {description: No active session.}
         '404': {description: Playlist not found.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
     patch:
       tags: [Musico]
@@ -1089,6 +1234,7 @@ paths:
       parameters:
         - {$ref: '#/components/parameters/MusicoVersion'}
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       requestBody:
@@ -1112,6 +1258,7 @@ paths:
         '412': {description: Playlist version changed; reload before retrying.}
         '413': {description: Request body is too large.}
         '428': {description: If-Match is required.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
     delete:
       tags: [Musico]
@@ -1120,6 +1267,7 @@ paths:
       parameters:
         - {$ref: '#/components/parameters/MusicoVersion'}
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       responses:
@@ -1129,6 +1277,7 @@ paths:
         '404': {description: Playlist not found.}
         '412': {description: Playlist version changed; reload before retrying.}
         '428': {description: If-Match is required.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
 
   /musico/playlists/{playlistId}/tracks:
@@ -1145,6 +1294,7 @@ paths:
         - {$ref: '#/components/parameters/MusicoVersion'}
       description: Track IDs must be unique and belong to the signed-in user's library.
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       requestBody:
@@ -1178,6 +1328,7 @@ paths:
         '412': {description: Playlist version changed; reload before retrying.}
         '413': {description: Request body is too large.}
         '428': {description: If-Match is required.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
     post:
       tags: [Musico]
@@ -1187,6 +1338,7 @@ paths:
         - {$ref: '#/components/parameters/MusicoVersion'}
       description: The same track can be in several playlists, once per playlist.
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       requestBody:
@@ -1216,6 +1368,7 @@ paths:
         '412': {description: Playlist version changed; reload before retrying.}
         '413': {description: Request body is too large.}
         '428': {description: If-Match is required.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
 
   /musico/playlists/{playlistId}/tracks/{trackId}:
@@ -1235,6 +1388,7 @@ paths:
       parameters:
         - {$ref: '#/components/parameters/MusicoVersion'}
       security:
+        - apiBearer: []
         - sessionCookie: []
         - mobileBearer: []
       responses:
@@ -1244,6 +1398,7 @@ paths:
         '404': {description: Playlist track not found.}
         '412': {description: Playlist version changed; reload before retrying.}
         '428': {description: If-Match is required.}
+        '403': {description: API token lacks permission for this operation.}
         '500': { $ref: '#/components/responses/InternalError' }
 
   /auth/signup:
@@ -1536,7 +1691,7 @@ paths:
       tags: [Authentication]
       operationId: createApiToken
       summary: Create a scoped API token
-      description: Browser session required. Creates a separate service account with the supplied name. The token secret is returned once. Quiz access can cover selected creator-owned quizzes or all current and future quizzes. Set `expires_in_days` to null for no expiry.
+      description: Browser session required. Creates a separate service account with the supplied name. The token secret is returned once. Quiz access can cover selected creator-owned quizzes or all current and future quizzes. App access can grant read or edit access to the creator's entire Musico library and MDB databases. Set `expires_in_days` to null for no expiry.
       security:
         - sessionCookie: []
       requestBody:
@@ -1549,11 +1704,12 @@ paths:
               properties:
                 name: {type: string, minLength: 1, maxLength: 100}
                 quiz_access: {$ref: '#/components/schemas/TokenQuizAccess'}
+                app_access: {$ref: '#/components/schemas/TokenAppAccess'}
                 scopes:
                   type: array
                   minItems: 1
                   uniqueItems: true
-                  items: {type: string, enum: ['quiz:read', 'quiz:write', 'media:read', 'media:write']}
+                  items: {type: string, enum: ['quiz:read', 'quiz:write', 'musico:read', 'musico:write', 'mdb:read', 'mdb:write', 'media:read', 'media:write']}
                 expires_in_days: {type: [integer, 'null'], minimum: 1, maximum: 365}
       responses:
         '201':
@@ -1666,6 +1822,46 @@ paths:
                 properties:
                   quiz_access: {$ref: '#/components/schemas/TokenQuizAccess'}
         '400': {description: Invalid quiz access or scope mismatch.}
+        '401': {description: No active session.}
+        '403': {description: Browser session required.}
+        '404': {description: Token not found.}
+        '409': {description: Token is revoked or expired.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /auth/tokens/{tokenId}/app-access:
+    parameters:
+      - name: tokenId
+        in: path
+        required: true
+        schema: {type: integer, minimum: 1}
+    patch:
+      tags: [Authentication]
+      operationId: updateApiTokenAppAccess
+      summary: Change a token's access to the creator's Musico and MDB data
+      description: Creator's browser session required. Read grants require the app's read scope; edit grants require its read and write scopes.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [app_access]
+              properties:
+                app_access: {$ref: '#/components/schemas/TokenAppAccess'}
+      responses:
+        '200':
+          description: Updated app access.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [app_access]
+                properties:
+                  app_access: {$ref: '#/components/schemas/TokenAppAccess'}
+        '400': {description: Invalid app access or scope mismatch.}
         '401': {description: No active session.}
         '403': {description: Browser session required.}
         '404': {description: Token not found.}
@@ -2327,12 +2523,16 @@ paths:
       tags: [Media]
       operationId: uploadImage
       summary: Upload or reuse a personal image
-      description: PNG, JPEG, or WebP, at most 6 MiB and 4096 pixels per side. A mobile access token can upload to its owner's personal library. If identical bytes exist in the shared library, returns the shared entry without charging personal quota. Otherwise personal storage is limited to 1024 images and 64 MiB across apps.
+      description: PNG, JPEG, or WebP, at most 6 MiB and 4096 pixels per side. A mobile access token can upload to its owner's personal library. An API token with app edit access and media:write can set `for=musico` or `for=mdb` to upload into its creator's library. If identical bytes exist in the shared library, returns the shared entry without charging personal quota. Otherwise personal storage is limited to 1024 images and 64 MiB across apps.
       security:
         - sessionCookie: []
         - apiBearer: []
         - mobileBearer: []
       parameters:
+        - name: for
+          in: query
+          schema: {type: string, enum: [musico, mdb]}
+          description: For an API token with app edit access, choose the creator's image library for that app.
         - name: X-Image-Name
           in: header
           required: true
@@ -2428,7 +2628,7 @@ paths:
                   items: {type: integer, minimum: 1}
       responses:
         '200':
-          description: Selected images and all current quiz and attempt references.
+          description: Selected images and all current quiz, Musico, and MDB references.
           content:
             application/json:
               schema:
@@ -2463,6 +2663,15 @@ paths:
                                   kind: {type: string, const: musico_track}
                                   track_id: {type: integer, minimum: 1}
                                   track_name: {type: string}
+                              - type: object
+                                required: [kind, database_id, database_name, row_id, row_position, column_name]
+                                properties:
+                                  kind: {type: string, const: mdb_cell}
+                                  database_id: {type: integer, minimum: 1}
+                                  database_name: {type: string}
+                                  row_id: {type: integer, minimum: 1}
+                                  row_position: {type: integer, minimum: 1}
+                                  column_name: {type: string}
         '400': {description: Invalid image IDs.}
         '401': {description: No active session.}
         '403': {description: Admin access required for shared images.}
@@ -3987,7 +4196,7 @@ components:
     apiBearer:
       type: http
       scheme: bearer
-      description: Admin-issued API token. Quiz and media endpoints require matching read or write scopes. Tokens cannot access administrator endpoints.
+      description: User-issued API token. Quiz, Musico, MDB, and media endpoints require matching read or write scopes. Musico and MDB owner-data grants are configured separately. Tokens cannot access administrator endpoints.
     mobileBearer:
       type: http
       scheme: bearer
@@ -4063,12 +4272,13 @@ components:
         created: {type: string}
     MdbColumn:
       type: object
-      required: [id, name, position, type, options, relation_database_id, relation_display_column_id]
+      required: [id, name, position, width, type, options, relation_database_id, relation_display_column_id]
       properties:
         id: {type: integer, format: int64, minimum: 1}
         name: {type: string, minLength: 1, maxLength: 100}
         position: {type: integer, minimum: 1}
-        type: {type: string, enum: [text, number, date, checkbox, select, multi_select, relation, multi_relation]}
+        width: {type: [integer, 'null'], minimum: 96, maximum: 1200, description: Saved width in pixels; null uses the default.}
+        type: {type: string, enum: [text, number, date, checkbox, select, multi_select, relation, multi_relation, image]}
         options: {type: array, items: {type: string}, uniqueItems: true}
         relation_database_id: {type: [integer, 'null'], format: int64, minimum: 1}
         relation_display_column_id: {type: [integer, 'null'], format: int64, minimum: 1}
@@ -4077,7 +4287,7 @@ components:
       required: [name]
       properties:
         name: {type: string, minLength: 1, maxLength: 100}
-        type: {type: string, enum: [text, number, date, checkbox, select, multi_select, relation, multi_relation], default: text}
+        type: {type: string, enum: [text, number, date, checkbox, select, multi_select, relation, multi_relation, image], default: text}
         options: {type: array, items: {type: string, minLength: 1, maxLength: 100}, uniqueItems: true}
         option_renames:
           type: array
@@ -4091,6 +4301,7 @@ components:
         relation_database_id: {type: [integer, 'null'], format: int64, minimum: 1}
         relation_display_column_id: {type: [integer, 'null'], format: int64, minimum: 1}
     MdbCellValue:
+      description: Image columns use a media image ID or null; the image must be personal to the account or shared.
       oneOf:
         - {type: string, maxLength: 60000}
         - {type: boolean}
@@ -4680,18 +4891,27 @@ components:
               id: {type: integer, minimum: 1}
               permission: {type: string, enum: [read, edit]}
       description: When all is read or edit, quizzes must be empty. When all is none, quizzes lists selected creator-owned quizzes.
+    TokenAppAccess:
+      type: object
+      required: [musico, mdb]
+      additionalProperties: false
+      properties:
+        musico: {type: string, enum: [none, read, edit]}
+        mdb: {type: string, enum: [none, read, edit]}
+      description: Grants to the token creator's entire current and future Musico library or MDB databases. Without a grant, the token uses its own service-account data.
     ApiToken:
       type: object
-      required: [id, name, user_id, username, quiz_access, scopes, created, expires, last_used_at, revoked_at]
+      required: [id, name, user_id, username, quiz_access, app_access, scopes, created, expires, last_used_at, revoked_at]
       properties:
         id: {type: integer, minimum: 1}
         name: {type: string}
         user_id: {type: integer, minimum: 1}
         username: {type: string}
         quiz_access: {$ref: '#/components/schemas/TokenQuizAccess'}
+        app_access: {$ref: '#/components/schemas/TokenAppAccess'}
         scopes:
           type: array
-          items: {type: string, enum: ['quiz:read', 'quiz:write', 'media:read', 'media:write']}
+          items: {type: string, enum: ['quiz:read', 'quiz:write', 'musico:read', 'musico:write', 'mdb:read', 'mdb:write', 'media:read', 'media:write']}
         created: {type: string, format: date-time}
         expires: {type: [string, 'null'], format: date-time}
         last_used_at: {type: [string, 'null'], format: date-time}

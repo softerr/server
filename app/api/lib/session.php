@@ -18,6 +18,17 @@ function readableQuizGrantIds(array $user): array
     return array_map('intval', array_keys($user['quiz_permissions'] ?? []));
 }
 
+function appAccessUser(array $user, string $app, bool $write): array
+{
+    $access = ($user['owner_app_access'] ?? [])[$app] ?? 'none';
+    if ($access === 'none') return $user;
+    if ($write && $access !== 'edit') {
+        respond(403, ['error' => 'API token cannot edit the owner library']);
+    }
+    $user['id'] = (int) $user['service_owner_id'];
+    return $user;
+}
+
 function currentApiTokenUser(string $authorization): array
 {
     if (preg_match('/^Bearer (sat_[A-Za-z0-9_-]{43})$/D', $authorization, $match) !== 1) {
@@ -26,7 +37,7 @@ function currentApiTokenUser(string $authorization): array
     $db = connectDb();
     $result = @pg_query_params($db,
         'SELECT t.id AS token_id, t.scopes, t.read_owner_quizzes,
-                t.edit_owner_quizzes, t.quiz_permissions,
+                t.edit_owner_quizzes, t.quiz_permissions, t.app_access,
                 u.id, u.display_name AS username, u.email, u.role, u.password, u.verified,
                 u.approved_at, u.deleting, u.created, u.account_kind, u.service_owner_id
          FROM public.api_token t JOIN public."user" u ON u.id = t.user_id
@@ -52,7 +63,13 @@ function currentApiTokenUser(string $authorization): array
     } elseif (is_string($path) && str_starts_with($path, '/api/quiz/')) {
         $scope = $method === 'GET' ? 'quiz:read' : 'quiz:write';
     } elseif (is_string($path) && str_starts_with($path, '/api/media/')) {
-        $scope = $method === 'GET' ? 'media:read' : 'media:write';
+        $scope = ($method === 'GET' || ($method === 'POST'
+            && in_array($path, ['/api/media/thumbnails', '/api/media/images/usage'], true)))
+            ? 'media:read' : 'media:write';
+    } elseif (is_string($path) && str_starts_with($path, '/api/musico/')) {
+        $scope = $method === 'GET' ? 'musico:read' : 'musico:write';
+    } elseif (is_string($path) && str_starts_with($path, '/api/mdb/')) {
+        $scope = $method === 'GET' ? 'mdb:read' : 'mdb:write';
     } elseif ($path !== '/api/auth/me' || $method !== 'GET') {
         respond(403, ['error' => 'API token cannot access this endpoint']);
     }
@@ -87,7 +104,8 @@ function currentApiTokenUser(string $authorization): array
     $user['quiz_edit_owner_id'] = $user['edit_owner_quizzes'] === 't'
         ? (int) $user['service_owner_id'] : null;
     $user['quiz_permissions'] = json_decode($user['quiz_permissions'], true) ?: [];
-    unset($user['token_id'], $user['scopes'], $user['read_owner_quizzes'], $user['edit_owner_quizzes']);
+    $user['owner_app_access'] = json_decode($user['app_access'], true) ?: [];
+    unset($user['token_id'], $user['scopes'], $user['read_owner_quizzes'], $user['edit_owner_quizzes'], $user['app_access']);
     // Service accounts never confer administrator privileges.
     $user['role'] = 'user';
     return $user;

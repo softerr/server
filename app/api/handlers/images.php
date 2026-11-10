@@ -318,6 +318,15 @@ function readMediaUpload(): array
 function handleUploadImage(): never
 {
     $user = currentSessionUser();
+    $forApp = $_GET['for'] ?? null;
+    if ($forApp !== null) {
+        if (!is_string($forApp) || !in_array($forApp, ['musico', 'mdb'], true)
+            || !isset($user['api_token_id'])
+            || ($user['owner_app_access'][$forApp] ?? 'none') !== 'edit') {
+            respond(403, ['error' => 'API token cannot upload to the owner image library']);
+        }
+        $user = appAccessUser($user, $forApp, true);
+    }
     [$name, $bytes, $mime, $width, $height] = readMediaUpload();
     $db = connectMediaDb();
     if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to save image']);
@@ -447,6 +456,32 @@ function imageUsedByReadableOwnerQuiz(int $imageId, array $user): bool
     return false;
 }
 
+function imageUsedByReadableOwnerApp(int $imageId, array $user): bool
+{
+    $ownerId = $user['service_owner_id'] ?? null;
+    if ($ownerId === null) return false;
+    if (($user['owner_app_access']['musico'] ?? 'none') !== 'none') {
+        $result = @pg_query_params(connectMusicoDb(),
+            'SELECT 1 FROM public.track t JOIN public."user" u ON u.id = t.user_id
+             WHERE u.auth_user_id = $1 AND t.art_image_id = $2 LIMIT 1',
+            [$ownerId, $imageId]);
+        if ($result === false) respond(500, ['error' => 'Failed to check Musico image']);
+        if (pg_num_rows($result) > 0) return true;
+    }
+    if (($user['owner_app_access']['mdb'] ?? 'none') !== 'none') {
+        $result = @pg_query_params(connectMdbDb(),
+            'SELECT 1 FROM public.database_cell v
+             JOIN public.database_column c ON c.id = v.column_id AND c.database_id = v.database_id
+             JOIN public.user_database d ON d.id = v.database_id
+             JOIN public."user" u ON u.id = d.user_id
+             WHERE u.auth_user_id = $1 AND c.type = \'image\' AND v.value = $2::text LIMIT 1',
+            [$ownerId, $imageId]);
+        if ($result === false) respond(500, ['error' => 'Failed to check MDB image']);
+        if (pg_num_rows($result) > 0) return true;
+    }
+    return false;
+}
+
 function storedMediaThumbnail($db, array $row): array
 {
     if ($row['thumbnail_content'] !== null) {
@@ -479,7 +514,8 @@ function handleGetImage(int $imageId, bool $thumbnail = false): never
     $row = pg_fetch_assoc($result);
     if ($row === false) {
         $readOwnerId = $user['service_owner_id'] ?? null;
-        $ownerImage = imageUsedByReadableOwnerQuiz($imageId, $user);
+        $ownerImage = imageUsedByReadableOwnerQuiz($imageId, $user)
+            || imageUsedByReadableOwnerApp($imageId, $user);
         if (!$ownerImage && !imageUsedByAccessibleQuiz($imageId, $user)) {
             respond(404, ['error' => 'Image not found']);
         }
@@ -534,6 +570,24 @@ function handleGetMediaThumbnails(): never
         [$mime, $bytes] = storedMediaThumbnail($db, $row);
         $images[] = ['id' => (int) $row['id'], 'mime_type' => $mime,
             'data' => base64_encode($bytes)];
+    }
+    if (($user['service_owner_id'] ?? null) !== null) {
+        $found = array_column($images, null, 'id');
+        foreach ($ids as $id) {
+            if (isset($found[$id]) || !imageUsedByReadableOwnerApp($id, $user)) continue;
+            $ownerImage = @pg_query_params($db,
+                'SELECT i.id, b.id AS blob_id, b.mime_type, b.width, b.height,
+                        b.thumbnail_mime_type, b.thumbnail_content,
+                        CASE WHEN b.thumbnail_content IS NULL THEN b.content ELSE NULL END AS content
+                 FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
+                 WHERE i.id = $1 AND i.owner_auth_user_id = $2',
+                [$id, $user['service_owner_id']]);
+            if ($ownerImage === false) respond(500, ['error' => 'Failed to load thumbnails']);
+            $row = pg_fetch_assoc($ownerImage);
+            if ($row === false) continue;
+            [$mime, $bytes] = storedMediaThumbnail($db, $row);
+            $images[] = ['id' => $id, 'mime_type' => $mime, 'data' => base64_encode($bytes)];
+        }
     }
     header('Cache-Control: private, no-store');
     respond(200, ['images' => $images]);
@@ -648,6 +702,31 @@ function musicoImageUsageRows($musicoDb, array $user, int $imageId, bool $shared
     return $uses;
 }
 
+function mdbImageUsageRows($mdbDb, array $user, int $imageId, bool $shared): array
+{
+    $result = @pg_query_params($mdbDb,
+        'SELECT d.id AS database_id, d.name AS database_name,
+                r.id AS row_id, r.position AS row_position, c.name AS column_name
+         FROM public.database_cell v
+         JOIN public.database_column c ON c.id = v.column_id AND c.database_id = v.database_id
+         JOIN public.database_row r ON r.id = v.row_id AND r.database_id = v.database_id
+         JOIN public.user_database d ON d.id = v.database_id
+         JOIN public."user" u ON u.id = d.user_id
+         WHERE c.type = \'image\' AND v.value = $1::text
+           AND ($2::boolean OR u.auth_user_id = $3)
+         ORDER BY d.name, r.position, c.position',
+        [$imageId, $shared ? 't' : 'f', $user['id']]);
+    if ($result === false) respond(500, ['error' => 'Failed to check image usage']);
+    $uses = [];
+    while (($row = pg_fetch_assoc($result)) !== false) {
+        $uses[] = ['kind' => 'mdb_cell',
+            'database_id' => (int) $row['database_id'], 'database_name' => $row['database_name'],
+            'row_id' => (int) $row['row_id'], 'row_position' => (int) $row['row_position'],
+            'column_name' => $row['column_name']];
+    }
+    return $uses;
+}
+
 function handleImageUsage(): never
 {
     $user = currentSessionUser();
@@ -656,6 +735,7 @@ function handleImageUsage(): never
     $rows = authorizedMediaImageRows($db, $user, $ids);
     $quizDb = connectQuizDb();
     $musicoDb = connectMusicoDb();
+    $mdbDb = connectMdbDb();
     $images = [];
     foreach ($ids as $id) {
         $row = $rows[$id];
@@ -664,7 +744,8 @@ function handleImageUsage(): never
             'scope' => $row['shared'] === 't' ? 'shared' : 'personal',
             'uses' => array_merge(
                 imageUsageRows($quizDb, $user, $id, $row['shared'] === 't'),
-                musicoImageUsageRows($musicoDb, $user, $id, $row['shared'] === 't')
+                musicoImageUsageRows($musicoDb, $user, $id, $row['shared'] === 't'),
+                mdbImageUsageRows($mdbDb, $user, $id, $row['shared'] === 't')
             ),
         ];
     }
@@ -722,9 +803,25 @@ function handleDeleteImage(int $imageId): never
           WHERE t.art_image_id = $1 AND ($2::boolean OR u.auth_user_id = $3)) AS used',
         [$imageId, $shared ? 't' : 'f', $user['id']]);
     if ($musicoUsed === false) respond(500, ['error' => 'Failed to delete image']);
+    $mdbDb = connectMdbDb();
+    if (@pg_query($mdbDb, 'BEGIN') === false
+        || (!$shared && @pg_query_params($mdbDb, 'SELECT pg_advisory_xact_lock($1::bigint)', [$user['id']]) === false)
+        || @pg_query_params($mdbDb, 'SELECT pg_advisory_xact_lock($1::bigint)', [-$imageId]) === false) {
+        respond(500, ['error' => 'Failed to delete image']);
+    }
+    $mdbUsed = @pg_query_params($mdbDb,
+        'SELECT EXISTS (SELECT 1 FROM public.database_cell v
+          JOIN public.database_column c ON c.id = v.column_id AND c.database_id = v.database_id
+          JOIN public.user_database d ON d.id = v.database_id
+          JOIN public."user" u ON u.id = d.user_id
+          WHERE c.type = \'image\' AND v.value = $1::text
+            AND ($2::boolean OR u.auth_user_id = $3)) AS used',
+        [$imageId, $shared ? 't' : 'f', $user['id']]);
+    if ($mdbUsed === false) respond(500, ['error' => 'Failed to delete image']);
     if ($force !== '1' && (pg_fetch_result($used, 0, 'used') === 't'
-        || pg_fetch_result($musicoUsed, 0, 'used') === 't')) {
-        respond(409, ['error' => 'Image is used by a quiz, saved attempt, or song']);
+        || pg_fetch_result($musicoUsed, 0, 'used') === 't'
+        || pg_fetch_result($mdbUsed, 0, 'used') === 't')) {
+        respond(409, ['error' => 'Image is in use']);
     }
 
     if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to delete image']);
@@ -741,7 +838,8 @@ function handleDeleteImage(int $imageId): never
             [$imageRow['blob_id']]) === false
         || @pg_query($db, 'COMMIT') === false
         || @pg_query($quizDb, 'COMMIT') === false
-        || @pg_query($musicoDb, 'COMMIT') === false) {
+        || @pg_query($musicoDb, 'COMMIT') === false
+        || @pg_query($mdbDb, 'COMMIT') === false) {
         respond(500, ['error' => 'Failed to delete image']);
     }
     header_remove('Content-Type');

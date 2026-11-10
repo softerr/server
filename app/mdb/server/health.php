@@ -6,7 +6,7 @@ return static function (): void {
     if ($db === false) respond(503, ['status' => 'unavailable', 'error' => $error]);
     if (@pg_query($db,
         'SELECT u.id, u.auth_user_id, d.id, d.user_id, d.name, d.created,
-                c.id, c.database_id, c.name, c.position, c.type, c.options, c.relation_database_id, c.relation_display_column_id,
+                c.id, c.database_id, c.name, c.position, c.width, c.type, c.options, c.relation_database_id, c.relation_display_column_id,
                 r.id, r.database_id, r.position,
                 v.row_id, v.column_id, v.value
          FROM public."user" u, public.user_database d,

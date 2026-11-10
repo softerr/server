@@ -198,6 +198,7 @@ function handlePreviewMdbCsv(array $user, int $databaseId): never
 function mdbCsvStoredValue($db, string $type, array $options, string $raw, string $columnName, int $line): ?string
 {
     if ($raw === '') return null;
+    if ($type === 'image') respond(400, ['error' => "Row {$line}: image columns cannot be imported from CSV"]);
     if ($type === 'date') {
         $date = mdbCsvDate($raw);
         if ($date === null) respond(400, ['error' => "Row {$line}: invalid date in {$columnName}"]);

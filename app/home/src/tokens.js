@@ -1,6 +1,10 @@
 const SCOPES = [
   ['quiz:read', 'Read quizzes'],
   ['quiz:write', 'Edit quizzes and attempts'],
+  ['musico:read', 'Read Musico'],
+  ['musico:write', 'Edit Musico'],
+  ['mdb:read', 'Read MDB'],
+  ['mdb:write', 'Edit MDB'],
   ['media:read', 'Read media'],
   ['media:write', 'Upload and edit media'],
 ]
@@ -25,7 +29,7 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
       <p class="form-status" data-tokens-status role="status" aria-live="polite">Loading tokens…</p>
       <div class="tokens-table-wrap" data-tokens-table hidden>
         <table class="tokens-table">
-          <thead><tr><th>Service account</th><th>Permissions</th><th>My quizzes</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Service account</th><th>Permissions</th><th>My quizzes</th><th>Musico</th><th>MDB</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr></thead>
           <tbody data-tokens-body></tbody>
         </table>
       </div>
@@ -35,6 +39,7 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
           <label class="field"><span>Name</span><input name="name" maxlength="100" required placeholder="Automation name"></label>
           <fieldset class="token-scopes"><legend>Permissions</legend><div data-scope-choices></div></fieldset>
           <div class="token-quiz-access" data-create-access></div>
+          <div class="token-app-access" data-create-app-access></div>
           <label class="field"><span>Expires after</span><select name="expires_in_days">
             <option value="7">7 days</option><option value="30" selected>30 days</option>
             <option value="90">90 days</option><option value="365">365 days</option>
@@ -46,6 +51,15 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
             <button type="submit" class="auth-button auth-button-primary">Create token</button>
           </div>
         </form>
+      </dialog>
+      <dialog class="user-dialog token-dialog" data-app-access-dialog aria-labelledby="token-app-access-title">
+        <h2 id="token-app-access-title">App access</h2>
+        <div class="token-app-access" data-edit-app-access></div>
+        <p class="form-status" data-app-access-status role="status" aria-live="polite"></p>
+        <div class="user-dialog-actions">
+          <button type="button" class="auth-button auth-button-secondary" data-cancel-app-access>Cancel</button>
+          <button type="button" class="auth-button auth-button-primary" data-save-app-access>Save access</button>
+        </div>
       </dialog>
       <dialog class="user-dialog token-dialog" data-access-dialog aria-labelledby="token-access-title">
         <h2 id="token-access-title">Quiz access</h2>
@@ -96,6 +110,8 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
   const activityBody = page.querySelector('[data-activity-body]')
   const accessDialog = page.querySelector('[data-access-dialog]')
   const accessStatus = page.querySelector('[data-access-status]')
+  const appAccessDialog = page.querySelector('[data-app-access-dialog]')
+  const appAccessStatus = page.querySelector('[data-app-access-status]')
   let tokens = []
   let quizzes = []
   let editingToken = null
@@ -117,6 +133,30 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
     if (access.all === 'edit') return 'All · edit'
     if (!access.quizzes.length) return 'None'
     return `${access.quizzes.length} selected`
+  }
+
+  function renderAppAccess(container, access = { musico: 'none', mdb: 'none' }, scopes = []) {
+    container.replaceChildren()
+    for (const [appName, label] of [['musico', 'Musico library'], ['mdb', 'MDB databases']]) {
+      const field = document.createElement('label')
+      field.className = 'field'
+      const caption = document.createElement('span')
+      caption.textContent = label
+      const select = document.createElement('select')
+      select.dataset.appAccess = appName
+      select.innerHTML = '<option value="none">No access to my data</option><option value="read">Read my data</option><option value="edit">Edit my data</option>'
+      select.value = access[appName] ?? 'none'
+      select.querySelector('[value="read"]').disabled = !scopes.includes(`${appName}:read`)
+      select.querySelector('[value="edit"]').disabled = !scopes.includes(`${appName}:read`) || !scopes.includes(`${appName}:write`)
+      if (select.selectedOptions[0]?.disabled) select.value = 'none'
+      field.append(caption, select)
+      container.append(field)
+    }
+  }
+
+  function collectAppAccess(container) {
+    return Object.fromEntries([...container.querySelectorAll('[data-app-access]')]
+      .map((select) => [select.dataset.appAccess, select.value]))
   }
 
   function renderAccess(container, access = { all: 'none', quizzes: [] }, scopes = null) {
@@ -178,6 +218,8 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
   form.querySelector('[data-scope-choices]').addEventListener('change', () => {
     const access = collectAccess(page.querySelector('[data-create-access]'))
     renderAccess(page.querySelector('[data-create-access]'), access, createScopes())
+    const appAccess = collectAppAccess(page.querySelector('[data-create-app-access]'))
+    renderAppAccess(page.querySelector('[data-create-app-access]'), appAccess, createScopes())
   })
 
   function renderRows() {
@@ -186,6 +228,7 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
       const row = document.createElement('tr')
       for (const value of [`${token.username} · #${token.user_id}`, token.scopes.join(', '),
         accessLabel(token.quiz_access),
+        token.app_access.musico, token.app_access.mdb,
         dateLabel(token.expires), dateLabel(token.last_used_at),
         token.revoked_at ? 'Revoked' : isExpired(token) ? 'Expired' : 'Active']) {
         const cell = document.createElement('td')
@@ -224,6 +267,17 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
       })
       actionCell.append(activityButton)
       if (!token.revoked_at && !isExpired(token)) {
+        const appEdit = document.createElement('button')
+        appEdit.type = 'button'
+        appEdit.className = 'text-button'
+        appEdit.textContent = 'App access'
+        appEdit.addEventListener('click', () => {
+          editingToken = token
+          renderAppAccess(page.querySelector('[data-edit-app-access]'), token.app_access, token.scopes)
+          setStatus(appAccessStatus, '')
+          appAccessDialog.showModal()
+        })
+        actionCell.append(appEdit)
         const edit = document.createElement('button')
         edit.type = 'button'
         edit.className = 'text-button'
@@ -285,6 +339,7 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
   createButton.addEventListener('click', () => {
     form.reset()
     renderAccess(page.querySelector('[data-create-access]'), undefined, createScopes())
+    renderAppAccess(page.querySelector('[data-create-app-access]'), undefined, createScopes())
     setStatus(createStatus, '')
     createDialog.showModal()
     form.elements.name.focus()
@@ -305,6 +360,7 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
         name: form.elements.name.value.trim(),
         scopes,
         quiz_access: collectAccess(page.querySelector('[data-create-access]')),
+        app_access: collectAppAccess(page.querySelector('[data-create-app-access]')),
         expires_in_days: form.elements.expires_in_days.value === 'never'
           ? null : Number(form.elements.expires_in_days.value),
       })
@@ -348,6 +404,22 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
   revealDialog.addEventListener('close', () => { revealedToken.value = '' })
   page.querySelector('[data-close-activity]').addEventListener('click', () => activityDialog.close())
   page.querySelector('[data-cancel-access]').addEventListener('click', () => accessDialog.close())
+  page.querySelector('[data-cancel-app-access]').addEventListener('click', () => appAccessDialog.close())
+  page.querySelector('[data-save-app-access]').addEventListener('click', async () => {
+    if (!editingToken) return
+    const save = page.querySelector('[data-save-app-access]')
+    save.disabled = true
+    try {
+      const [response, payload] = await requestJson('PATCH', `/api/auth/tokens/${editingToken.id}/app-access`,
+        { app_access: collectAppAccess(page.querySelector('[data-edit-app-access]')) })
+      if (!response.ok) { setStatus(appAccessStatus, responseError(response, payload), true); return }
+      editingToken.app_access = payload.app_access
+      renderRows()
+      appAccessDialog.close()
+      setStatus(status, 'App access saved.', false, true)
+    } catch { setStatus(appAccessStatus, 'Could not save app access.', true) }
+    finally { save.disabled = false }
+  })
   page.querySelector('[data-save-access]').addEventListener('click', async () => {
     if (!editingToken) return
     const save = page.querySelector('[data-save-access]')

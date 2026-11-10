@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS public.database_column (
     database_id BIGINT NOT NULL REFERENCES public.user_database(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL CHECK (length(trim(name)) > 0),
     position INTEGER NOT NULL CHECK (position > 0),
+    width INTEGER CHECK (width BETWEEN 96 AND 1200),
     type VARCHAR(16) NOT NULL DEFAULT 'text',
     options JSONB NOT NULL DEFAULT '[]'::jsonb,
     relation_database_id BIGINT REFERENCES public.user_database(id) ON DELETE CASCADE,
@@ -26,8 +27,12 @@ CREATE TABLE IF NOT EXISTS public.database_column (
     UNIQUE (database_id, id),
     UNIQUE (database_id, position)
 );
+ALTER TABLE public.database_column ADD COLUMN IF NOT EXISTS width INTEGER CHECK (width BETWEEN 96 AND 1200);
 CREATE UNIQUE INDEX IF NOT EXISTS database_column_name_idx
     ON public.database_column (database_id, lower(name));
+CREATE INDEX IF NOT EXISTS database_column_relation_database_id_idx
+    ON public.database_column (relation_database_id, database_id, id)
+    WHERE relation_database_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS public.database_row (
     id BIGSERIAL PRIMARY KEY,
@@ -56,7 +61,7 @@ GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public."user" TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.user_database TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.database_column, public.database_row TO auth_api;
-GRANT UPDATE (name, position, type, options, relation_database_id, relation_display_column_id) ON TABLE public.database_column TO auth_api;
+GRANT UPDATE (name, position, width, type, options, relation_database_id, relation_display_column_id) ON TABLE public.database_column TO auth_api;
 GRANT UPDATE (position) ON TABLE public.database_row TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.database_cell TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.user_id_seq TO auth_api;

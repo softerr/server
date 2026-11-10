@@ -1,8 +1,13 @@
 import './style.css'
 import { startAuthApp } from '../../shared/auth-app.js'
 import { createPageNotice } from '../../shared/page-notice.js'
-import { editIcon, removeIcon, deleteIcon } from '../../shared/icons.js'
+import { editIcon, removeIcon, deleteIcon, imageIcon, noImageIcon, uploadImageIcon, missingMediaIcon } from '../../shared/icons.js'
+import { listMediaImages, mediaThumbnailUrl, uploadMediaImage } from '../../shared/media-client.js'
+import { createMediaThumbnailBatcher } from '../../shared/media-thumbnails.js'
+import { showMissingImageWhenUnavailable } from '../../shared/missing-image.js'
 import { parsePastedDate } from './date-parse.js'
+import { sortRowsByColumn } from './sort-rows.js'
+import { filterRowsByQuery } from './filter-rows.js'
 
 const databaseIcon = `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
   <ellipse cx="24" cy="10" rx="17" ry="6" />
@@ -16,6 +21,15 @@ const dragIcon = `<svg viewBox="0 0 16 20" fill="currentColor" aria-hidden="true
 </svg>`
 const calendarIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
   <rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>
+</svg>`
+const sortIcon = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+  <path d="m6 8 4-4 4 4M6 12l4 4 4-4"/>
+</svg>`
+const sortUpIcon = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+  <path d="M10 16V4m-5 5 5-5 5 5"/>
+</svg>`
+const sortDownIcon = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+  <path d="M10 4v12m-5-5 5 5 5-5"/>
 </svg>`
 
 function renderDatabases(app, { requestJson, postJson, responseError, setStatus }) {
@@ -129,10 +143,17 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
           <a class="back-button" href="#home">← Databases</a>
           <h1 id="mdb-editor-title" class="section-title">Database</h1>
         </div>
-        <button id="mdb-import-button" class="auth-button auth-button-secondary" type="button">Import CSV</button>
-        <input id="mdb-import-file" type="file" accept=".csv,text/csv" hidden />
+        <div class="mdb-editor-actions">
+          <label class="mdb-editor-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+            <input id="mdb-row-search" type="search" aria-label="Search rows" placeholder="Search rows" autocomplete="off" />
+          </label>
+          <button id="mdb-import-button" class="auth-button auth-button-secondary" type="button">Import CSV</button>
+          <button id="mdb-export-button" class="auth-button auth-button-secondary" type="button" disabled>Export CSV</button>
+          <input id="mdb-import-file" type="file" accept=".csv,text/csv" hidden />
+        </div>
       </header>
-      <p id="mdb-editor-status" class="form-status" role="status" aria-live="polite">Loading database…</p>
+      <p id="mdb-editor-status" class="form-status" role="status" aria-live="polite"></p>
       <div id="mdb-table-area" class="mdb-table-area"></div>
     </main>
     <dialog id="mdb-column-dialog" class="mdb-dialog" aria-labelledby="mdb-column-title">
@@ -144,7 +165,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         <label class="field"><span>Column name</span><input name="name" maxlength="100" required autocomplete="off" /></label>
         <label class="field"><span>Type</span><select name="type">
           <option value="text">Text</option><option value="number">Number</option>
-          <option value="date">Date</option><option value="checkbox">Checkbox</option>
+          <option value="date">Date</option><option value="checkbox">Checkbox</option><option value="image">Image</option>
           <option value="select">Select</option><option value="multi_select">Multi-select</option>
           <option value="relation">Relation</option><option value="multi_relation">Multi-relation</option>
         </select></label>
@@ -172,9 +193,23 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         </div>
       </form>
     </dialog>
-    <dialog id="mdb-delete-dialog" class="mdb-dialog" aria-labelledby="mdb-delete-title">
+    <dialog id="mdb-image-dialog" class="mdb-dialog mdb-image-dialog" aria-labelledby="mdb-image-title">
+      <div class="mdb-image-heading">
+        <h2 id="mdb-image-title">Choose image</h2>
+        <button id="mdb-image-close" type="button" aria-label="Close image picker" title="Close">${removeIcon}</button>
+      </div>
+      <input id="mdb-image-search" type="search" aria-label="Search images" placeholder="Search images" autocomplete="off" />
+      <input id="mdb-image-upload" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+      <div id="mdb-image-grid" class="mdb-image-grid"></div>
+      <p id="mdb-image-status" class="form-status" role="status" aria-live="polite"></p>
+    </dialog>
+    <dialog id="mdb-delete-dialog" class="mdb-dialog mdb-delete-dialog" aria-labelledby="mdb-delete-title">
       <h2 id="mdb-delete-title"></h2>
       <p id="mdb-delete-description"></p>
+      <div id="mdb-delete-usage" class="mdb-delete-usage" hidden>
+        <p id="mdb-delete-usage-summary"></p>
+        <ul id="mdb-delete-usage-list"></ul>
+      </div>
       <p id="mdb-delete-status" class="form-status" role="status" aria-live="polite"></p>
       <div class="dialog-actions">
         <button id="mdb-delete-cancel" class="auth-button auth-button-secondary" type="button">Cancel</button>
@@ -198,6 +233,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   const notice = createPageNotice(page.querySelector('.mdb-page'))
   const title = page.querySelector('#mdb-editor-title')
   const status = page.querySelector('#mdb-editor-status')
+  const searchInput = page.querySelector('#mdb-row-search')
   const tableArea = page.querySelector('#mdb-table-area')
   const dialog = page.querySelector('#mdb-column-dialog')
   const columnForm = page.querySelector('#mdb-column-form')
@@ -210,11 +246,20 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   const multiForm = page.querySelector('#mdb-multi-form')
   const multiOptions = page.querySelector('#mdb-multi-options')
   const multiStatus = page.querySelector('#mdb-multi-status')
+  const imageDialog = page.querySelector('#mdb-image-dialog')
+  const imageSearch = page.querySelector('#mdb-image-search')
+  const imageGrid = page.querySelector('#mdb-image-grid')
+  const imageUpload = page.querySelector('#mdb-image-upload')
+  const imageStatus = page.querySelector('#mdb-image-status')
   const deleteDialog = page.querySelector('#mdb-delete-dialog')
   const deleteStatus = page.querySelector('#mdb-delete-status')
+  const deleteUsage = page.querySelector('#mdb-delete-usage')
+  const deleteUsageSummary = page.querySelector('#mdb-delete-usage-summary')
+  const deleteUsageList = page.querySelector('#mdb-delete-usage-list')
   const deleteConfirm = page.querySelector('#mdb-delete-confirm')
   const deleteCancel = page.querySelector('#mdb-delete-cancel')
   const importButton = page.querySelector('#mdb-import-button')
+  const exportButton = page.querySelector('#mdb-export-button')
   const importFileInput = page.querySelector('#mdb-import-file')
   const importDialog = page.querySelector('#mdb-import-dialog')
   const importForm = page.querySelector('#mdb-import-form')
@@ -224,22 +269,47 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   let editingColumn = null
   let databases = []
   let relatedDatabases = new Map()
+  let relationRefreshes = new Map()
+  let relationChoiceCaches = new Map()
+  let refreshGeneration = 0
+  let rowsLoading = false
+  let rowsReady = Promise.resolve()
+  let activeSort = null
+  let searchQuery = ''
+  let currentTable = null
   let displayLoad = 0
   let multiCell = null
+  let imageCell = null
+  let imageChoices = []
+  let imageLoadGeneration = 0
   let savingMultiDialog = false
   let deletingItem = null
+  let deleteUsageRequestId = 0
+  let deletingInProgress = false
   let csvFile = null
   let importingCsv = false
   let dragState = null
   let touchDrag = null
   let reordering = false
 
+  searchInput.addEventListener('input', () => {
+    searchQuery = searchInput.value.trim()
+    currentTable?.applyView()
+  })
+  function clearSearch() {
+    if (searchInput.value === '') return
+    searchInput.value = ''
+    searchQuery = ''
+    currentTable?.applyView()
+  }
+
   function clearDropMarkers() {
     tableArea.querySelectorAll('[data-drop-side]').forEach((item) => { delete item.dataset.dropSide })
   }
 
   async function saveOrder(kind, oldIds, nextIds, focusId = null) {
-    if (reordering || oldIds.every((id, index) => id === nextIds[index])) return
+    if (reordering || (kind === 'rows' && (rowsLoading || activeSort !== null || searchQuery !== ''))
+      || oldIds.every((id, index) => id === nextIds[index])) return
     reordering = true
     setStatus(status, `Saving ${kind} order…`)
     try {
@@ -293,7 +363,8 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     const handle = document.createElement('button')
     handle.type = 'button'
     handle.className = 'mdb-drag-handle'
-    handle.draggable = true
+    handle.disabled = kind === 'rows' && (rowsLoading || activeSort !== null || searchQuery !== '')
+    handle.draggable = !handle.disabled
     handle.innerHTML = dragIcon
     handle.dataset.orderKind = kind
     handle.dataset.orderId = String(item.id)
@@ -301,24 +372,27 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     handle.setAttribute('aria-label', `Reorder ${kind === 'columns' ? 'column' : 'row'} ${index + 1}`)
     handle.title = `Drag to reorder, or press Alt + Arrow ${direction}`
     handle.addEventListener('dragstart', (event) => {
-      if (reordering || touchDrag) { event.preventDefault(); return }
+      if (reordering || touchDrag || (kind === 'rows' && (rowsLoading || activeSort !== null || searchQuery !== ''))) { event.preventDefault(); return }
       dragState = { kind, id: item.id }
       event.dataTransfer.effectAllowed = 'move'
       event.dataTransfer.setData('text/plain', String(item.id))
     })
     handle.addEventListener('dragend', () => { dragState = null; clearDropMarkers() })
     handle.addEventListener('keydown', (event) => {
+      const currentIndex = ids.indexOf(item.id)
       const step = kind === 'columns'
         ? (event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0)
         : (event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0)
-      if (!event.altKey || !step || index + step < 0 || index + step >= ids.length) return
+      if (!event.altKey || !step || currentIndex < 0
+        || currentIndex + step < 0 || currentIndex + step >= ids.length) return
       event.preventDefault()
       const nextIds = [...ids]
-      ;[nextIds[index], nextIds[index + step]] = [nextIds[index + step], nextIds[index]]
+      ;[nextIds[currentIndex], nextIds[currentIndex + step]]
+        = [nextIds[currentIndex + step], nextIds[currentIndex]]
       saveOrder(kind, ids, nextIds, item.id)
     })
     handle.addEventListener('pointerdown', (event) => {
-      if (event.pointerType === 'mouse' || reordering) return
+      if (event.pointerType === 'mouse' || reordering || (kind === 'rows' && (rowsLoading || activeSort !== null || searchQuery !== ''))) return
       event.preventDefault()
       handle.setPointerCapture(event.pointerId)
       touchDrag = { kind, id: item.id, ids, pointerId: event.pointerId }
@@ -345,19 +419,19 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     element.dataset.reorderKind = kind
     element.dataset.reorderIndex = String(index)
     element.addEventListener('dragover', (event) => {
-      if (dragState?.kind !== kind || reordering) return
+      if (dragState?.kind !== kind || reordering || (kind === 'rows' && (rowsLoading || activeSort !== null || searchQuery !== ''))) return
       event.preventDefault()
       event.dataTransfer.dropEffect = 'move'
       markDropTarget(element, kind, event.clientX, event.clientY)
     })
     element.addEventListener('drop', (event) => {
-      if (dragState?.kind !== kind || reordering) return
+      if (dragState?.kind !== kind || reordering || (kind === 'rows' && (rowsLoading || activeSort !== null || searchQuery !== ''))) return
       event.preventDefault()
       const movedId = dragState.id
       const after = element.dataset.dropSide === 'after'
       dragState = null
       clearDropMarkers()
-      reorderFromDrop(kind, ids, movedId, index, after)
+      reorderFromDrop(kind, ids, movedId, Number(element.dataset.reorderIndex), after)
     })
   }
 
@@ -370,6 +444,9 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         if (!page.isConnected) return
         if (!response.ok) throw new Error(responseError(response, payload))
         saved(payload.value)
+        const row = currentTable?.rows.get(rowId)
+        if (row) row.values[columnId] = payload.value
+        if (activeSort?.columnId === columnId || searchQuery !== '') currentTable?.applyView()
         setStatus(status, '')
         notice.show('Saved.')
         return true
@@ -389,15 +466,46 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     return write
   }
 
-  function appendChoiceOption(value, label, checked = false, single = false) {
-    const optionLabel = document.createElement('label')
-    optionLabel.className = 'mdb-option'
+  function appendChoiceOption(value, label, checked = false, single = false, editable = false) {
+    const optionLabel = document.createElement(editable ? 'div' : 'label')
+    optionLabel.className = editable ? 'mdb-option mdb-option-existing' : 'mdb-option'
     const choice = document.createElement('input')
     choice.type = single ? 'radio' : 'checkbox'
     if (single) choice.name = 'mdb-single-option'
     choice.dataset.choice = ''
     choice.value = String(value)
-    optionLabel.append(choice, document.createTextNode(label))
+    if (editable) {
+      optionLabel.dataset.original = String(value)
+      const selectLabel = document.createElement('label')
+      selectLabel.className = 'mdb-option-choice'
+      const name = document.createElement('span')
+      name.textContent = label
+      selectLabel.append(choice, name)
+      const rename = document.createElement('button')
+      rename.type = 'button'
+      rename.className = 'mdb-option-edit'
+      rename.innerHTML = editIcon
+      rename.setAttribute('aria-label', `Rename option ${label}`)
+      rename.title = 'Rename option'
+      rename.addEventListener('click', () => {
+        const input = document.createElement('input')
+        input.type = 'text'
+        input.maxLength = 100
+        input.value = label
+        input.dataset.optionRename = ''
+        input.setAttribute('aria-label', `New name for option ${label}`)
+        name.hidden = true
+        optionLabel.classList.add('is-renaming')
+        choice.setAttribute('aria-label', label)
+        optionLabel.insertBefore(input, rename)
+        rename.hidden = true
+        input.focus()
+        input.select()
+      })
+      optionLabel.append(selectLabel, rename)
+    } else {
+      optionLabel.append(choice, document.createTextNode(label))
+    }
     multiOptions.append(optionLabel)
     choice.checked = checked
   }
@@ -465,11 +573,11 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     const placeholder = optionPlaceholder('mdb-option mdb-option-placeholder', () => {
       const draft = document.createElement('div')
       draft.className = 'mdb-option mdb-option-draft mdb-related-row-draft'
-      const checkbox = document.createElement('input')
-      checkbox.type = 'checkbox'
-      checkbox.dataset.choice = ''
-      checkbox.checked = true
-      let editor = checkbox
+      const choice = document.createElement('input')
+      choice.type = multiCell.isSingle ? 'radio' : 'checkbox'
+      if (multiCell.isSingle) choice.name = 'mdb-single-option'
+      choice.dataset.choice = ''
+      let editor = choice
       if (valueColumn?.type === 'select') {
         editor = document.createElement('select')
         const empty = document.createElement('option')
@@ -497,9 +605,9 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         const text = document.createElement('span')
         text.className = 'mdb-related-blank-label'
         text.textContent = 'New blank row'
-        draft.append(checkbox, text)
+        draft.append(choice, text)
       }
-      if (valueColumn) draft.append(checkbox, editor)
+      if (valueColumn) draft.append(choice, editor)
       const remove = document.createElement('button')
       remove.type = 'button'
       remove.className = 'mdb-column-option-remove'
@@ -508,6 +616,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       remove.addEventListener('click', () => draft.remove())
       draft.append(remove)
       multiOptions.insertBefore(draft, placeholder)
+      choice.checked = true
       return editor
     }, valueColumn ? 'Add related row' : 'Add blank row')
     multiOptions.append(placeholder)
@@ -539,9 +648,157 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     })) ?? []
   }
 
+  const imagePreviews = new Map()
+  const imageBatcher = createMediaThumbnailBatcher({
+    isActive: () => imageDialog.open,
+    onResult(id, url) {
+      const preview = imagePreviews.get(id)
+      if (preview) preview.src = url
+    },
+  })
+  const imageObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue
+      imageObserver.unobserve(entry.target)
+      imageBatcher.enqueue(Number(entry.target.dataset.imageId))
+    }
+  }, { root: imageGrid, rootMargin: '100px' })
+
+  function renderImageChoices() {
+    imageObserver.disconnect()
+    imageBatcher.clear()
+    imagePreviews.clear()
+    imageGrid.replaceChildren()
+    const tile = (label, icon, action) => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'mdb-image-choice'
+      button.innerHTML = `<span class="mdb-image-choice-preview">${icon}</span>`
+      const name = document.createElement('span')
+      name.className = 'mdb-image-choice-name'
+      name.textContent = label
+      button.append(name)
+      button.setAttribute('aria-label', label)
+      button.addEventListener('click', action)
+      imageGrid.append(button)
+      return button
+    }
+    const empty = tile('No image', noImageIcon, () => chooseImage(null))
+    empty.classList.toggle('is-selected', imageCell?.value === null)
+    empty.setAttribute('aria-pressed', String(imageCell?.value === null))
+    tile('Upload image', uploadImageIcon, () => imageUpload.click())
+    const query = imageSearch.value.trim().toLocaleLowerCase()
+    for (const image of imageChoices) {
+      if (query && !image.name.toLocaleLowerCase().includes(query)) continue
+      const button = tile(image.name, imageIcon, () => chooseImage(image.id))
+      button.title = image.name
+      button.classList.toggle('is-selected', image.id === imageCell?.value)
+      button.setAttribute('aria-pressed', String(image.id === imageCell?.value))
+      const preview = button.querySelector('.mdb-image-choice-preview')
+      const icon = preview.querySelector('svg')
+      const thumbnail = document.createElement('img')
+      thumbnail.alt = ''
+      thumbnail.dataset.imageId = String(image.id)
+      thumbnail.addEventListener('load', () => { icon.hidden = true })
+      thumbnail.addEventListener('error', () => { thumbnail.remove(); icon.hidden = false })
+      preview.append(thumbnail)
+      imagePreviews.set(image.id, thumbnail)
+      imageObserver.observe(thumbnail)
+    }
+  }
+
+  async function openImageDialog(cell) {
+    imageCell = cell
+    imageSearch.value = ''
+    imageChoices = []
+    renderImageChoices()
+    setStatus(imageStatus, 'Loading images…')
+    imageDialog.showModal()
+    const generation = ++imageLoadGeneration
+    try {
+      const [response, payload] = await listMediaImages(requestJson)
+      if (!imageDialog.open || generation !== imageLoadGeneration) return
+      if (!response.ok) throw new Error(responseError(response, payload))
+      if (!Array.isArray(payload?.images)) throw new Error('Could not load images.')
+      imageChoices = payload.images
+      renderImageChoices()
+      setStatus(imageStatus, '')
+    } catch (error) {
+      if (imageDialog.open && generation === imageLoadGeneration) {
+        setStatus(imageStatus, error.message || 'Could not load images.', true)
+      }
+    }
+  }
+
+  function chooseImage(id) {
+    if (!imageCell) return
+    const cell = imageCell
+    imageDialog.close()
+    if (!cell.button.isConnected) {
+      notice.show('The table changed. Open the image picker again.', 'warning')
+      return
+    }
+    const previous = cell.value
+    cell.value = id
+    saveCell(cell.button, cell.row.id, cell.column.id, id, previous,
+      (old) => { cell.value = old }, (saved) => { cell.value = saved })
+  }
+
+  imageSearch.addEventListener('input', renderImageChoices)
+  page.querySelector('#mdb-image-close').addEventListener('click', () => imageDialog.close())
+  imageDialog.addEventListener('close', () => {
+    imageLoadGeneration++
+    imageObserver.disconnect()
+    imageBatcher.clear()
+    imagePreviews.clear()
+    imageCell = null
+  })
+  imageUpload.addEventListener('change', async () => {
+    const file = imageUpload.files?.[0]
+    imageUpload.value = ''
+    if (!file) return
+    setStatus(imageStatus, `Uploading ${file.name}…`)
+    try {
+      const [response, payload] = await uploadMediaImage(file)
+      if (!imageDialog.open) return
+      if (!response.ok) throw new Error(responseError(response, payload))
+      imageChoices.push(payload)
+      imageChoices.sort((left, right) => left.name.localeCompare(right.name))
+      chooseImage(payload.id)
+    } catch (error) {
+      if (imageDialog.open) setStatus(imageStatus, error.message || 'Could not upload image.', true)
+    }
+  })
+
   function addCellControl(td, row, column, related) {
     const label = `${column.name}, row ${row.position}`
     const value = row.values?.[column.id]
+    if (column.type === 'image') {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'mdb-image-button'
+      let savedValue = value ?? null
+      const render = () => {
+        button.replaceChildren()
+        if (savedValue === null) button.innerHTML = imageIcon
+        else {
+          const preview = document.createElement('img')
+          preview.className = 'mdb-image-preview'
+          preview.alt = ''
+          preview.loading = 'lazy'
+          showMissingImageWhenUnavailable(preview,
+            { className: 'mdb-image-missing', icon: missingMediaIcon })
+          preview.src = mediaThumbnailUrl(savedValue)
+          button.append(preview)
+        }
+        button.setAttribute('aria-label', `${savedValue === null ? 'Choose' : 'Change'} ${label} image`)
+      }
+      button.addEventListener('click', () => openImageDialog({ button, row, column,
+        get value() { return savedValue }, set value(next) { savedValue = next; render() } }))
+      render()
+      td.append(button)
+      return
+    }
     if (column.type === 'date') {
       const wrapper = document.createElement('div')
       wrapper.className = 'mdb-date-cell'
@@ -598,38 +855,63 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       td.append(wrapper)
       return
     }
-    if (column.type === 'select' || column.type === 'multi_select' || column.type === 'multi_relation') {
-      const isRelation = column.type === 'multi_relation'
-      const isSingle = column.type === 'select'
-      const choices = isRelation
-        ? relatedChoices(column, related).map((item) => [item.id, item.label])
+    if (['select', 'multi_select', 'relation', 'multi_relation'].includes(column.type)) {
+      const isRelation = column.type === 'relation' || column.type === 'multi_relation'
+      const isSingle = column.type === 'select' || column.type === 'relation'
+      if (isRelation && !relationChoiceCaches.has(column.id)) {
+        relationChoiceCaches.set(column.id, { choices: [], labels: new Map() })
+      }
+      const choicesForCell = () => isRelation ? relationChoiceCaches.get(column.id).choices
         : column.options.map((option) => [option, option])
-      const choiceLabels = new Map(choices)
+      const choiceLabels = isRelation ? relationChoiceCaches.get(column.id).labels
+        : new Map(choicesForCell())
       const button = document.createElement('button')
       button.type = 'button'
       button.className = 'mdb-multi-button'
-      let savedValue = isSingle ? (value ?? '') : (Array.isArray(value) ? value : [])
+      let savedValue = isSingle ? (value ?? (isRelation ? null : '')) : (Array.isArray(value) ? value : [])
       const display = () => {
+        if (isRelation && !related.has(column.relation_database_id)) {
+          button.textContent = ''
+          return
+        }
         button.textContent = isSingle
-          ? (savedValue || 'Choose option')
+          ? (isRelation
+              ? (savedValue === null ? '' : choiceLabels.get(savedValue) ?? `Missing row ${savedValue}`)
+              : savedValue)
           : savedValue.length
             ? savedValue.map((id) => choiceLabels.get(id)
               ?? (isRelation ? `Missing row ${id}` : id)).join(', ')
-            : isRelation ? 'Choose rows' : 'Select options'
+            : ''
       }
-      display()
+      button.setCellValue = (next) => { savedValue = next; display() }
+      const refreshChoices = () => {
+        button.disabled = isRelation && !related.has(column.relation_database_id)
+        display()
+      }
+      if (isRelation) {
+        const updates = relationRefreshes.get(column.relation_database_id) ?? []
+        updates.push(refreshChoices)
+        relationRefreshes.set(column.relation_database_id, updates)
+      }
+      refreshChoices()
       button.setAttribute('aria-label', label)
       button.addEventListener('click', () => {
+        const choices = choicesForCell()
         multiCell = { button, row, column, isRelation, isSingle, choiceLabels,
           get value() { return savedValue }, set value(next) { savedValue = next; display() } }
-        page.querySelector('#mdb-multi-title').textContent = isRelation ? 'Choose related rows'
+        page.querySelector('#mdb-multi-title').textContent = isRelation ? (isSingle ? 'Choose related row' : 'Choose related rows')
           : isSingle ? 'Choose option' : 'Select options'
         multiOptions.replaceChildren()
         setStatus(multiStatus, '')
-        if (isSingle) appendChoiceOption('', 'No option', savedValue === '', true)
+        if (isSingle) appendChoiceOption('', isRelation ? 'No row' : 'No option',
+          savedValue === (isRelation ? null : ''), true)
         for (const [choiceValue, choiceLabel] of choices) {
           appendChoiceOption(choiceValue, choiceLabel,
-            isSingle ? savedValue === choiceValue : savedValue.includes(choiceValue), isSingle)
+            isSingle ? savedValue === choiceValue : savedValue.includes(choiceValue),
+            isSingle, !isRelation)
+        }
+        if (isRelation && isSingle && savedValue !== null && !choiceLabels.has(savedValue)) {
+          appendChoiceOption(savedValue, `Missing row ${savedValue}`, true, true)
         }
         if (isRelation) appendAddRelatedRowPlaceholder(column)
         else appendAddOptionPlaceholder()
@@ -639,44 +921,23 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       return
     }
 
-    const control = document.createElement(column.type === 'relation' ? 'select' : 'input')
+    const control = document.createElement('input')
     control.className = 'mdb-cell-control'
     control.setAttribute('aria-label', label)
     if (column.type === 'checkbox') {
       control.type = 'checkbox'
       control.checked = value === true
-    } else if (column.type === 'relation') {
-      const empty = document.createElement('option')
-      empty.value = ''
-      empty.textContent = 'Choose row'
-      control.append(empty)
-      const choices = relatedChoices(column, related).map((item) => [String(item.id), item.label])
-      for (const [choiceValue, choiceLabel] of choices) {
-        const option = document.createElement('option')
-        option.value = choiceValue
-        option.textContent = choiceLabel
-        control.append(option)
-      }
-      if (value !== null && value !== undefined && !choices.some(([id]) => id === String(value))) {
-        const missing = document.createElement('option')
-        missing.value = String(value)
-        missing.textContent = `Missing row ${value}`
-        control.append(missing)
-      }
-      control.value = value === null || value === undefined ? '' : String(value)
     } else {
       control.type = column.type === 'number' ? 'number' : 'text'
       if (column.type === 'number') control.step = 'any'
       control.value = value ?? ''
     }
-    let savedValue = column.type === 'checkbox' ? control.checked
-      : column.type === 'relation' ? (value ?? null) : control.value
+    let savedValue = column.type === 'checkbox' ? control.checked : control.value
     control.addEventListener('change', () => {
-      const next = column.type === 'checkbox' ? control.checked
-        : column.type === 'relation' ? (control.value ? Number(control.value) : null) : control.value
+      const next = column.type === 'checkbox' ? control.checked : control.value
       saveCell(control, row.id, column.id, next, savedValue,
         (previous) => { if (column.type === 'checkbox') control.checked = previous
-          else control.value = previous ?? '' },
+          else control.value = previous },
         (saved) => { savedValue = saved })
     })
     td.append(control)
@@ -685,26 +946,178 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   function showTable(data, related) {
     title.textContent = data.database.name
     tableArea.replaceChildren()
+    relationRefreshes = new Map()
+    relationChoiceCaches = new Map()
+    if (activeSort && !data.columns.some((column) => column.id === activeSort.columnId)) activeSort = null
     const columnIds = data.columns.map((column) => column.id)
-    const rowIds = data.rows.map((row) => row.id)
+    const rowIds = []
+    const rowData = new Map()
+    const rowNodes = new Map()
+    const sortButtons = new Map()
     const table = document.createElement('table')
     table.className = 'mdb-data-table'
     const columnWidths = data.columns.length
-      ? data.columns.map((column) => column.type === 'checkbox' ? 128 : 220)
+      ? data.columns.map((column) => column.width ?? (['checkbox', 'image'].includes(column.type) ? 128 : 220))
       : [220]
     const dataColumnCount = columnWidths.length
     const rowHeadingWidth = 108
-    const tableWidth = rowHeadingWidth + columnWidths.reduce((sum, width) => sum + width, 0) + 56
-    table.style.minWidth = `${tableWidth}px`
-    if (data.columns.length && data.columns.every((column) => column.type === 'checkbox')) {
-      table.style.width = `${tableWidth}px`
+    const flexibleColumns = data.columns.length
+      ? data.columns.map((column, index) => column.width === null ? index : -1).filter((index) => index >= 0)
+      : [0]
+    const extraWidth = Math.max(0, tableArea.clientWidth - rowHeadingWidth - 56
+      - columnWidths.reduce((sum, width) => sum + width, 0))
+    for (const [offset, index] of flexibleColumns.entries()) {
+      columnWidths[index] = Math.min(1200, columnWidths[index]
+        + Math.floor(extraWidth / flexibleColumns.length)
+        + (offset < extraWidth % flexibleColumns.length ? 1 : 0))
     }
+    let tableWidth = rowHeadingWidth + columnWidths.reduce((sum, width) => sum + width, 0) + 56
+    table.style.width = `${tableWidth}px`
+    table.style.minWidth = `${tableWidth}px`
     const widths = document.createElement('colgroup')
-    for (const width of [rowHeadingWidth, ...data.columns.map((column) => column.type === 'checkbox' ? 128 : null),
-      ...(data.columns.length ? [] : [null]), 56]) {
+    const columnCols = []
+    for (const [index, width] of [rowHeadingWidth, ...columnWidths, 56].entries()) {
       const col = document.createElement('col')
-      if (width !== null) col.style.width = `${width}px`
+      col.style.width = `${width}px`
+      if (index > 0 && index <= columnWidths.length) columnCols.push(col)
       widths.append(col)
+    }
+    function setColumnWidth(index, width) {
+      const previous = columnWidths[index]
+      const next = Math.max(96, Math.min(1200, Math.round(width)))
+      if (previous === next) return next
+      columnWidths[index] = next
+      tableWidth += next - previous
+      columnCols[index].style.width = `${next}px`
+      table.style.width = `${tableWidth}px`
+      table.style.minWidth = `${tableWidth}px`
+      return next
+    }
+    function resizeHandle(column, index) {
+      const handle = document.createElement('button')
+      handle.type = 'button'
+      handle.className = 'mdb-column-resize'
+      handle.setAttribute('role', 'separator')
+      handle.setAttribute('aria-orientation', 'vertical')
+      handle.setAttribute('aria-label', `Resize ${column.name} column`)
+      handle.setAttribute('aria-valuemin', '96')
+      handle.setAttribute('aria-valuemax', '1200')
+      handle.setAttribute('aria-valuenow', String(columnWidths[index]))
+      handle.title = 'Drag to resize, or press Left or Right arrow'
+      let drag = null
+      let keyboardStart = null
+      const update = (width) => {
+        handle.setAttribute('aria-valuenow', String(setColumnWidth(index, width)))
+      }
+      function saveWidth(previous) {
+        const next = columnWidths[index]
+        if (next === previous) return
+        handle.disabled = true
+        const write = requestJson('PATCH', `${endpoint}/columns/${column.id}/width`, { width: next })
+          .then(([response, payload]) => {
+            if (!page.isConnected) return
+            if (!response.ok) throw new Error(responseError(response, payload))
+            column.width = payload.width
+          })
+          .catch((error) => {
+            if (page.isConnected) {
+              update(previous)
+              notice.show(error.message || 'Could not save column width.', 'error')
+            }
+          })
+          .finally(() => {
+            handle.disabled = false
+            pendingWrites.delete(write)
+          })
+        pendingWrites.add(write)
+      }
+      handle.addEventListener('pointerdown', (event) => {
+        if (handle.disabled || event.button !== 0) return
+        event.preventDefault()
+        event.stopPropagation()
+        handle.setPointerCapture(event.pointerId)
+        drag = { pointerId: event.pointerId, x: event.clientX, width: columnWidths[index] }
+        tableArea.classList.add('is-resizing-column')
+      })
+      handle.addEventListener('pointermove', (event) => {
+        if (drag?.pointerId === event.pointerId) update(drag.width + event.clientX - drag.x)
+      })
+      handle.addEventListener('pointerup', (event) => {
+        if (drag?.pointerId !== event.pointerId) return
+        update(drag.width + event.clientX - drag.x)
+        const previous = drag.width
+        drag = null
+        tableArea.classList.remove('is-resizing-column')
+        handle.releasePointerCapture(event.pointerId)
+        saveWidth(previous)
+      })
+      handle.addEventListener('pointercancel', (event) => {
+        if (drag?.pointerId !== event.pointerId) return
+        update(drag.width)
+        drag = null
+        tableArea.classList.remove('is-resizing-column')
+      })
+      handle.addEventListener('keydown', (event) => {
+        const step = event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0
+        if (!step) return
+        event.preventDefault()
+        event.stopPropagation()
+        if (keyboardStart === null) keyboardStart = columnWidths[index]
+        update(columnWidths[index] + step)
+      })
+      handle.addEventListener('keyup', (event) => {
+        if (!['ArrowLeft', 'ArrowRight'].includes(event.key) || keyboardStart === null) return
+        saveWidth(keyboardStart)
+        keyboardStart = null
+      })
+      handle.addEventListener('blur', () => {
+        if (keyboardStart === null) return
+        saveWidth(keyboardStart)
+        keyboardStart = null
+      })
+      return handle
+    }
+    function updateSortControls() {
+      for (const [id, { button, cell, column }] of sortButtons) {
+        const direction = activeSort?.columnId === id ? activeSort.direction : null
+        const next = direction === 'asc' ? 'descending' : direction === 'desc' ? 'saved order' : 'ascending'
+        button.disabled = rowsLoading || (['relation', 'multi_relation'].includes(column.type)
+          && !related.has(column.relation_database_id))
+        button.innerHTML = direction === 'asc' ? sortUpIcon : direction === 'desc' ? sortDownIcon : sortIcon
+        button.setAttribute('aria-label', `Sort ${column.name} ${next}`)
+        button.title = `Sort ${next}`
+        button.classList.toggle('is-active', direction !== null)
+        cell.setAttribute('aria-sort', direction === 'asc' ? 'ascending'
+          : direction === 'desc' ? 'descending' : 'none')
+      }
+    }
+    function updateRowDragHandles() {
+      body.querySelectorAll('.mdb-drag-handle[data-order-kind="rows"]').forEach((handle) => {
+        handle.disabled = rowsLoading || activeSort !== null || searchQuery !== ''
+        handle.draggable = !handle.disabled
+      })
+    }
+    function applyView() {
+      const column = activeSort && data.columns.find((item) => item.id === activeSort.columnId)
+      const matching = filterRowsByQuery(data.rows, data.columns, searchQuery,
+        (item) => related.has(item.relation_database_id) ? relationChoiceCaches.get(item.id)?.labels : null)
+      const labels = column ? relationChoiceCaches.get(column.id)?.labels : null
+      const canSort = column && !rowsLoading
+        && (!['relation', 'multi_relation'].includes(column.type)
+          || related.has(column.relation_database_id))
+      const ordered = canSort ? sortRowsByColumn(matching, column, activeSort.direction, labels) : matching
+      const fragment = document.createDocumentFragment()
+      for (const row of data.rows) rowNodes.get(row.id).hidden = true
+      for (const row of ordered) {
+        const node = rowNodes.get(row.id)
+        node.hidden = false
+        fragment.append(node)
+      }
+      emptyRow.hidden = searchQuery === '' || ordered.length > 0 || rowsLoading
+        || data.columns.some((item) => ['relation', 'multi_relation'].includes(item.type)
+          && !related.has(item.relation_database_id))
+      body.insertBefore(fragment, rowPlaceholder)
+      updateRowDragHandles()
     }
     const head = document.createElement('thead')
     const headRow = document.createElement('tr')
@@ -729,7 +1142,18 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       button.setAttribute('aria-label', `Edit column ${column.name}`)
       button.addEventListener('click', () => openColumnDialog(column))
       contents.append(button)
-      cell.append(contents)
+      const sort = document.createElement('button')
+      sort.type = 'button'
+      sort.className = 'mdb-column-sort'
+      sort.addEventListener('click', () => {
+        activeSort = activeSort?.columnId !== column.id ? { columnId: column.id, direction: 'asc' }
+          : activeSort.direction === 'asc' ? { columnId: column.id, direction: 'desc' } : null
+        updateSortControls()
+        applyView()
+      })
+      contents.append(sort)
+      sortButtons.set(column.id, { button: sort, cell, column })
+      cell.append(contents, resizeHandle(column, index))
       headRow.append(cell)
     }
     if (data.columns.length === 0) {
@@ -752,83 +1176,271 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     headRow.append(columnPlaceholder)
     head.append(headRow)
     const body = document.createElement('tbody')
-    for (const [index, row] of data.rows.entries()) {
-      const tr = document.createElement('tr')
-      tr.className = 'mdb-data-row'
-      dropTarget(tr, 'rows', index, rowIds)
-      const number = document.createElement('th')
-      number.scope = 'row'
-      number.className = 'mdb-row-heading'
-      const numberLabel = document.createElement('span')
-      numberLabel.textContent = String(row.position)
-      const deleteRow = document.createElement('button')
-      deleteRow.type = 'button'
-      deleteRow.className = 'mdb-row-delete'
-      deleteRow.innerHTML = deleteIcon
-      deleteRow.setAttribute('aria-label', `Delete row ${row.position}`)
-      deleteRow.title = `Delete row ${row.position}`
-      deleteRow.addEventListener('click', () => openDeleteDialog('rows', row))
-      number.append(dragHandle('rows', row, index, rowIds), numberLabel, deleteRow)
-      tr.append(number)
-      for (const column of data.columns) {
-        const td = document.createElement('td')
-        addCellControl(td, row, column, related)
-        tr.append(td)
+    updateSortControls()
+    function appendRows(rows) {
+      const fragment = document.createDocumentFragment()
+      for (const row of rows) {
+        const index = rowIds.length
+        rowIds.push(row.id)
+        const tr = document.createElement('tr')
+        tr.className = 'mdb-data-row'
+        tr.dataset.rowId = String(row.id)
+        rowData.set(row.id, row)
+        rowNodes.set(row.id, tr)
+        dropTarget(tr, 'rows', index, rowIds)
+        const number = document.createElement('th')
+        number.scope = 'row'
+        number.className = 'mdb-row-heading'
+        const numberLabel = document.createElement('span')
+        numberLabel.textContent = String(row.position)
+        const deleteRow = document.createElement('button')
+        deleteRow.type = 'button'
+        deleteRow.className = 'mdb-row-delete'
+        deleteRow.innerHTML = deleteIcon
+        deleteRow.setAttribute('aria-label', `Delete row ${row.position}`)
+        deleteRow.title = `Delete row ${row.position}`
+        deleteRow.addEventListener('click', () => openDeleteDialog('rows', row))
+        number.append(dragHandle('rows', row, index, rowIds), numberLabel, deleteRow)
+        tr.append(number)
+        for (const column of data.columns) {
+          const td = document.createElement('td')
+          addCellControl(td, row, column, related)
+          tr.append(td)
+        }
+        if (data.columns.length === 0) {
+          const empty = document.createElement('td')
+          empty.className = 'mdb-empty-column'
+          tr.append(empty)
+        }
+        const placeholder = document.createElement('td')
+        placeholder.className = 'mdb-column-placeholder'
+        tr.append(placeholder)
+        fragment.append(tr)
       }
-      if (data.columns.length === 0) {
-        const empty = document.createElement('td')
-        empty.className = 'mdb-empty-column'
-        tr.append(empty)
-      }
-      const placeholder = document.createElement('td')
-      placeholder.className = 'mdb-column-placeholder'
-      tr.append(placeholder)
-      body.append(tr)
+      body.insertBefore(fragment, rowPlaceholder)
+      if (searchQuery !== '') applyView()
     }
+    const emptyRow = document.createElement('tr')
+    emptyRow.className = 'mdb-search-empty'
+    emptyRow.hidden = true
+    const emptyCell = document.createElement('td')
+    emptyCell.colSpan = dataColumnCount + 2
+    emptyCell.textContent = 'No matching rows.'
+    emptyRow.append(emptyCell)
     const rowPlaceholder = document.createElement('tr')
     rowPlaceholder.className = 'mdb-row-placeholder'
-    const rowCell = document.createElement('td')
-    rowCell.colSpan = dataColumnCount + 2
+    const rowCell = document.createElement('th')
+    rowCell.scope = 'row'
     const addRow = document.createElement('button')
     addRow.type = 'button'
     addRow.className = 'mdb-placeholder-button'
-    addRow.innerHTML = '<span aria-hidden="true">+</span> Add row'
+    addRow.innerHTML = '<span aria-hidden="true">+</span>'
+    addRow.setAttribute('aria-label', 'Add row')
+    addRow.title = 'Add row'
     addRow.addEventListener('click', () => createRow(addRow))
     rowCell.append(addRow)
     rowPlaceholder.append(rowCell)
-    body.append(rowPlaceholder)
+    for (let index = 0; index < dataColumnCount; index += 1) {
+      rowPlaceholder.append(document.createElement('td'))
+    }
+    const corner = document.createElement('td')
+    corner.className = 'mdb-column-placeholder'
+    rowPlaceholder.append(corner)
+    body.append(emptyRow, rowPlaceholder)
     table.append(widths, head, body)
     tableArea.append(table)
+    appendRows(data.rows)
+    return {
+      appendRows,
+      exportData() { return { database: data.database, columns: data.columns, rows: data.rows, related } },
+      addRow(row) {
+        data.rows.push(row)
+        appendRows([row])
+        if (activeSort !== null) applyView()
+      },
+      removeRow(id) {
+        const removed = rowData.get(id)
+        if (!removed) return false
+        const dataIndex = data.rows.findIndex((row) => row.id === id)
+        data.rows.splice(dataIndex, 1)
+        rowIds.splice(rowIds.indexOf(id), 1)
+        rowNodes.get(id).remove()
+        rowNodes.delete(id)
+        rowData.delete(id)
+        for (const [index, row] of data.rows.entries()) {
+          const node = rowNodes.get(row.id)
+          node.dataset.reorderIndex = String(index)
+          node.querySelector('.mdb-drag-handle')
+            ?.setAttribute('aria-label', `Reorder row ${index + 1}`)
+          if (row.position > removed.position) {
+            row.position -= 1
+            node.querySelector('.mdb-row-heading span').textContent = String(row.position)
+            const deleteButton = node.querySelector('.mdb-row-delete')
+            deleteButton.setAttribute('aria-label', `Delete row ${row.position}`)
+            deleteButton.title = `Delete row ${row.position}`
+            for (const [columnIndex, column] of data.columns.entries()) {
+              node.cells[columnIndex + 1].querySelector('.mdb-cell-control, .mdb-multi-button, .mdb-image-button')
+                ?.setAttribute('aria-label', `${column.name}, row ${row.position}`)
+              node.cells[columnIndex + 1].querySelector('.mdb-date-button')
+                ?.setAttribute('aria-label', `Choose ${column.name}, row ${row.position}`)
+            }
+          }
+          for (const [columnIndex, column] of data.columns.entries()) {
+            if (column.relation_database_id !== databaseId) continue
+            const value = row.values?.[column.id]
+            const next = column.type === 'relation' && value === id ? null
+              : column.type === 'multi_relation' && Array.isArray(value) && value.includes(id)
+                ? value.filter((relatedId) => relatedId !== id) : undefined
+            if (next === undefined) continue
+            if (next === null || next.length === 0) delete row.values[column.id]
+            else row.values[column.id] = next
+            node.cells[columnIndex + 1].querySelector('.mdb-multi-button')?.setCellValue(next)
+          }
+        }
+        if (activeSort !== null || searchQuery !== '') applyView()
+        return true
+      },
+      rows: rowData,
+      applyView,
+      updateSortControls,
+      finishRows() {
+        updateSortControls()
+        applyView()
+      },
+    }
   }
 
   async function refresh() {
-    setStatus(status, 'Loading database…')
+    const generation = ++refreshGeneration
+    exportButton.disabled = true
+    setStatus(status, '')
     try {
       const [[response, payload], [listResponse, listPayload]] = await Promise.all([
-        requestJson('GET', endpoint), requestJson('GET', '/api/mdb/databases'),
+        requestJson('GET', `${endpoint}?limit=50`), requestJson('GET', '/api/mdb/databases'),
       ])
-      if (!page.isConnected) return false
+      if (!page.isConnected || generation !== refreshGeneration) return false
       if (!response.ok) throw new Error(responseError(response, payload))
       if (!listResponse.ok) throw new Error(responseError(listResponse, listPayload))
       databases = listPayload.databases
       const related = new Map()
-      await Promise.all([...new Set(payload.columns.filter((column) => ['relation', 'multi_relation'].includes(column.type))
-        .map((column) => column.relation_database_id))].map(async (id) => {
-        const [relatedResponse, relatedPayload] = id === databaseId
-          ? [response, payload] : await requestJson('GET', `/api/mdb/databases/${id}`)
-        if (!relatedResponse.ok) throw new Error(responseError(relatedResponse, relatedPayload))
-        related.set(id, relatedPayload)
-      }))
-      if (!page.isConnected) return false
       relatedDatabases = related
-      showTable(payload, related)
+      // An older API returns the complete table without a paging cursor.
+      rowsLoading = payload.next_after != null
+      const table = showTable(payload, related)
+      currentTable = table
+      const relatedIds = [...new Set(payload.columns.filter((column) => ['relation', 'multi_relation'].includes(column.type))
+        .map((column) => column.relation_database_id))]
+      function updateRelationLabels(id) {
+        for (const column of payload.columns.filter((item) => item.relation_database_id === id)) {
+          const cache = relationChoiceCaches.get(column.id)
+          if (!cache) continue
+          cache.choices = relatedChoices(column, related).map((item) => [item.id, item.label])
+          cache.labels.clear()
+          for (const [rowId, rowLabel] of cache.choices) cache.labels.set(rowId, rowLabel)
+        }
+        for (const update of relationRefreshes.get(id) ?? []) update()
+        table.updateSortControls()
+        if (activeSort !== null || searchQuery !== '') table.applyView()
+      }
+      table.updateOwnRelations = () => {
+        if (related.has(databaseId)) updateRelationLabels(databaseId)
+      }
+      const loadRows = async () => {
+        let after = payload.next_after ?? null
+        while (after !== null) {
+          const [pageResponse, pagePayload] = await requestJson('GET',
+            `${endpoint}?limit=200&after=${encodeURIComponent(after)}`)
+          if (!page.isConnected || generation !== refreshGeneration) return
+          if (!pageResponse.ok) throw new Error(responseError(pageResponse, pagePayload))
+          if (!Array.isArray(pagePayload?.rows) || !Object.hasOwn(pagePayload, 'next_after')
+            || pagePayload.rows.some((row) => BigInt(row.position) <= BigInt(after))
+            || (pagePayload.next_after !== null && BigInt(pagePayload.next_after) <= BigInt(after))) {
+            throw new Error('Database row pages repeated. Reload after updating the API.')
+          }
+          payload.rows.push(...pagePayload.rows)
+          table.appendRows(pagePayload.rows)
+          after = pagePayload.next_after
+        }
+        if (!page.isConnected || generation !== refreshGeneration) return
+        rowsLoading = false
+        table.finishRows()
+        if (relatedIds.includes(databaseId)) {
+          related.set(databaseId, payload)
+          updateRelationLabels(databaseId)
+        }
+      }
+      const loadRelated = async () => {
+        await Promise.all(relatedIds.filter((id) => id !== databaseId).map(async (id) => {
+          const [relatedResponse, relatedPayload] = await requestJson('GET', `/api/mdb/databases/${id}`)
+          if (!page.isConnected || generation !== refreshGeneration) return
+          if (!relatedResponse.ok) throw new Error(responseError(relatedResponse, relatedPayload))
+          related.set(id, relatedPayload)
+          updateRelationLabels(id)
+        }))
+      }
+      rowsReady = loadRows()
+      const results = await Promise.allSettled([rowsReady, loadRelated()])
+      if (!page.isConnected || generation !== refreshGeneration) return false
+      for (const result of results) {
+        if (result.status === 'rejected') throw result.reason
+      }
       setStatus(status, '')
+      exportButton.disabled = payload.columns.length === 0
+      exportButton.title = payload.columns.length === 0 ? 'Add a column before exporting CSV' : ''
       return true
     } catch (error) {
-      if (page.isConnected) setStatus(status, error.message || 'Could not load database.', true)
+      if (page.isConnected && generation === refreshGeneration) {
+        setStatus(status, error.message || 'Could not load database.', true)
+      }
       return false
     }
   }
+
+  exportButton.addEventListener('click', async () => {
+    if (exportButton.disabled || !currentTable) return
+    const table = currentTable
+    const generation = refreshGeneration
+    exportButton.disabled = true
+    try {
+      await Promise.all([...pendingWrites])
+      if (!page.isConnected || generation !== refreshGeneration) return
+      const { database, columns, rows, related } = table.exportData()
+      const relationLabels = new Map(columns.filter((column) =>
+        ['relation', 'multi_relation'].includes(column.type)).map((column) => [
+        column.id, new Map(relatedChoices(column, related).map(({ id, label }) => [id, label])),
+      ]))
+      const field = (value) => `"${String(value).replaceAll('"', '""')}"`
+      const valueFor = (row, column) => {
+        const value = row.values?.[column.id]
+        if (value === undefined || value === null) return ''
+        if (column.type === 'checkbox') return value ? 'true' : 'false'
+        if (column.type === 'relation') {
+          return relationLabels.get(column.id)?.get(value) ?? `Missing row ${value}`
+        }
+        if (column.type === 'multi_relation') {
+          return value.map((id) => relationLabels.get(column.id)?.get(id) ?? `Missing row ${id}`).join(', ')
+        }
+        return Array.isArray(value) ? value.join(', ') : value
+      }
+      const chunks = ['\uFEFF', columns.map((column) => field(column.name)).join(','), '\r\n']
+      for (const row of rows) {
+        chunks.push(columns.map((column) => field(valueFor(row, column))).join(','), '\r\n')
+      }
+      const url = URL.createObjectURL(new Blob(chunks, { type: 'text/csv;charset=utf-8' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${database.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'database'}.csv`
+      document.body.append(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      notice.show('CSV exported.')
+    } catch (error) {
+      if (page.isConnected) notice.show(error.message || 'Could not export CSV.', 'error')
+    } finally {
+      if (page.isConnected && generation === refreshGeneration) exportButton.disabled = false
+    }
+  })
 
   async function sendCsv(path, settings = null) {
     const body = new FormData()
@@ -858,6 +1470,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       if (!page.isConnected) return
       if (importDialog.open) importDialog.close()
       csvFile = null
+      clearSearch()
       const message = `${result.rows_added} row${result.rows_added === 1 ? '' : 's'} and ${result.columns_added} column${result.columns_added === 1 ? '' : 's'} added${result.related_rows_added ? `; ${result.related_rows_added} related row${result.related_rows_added === 1 ? '' : 's'} created` : ''}${result.rows_skipped ? `; ${result.rows_skipped} existing row${result.rows_skipped === 1 ? '' : 's'} skipped` : ''}.`
       if (await refresh()) notice.show(message)
       else notice.show(`CSV imported, but the table could not refresh.`, 'warning')
@@ -877,6 +1490,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     text: 'Text', number: 'Number', date: 'Date', checkbox: 'Checkbox',
     select: 'Select', multi_select: 'Multi-select (comma-separated)',
     relation: 'Relation', multi_relation: 'Multi-relation (comma-separated)',
+    image: 'Image',
   }
   const importLookupTypes = new Set(['text', 'number', 'date', 'select'])
   const importDatabaseColumns = new Map()
@@ -1015,6 +1629,10 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     try {
       const preview = await sendCsv('/import/preview')
       if (!page.isConnected) return
+      if (preview.columns.some((column) => column.existing && column.type === 'image'
+        && column.samples.length)) {
+        throw new Error('CSV cannot import image cells. Remove the image column from the CSV and try again.')
+      }
       importDatabaseColumns.clear()
       const configurable = preview.columns.filter((column) => !column.existing
         || ['relation', 'multi_relation'].includes(column.type))
@@ -1073,8 +1691,45 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       ? 'This removes the column and all its values. Relations using it as a display column will use automatic labels.'
       : 'This removes all values in the row and clears links to it from relation columns.'
     deleteConfirm.textContent = isColumn ? 'Delete column' : 'Delete row'
-    setStatus(deleteStatus, '')
+    deleteConfirm.disabled = !isColumn
+    deleteUsage.hidden = true
+    deleteUsageSummary.textContent = ''
+    deleteUsageList.replaceChildren()
+    setStatus(deleteStatus, isColumn ? '' : 'Checking where this row is used…')
     deleteDialog.showModal()
+    const requestId = ++deleteUsageRequestId
+    if (!isColumn) void loadDeleteUsage(item.id, requestId)
+  }
+
+  async function loadDeleteUsage(rowId, requestId) {
+    try {
+      await Promise.all([...pendingWrites])
+      const [response, payload] = await requestJson('GET', `${endpoint}/rows/${rowId}/usage`)
+      if (!page.isConnected || !deleteDialog.open || requestId !== deleteUsageRequestId) return
+      if (!response.ok) throw new Error(responseError(response, payload))
+      if (!Array.isArray(payload?.uses)) throw new Error('Could not read row usage. Close and try again.')
+      const uses = payload.uses
+      deleteUsageSummary.textContent = uses.length === 0
+        ? 'This row is not used in any relation cells.'
+        : `Used in ${uses.length} relation cell${uses.length === 1 ? '' : 's'}:`
+      for (const use of uses) {
+        const entry = document.createElement('li')
+        const database = document.createElement('strong')
+        database.textContent = use.database_name
+        const location = document.createElement('span')
+        location.textContent = `Row ${use.row_position} · ${use.column_name}`
+        entry.append(database, location)
+        deleteUsageList.append(entry)
+      }
+      deleteConfirm.textContent = uses.length ? 'Delete anyway' : 'Delete row'
+      deleteUsage.hidden = false
+      deleteConfirm.disabled = false
+      setStatus(deleteStatus, '')
+    } catch (error) {
+      if (page.isConnected && deleteDialog.open && requestId === deleteUsageRequestId) {
+        setStatus(deleteStatus, error.message || 'Could not check row usage. Close and try again.', true)
+      }
+    }
   }
 
   function openColumnDialog(column = null) {
@@ -1254,6 +1909,26 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     if (!multiCell || savingMultiDialog) return
     const cell = multiCell
     const previous = cell.value
+    const renamedOptions = []
+    const optionRenames = []
+    const renameMap = new Map()
+    if (!cell.isRelation) {
+      for (const row of multiOptions.querySelectorAll('.mdb-option-existing')) {
+        const original = row.dataset.original
+        const input = row.querySelector('[data-option-rename]')
+        const name = input ? input.value.trim() : original
+        if (!name || renamedOptions.includes(name)) {
+          setStatus(multiStatus, name ? 'Options must be unique.' : 'Enter an option name.', true)
+          input?.focus()
+          return
+        }
+        renamedOptions.push(name)
+        if (name !== original) {
+          optionRenames.push({ from: original, to: name })
+          renameMap.set(original, name)
+        }
+      }
+    }
     const names = []
     const relatedValues = []
     const drafts = [...multiOptions.querySelectorAll('.mdb-option-draft')]
@@ -1279,7 +1954,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       } else {
         const input = draft.querySelector('input[type="text"]')
         const name = input.value.trim()
-        if (!name || cell.column.options.includes(name) || names.includes(name)) {
+        if (!name || renamedOptions.includes(name) || names.includes(name)) {
           setStatus(multiStatus, name ? 'This option already exists.' : 'Enter an option name or remove the empty option.', true)
           input.focus()
           return
@@ -1294,18 +1969,20 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     let optionsSaved = false
     let rowsCreated = false
     try {
-      if (names.length) {
+      if (names.length || optionRenames.length) {
         setStatus(multiStatus, 'Saving options…')
         await Promise.all([...pendingWrites])
         const [response, payload] = await requestJson('PATCH',
           `${endpoint}/columns/${cell.column.id}`, {
             name: cell.column.name,
-            options: [...cell.column.options, ...names],
+            options: [...renamedOptions, ...names],
+            option_renames: optionRenames,
           })
         if (!page.isConnected) return
         if (!response.ok) throw new Error(responseError(response, payload))
         cell.column.options = payload.options
-        names.forEach((name) => cell.choiceLabels.set(name, name))
+        cell.choiceLabels.clear()
+        for (const option of payload.options) cell.choiceLabels.set(option, option)
         optionsSaved = true
       }
       if (relatedValues.length) {
@@ -1328,8 +2005,9 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         rowsCreated = true
       }
       const selectedChoices = [...multiOptions.querySelectorAll('input[data-choice]:checked')]
-        .map((input) => cell.isRelation ? Number(input.value) : input.value)
-      const selected = cell.isSingle ? (selectedChoices[0] ?? '') : selectedChoices
+        .map((input) => cell.isRelation ? (input.value ? Number(input.value) : null)
+          : (renameMap.get(input.value) ?? input.value))
+      const selected = cell.isSingle ? (selectedChoices[0] ?? (cell.isRelation ? null : '')) : selectedChoices
       multiCell = null
       multiDialog.close()
       cell.value = selected
@@ -1354,28 +2032,37 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     }
   })
   deleteDialog.addEventListener('cancel', (event) => {
-    if (deleteConfirm.disabled) event.preventDefault()
+    if (deletingInProgress) event.preventDefault()
   })
   deleteCancel.addEventListener('click', () => deleteDialog.close())
-  deleteDialog.addEventListener('close', () => { deletingItem = null })
+  deleteDialog.addEventListener('close', () => {
+    deletingItem = null
+    deleteUsageRequestId += 1
+  })
   deleteConfirm.addEventListener('click', async () => {
     if (!deletingItem || deleteConfirm.disabled) return
     const item = deletingItem
+    deletingInProgress = true
     deleteConfirm.disabled = true
     deleteCancel.disabled = true
     setStatus(deleteStatus, `Deleting ${item.kind === 'columns' ? 'column' : 'row'}…`)
     try {
+      if (item.kind === 'rows') await rowsReady
       await Promise.all([...pendingWrites])
       const [response, payload] = await requestJson('DELETE', `${endpoint}/${item.kind}/${item.id}`)
       if (!page.isConnected) return
       if (!response.ok) throw new Error(responseError(response, payload))
       deleteDialog.close()
       const label = item.kind === 'columns' ? 'Column' : 'Row'
-      if (await refresh()) notice.show(`${label} deleted.`)
+      if (item.kind === 'rows' && currentTable.removeRow(item.id)) {
+        currentTable.updateOwnRelations()
+        notice.show('Row deleted.')
+      } else if (await refresh()) notice.show(`${label} deleted.`)
       else notice.show(`${label} deleted, but the table could not refresh.`, 'warning')
     } catch (error) {
       if (page.isConnected) setStatus(deleteStatus, error.message || 'Could not delete item.', true)
     } finally {
+      deletingInProgress = false
       deleteConfirm.disabled = false
       deleteCancel.disabled = false
     }
@@ -1384,15 +2071,22 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     if (button.disabled) return
     button.disabled = true
     try {
+      await rowsReady
+      if (!button.isConnected) return
       await Promise.all([...pendingWrites])
       const [response, payload] = await postJson(`${endpoint}/rows`, {})
       if (!page.isConnected) return
       if (!response.ok) throw new Error(responseError(response, payload))
-      if (await refresh()) {
-        notice.show('Row added.')
-        const rows = tableArea.querySelectorAll('tbody tr.mdb-data-row')
-        rows[rows.length - 1]?.querySelector('input')?.focus()
+      if (!button.isConnected) {
+        if (await refresh()) notice.show('Row added.')
+        return
       }
+      clearSearch()
+      currentTable.addRow(payload)
+      currentTable.updateOwnRelations()
+      notice.show('Row added.')
+      tableArea.querySelector(`tbody tr.mdb-data-row[data-row-id="${payload.id}"]`)
+        ?.querySelector('.mdb-cell-control, .mdb-multi-button')?.focus()
     } catch (error) {
       if (page.isConnected) {
         setStatus(status, '')

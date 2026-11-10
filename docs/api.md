@@ -26,10 +26,18 @@ PostgreSQL database. Click it to edit its single table.
 `GET /api/mdb/databases/{databaseId}` returns its columns, rows, and cell values.
 Add a column with `POST /api/mdb/databases/{databaseId}/columns` and a name
 plus `type`: `text`, `number`, `date`, `checkbox`, `select`, `multi_select`,
-`relation`, or `multi_relation`. Select columns also need an `options` array
+`relation`, `multi_relation`, or `image`. Select columns also need an `options` array
 of unique strings. Relation columns need `relation_database_id` pointing to a
 database owned by the same account. Add a row with
 `POST /api/mdb/databases/{databaseId}/rows`.
+Drag a column header's right edge to resize it. Widths are saved in pixels;
+`PATCH /api/mdb/databases/{databaseId}/columns/{columnId}/width` accepts
+`{"width":320}` with a range of 96 to 1200.
+`GET /api/mdb/databases/{databaseId}?limit=100` returns the first 100 rows.
+When `next_after` is a position string, pass it as `after` with `limit` to load
+the next batch. A null `next_after` ends the sequence. Omitting `limit` returns
+the full table. The editor loads rows in batches and enables row reordering
+after all rows have arrived.
 Relation and multi-relation columns may set `relation_display_column_id` to a
 column ID in that related database. The chosen column supplies each linked
 row's label without a row-number prefix. Empty values display as `—`. `null`
@@ -39,12 +47,22 @@ Save a cell with `PUT /api/mdb/databases/{databaseId}/rows/{rowId}/cells/{column
 and `{"value":...}`. Text, number, date, and select values are strings;
 checkbox values are booleans, multi-select values are arrays of option strings,
 relation values are row IDs or `null`, and multi-relation values are arrays of
-unique row IDs from the selected database. Empty values clear cells. All routes
-require the owner's browser session.
+unique row IDs from the selected database. Image values are media image IDs or
+`null`; only personal images owned by the account and published shared images
+can be chosen. The editor shows thumbnails and lets users pick or upload an
+image. Empty values clear cells. All routes
+require the owner's browser session or an API token with the matching MDB scope.
 Drag row or column handles in the editor to change their order. The equivalent
 API calls are `PUT /api/mdb/databases/{databaseId}/rows/order` and
 `PUT /api/mdb/databases/{databaseId}/columns/order` with
 `{"ids":[...all IDs in the desired order...]}`. Reordering preserves cell values.
+Use a column header's sort button to cycle through ascending, descending, and
+saved row order. Sorting changes only the current view. Row dragging is
+available after all rows load and the saved order is shown.
+The editor's **Search rows** field filters rows by cell text, choices, numbers,
+dates, checkbox values, and displayed relation labels. Search and sorting can
+be used together. Clearing the field restores all rows; searching does not
+change saved data.
 Click a column header to edit its name and settings with
 `PATCH /api/mdb/databases/{databaseId}/columns/{columnId}`. Existing values
 remain attached to the column ID. A populated column cannot change type or
@@ -53,14 +71,22 @@ preserving cell values, send the new `options` array and
 `"option_renames":[{"from":"Old","to":"New"}]` in the PATCH body.
 Select and multi-select cells use the same option picker. Select cells allow
 one choice or **No option**; both pickers let you add options before saving.
+Use the edit icon beside an existing option in either picker to rename it.
+Saving updates that option in every cell of the column.
 Delete a column with `DELETE /api/mdb/databases/{databaseId}/columns/{columnId}`
 or a row with `DELETE /api/mdb/databases/{databaseId}/rows/{rowId}`. Deletion
 removes that item's cells and closes the gap in its position numbers. Deleting
 a row clears single relations to it and removes it from multi-relations. If a
 deleted column supplied relation labels, those relations use automatic labels.
-In a multi-relation cell, **Choose related rows** includes an add-row placeholder.
-Enter values to create rows in the related database and select them. The app
-uses the relation's display column when it is text, number, date, or select;
+Before deleting a row, `GET /api/mdb/databases/{databaseId}/rows/{rowId}/usage`
+returns every relation cell in the account that references it, with the
+database name, row position, and column name. The editor shows these locations
+in its deletion confirmation dialog.
+Relation and multi-relation cells use the same related-row picker. A relation
+allows one row or **No row**; a multi-relation allows several rows. Both include
+an add-row placeholder. Enter values to create rows in the related database
+and select them. The app uses the relation's display column when it is text,
+number, date, or select;
 otherwise it uses the first suitable column or offers blank rows. The API
 creates up to 100 rows atomically with
 `POST /api/mdb/databases/{databaseId}/rows/batch` and
@@ -70,6 +96,12 @@ To import CSV into an open database, use the **Import CSV** button. The first
 row supplies column names. Existing columns match by name without regard to
 case; missing columns are created. Number, date, and checkbox types are
 suggested when unambiguous. The app lets you review types for new columns.
+**Export CSV** downloads all rows in saved order, regardless of the current
+search or sort. Relation cells use their displayed labels. CSV is a flat data
+export; it does not carry MDB column types, relation IDs, or select settings.
+Importing that CSV may require choosing column types and relation lookup
+columns again. Image IDs in exported CSV are informational; CSV import does not
+restore image cells.
 `POST /api/mdb/databases/{databaseId}/import/preview` accepts a multipart
 `file` and returns column suggestions without changing data. Then
 `POST /api/mdb/databases/{databaseId}/import` accepts the same file and a
@@ -121,7 +153,8 @@ shared auth account. Repeated requests return the same Musico user ID.
 
 ## Musico library
 
-Musico routes require an approved browser session or mobile access token. Audio files live
+Musico routes require an approved browser session, mobile access token, or API
+token with the matching Musico scope. Audio files live
 in the shared `media` database and appear under **Media → Audio**. A Musico song
 stores its own metadata and the `media_audio_id` of its audio file. Filename,
 format, size, and SHA-256 are read from Media when returning a song. Playlists
@@ -254,7 +287,11 @@ hash. A token has a 1–365 day expiry or no expiry, and one or more scopes:
 | --- | --- |
 | `quiz:read` | GET requests under `/api/quiz/`, except image aliases |
 | `quiz:write` | Mutating requests under `/api/quiz/`, except image aliases |
-| `media:read` | GET requests under `/api/media/` and `/api/quiz/images` |
+| `musico:read` | GET requests under `/api/musico/` |
+| `musico:write` | Mutating requests under `/api/musico/` |
+| `mdb:read` | GET requests under `/api/mdb/` |
+| `mdb:write` | Mutating requests under `/api/mdb/` |
+| `media:read` | GET requests under `/api/media/` and `/api/quiz/images`, plus POST `/api/media/thumbnails` and `/api/media/images/usage` |
 | `media:write` | Mutating requests under `/api/media/` and `/api/quiz/images` |
 
 Send the token as `Authorization: Bearer sat_...`. A valid token can also read
@@ -277,6 +314,21 @@ allow changing quiz settings and questions, but not deleting the quiz. Quiz
 grants do not expose the creator's other private data. Existing token grants
 can be changed with `PATCH /api/auth/tokens/{tokenId}/quiz-access` using the
 same `quiz_access` object. Set `expires_in_days` to `null` for no expiry.
+
+Musico and MDB tokens can also work with their creator's existing data. Set
+`app_access` to `{"musico":"read","mdb":"edit"}` when creating a token, or
+change it with `PATCH /api/auth/tokens/{tokenId}/app-access`. Each app accepts
+`none`, `read`, or `edit`; a grant covers the creator's entire current and future
+Musico library or MDB databases. Read requires the app's `:read` scope. Edit
+requires both `:read` and `:write`. Without a grant, the token works with its
+service account's own app data. With a grant, app requests use the creator's
+data; `read` blocks mutations and `edit` permits them. The token's service
+account remains visible in its action log. Musico audio file requests under
+`/api/media/audio` follow the Musico grant and also require the matching media
+scope. To upload an image into the creator's media library for an app, use
+`POST /api/media/images?for=musico` or `?for=mdb` with app edit access and
+`media:write`. Images already referenced by an accessible Musico track or MDB
+cell can be fetched with `media:read`.
 
 Example for a signed-in user whose session is saved in a cookie jar:
 
@@ -432,7 +484,7 @@ key to its local user. The API creates the local user on the first quiz create.
   current question and saved attempt that references the selected images.
 - `DELETE /api/media/images/{imageId}` deletes an owned personal image or, for
   admins, a shared image. It returns `204` if unused, or `409` if any current
-  question or saved attempt still references it. After reviewing the usage,
+  question, saved attempt, song, or MDB image cell still references it. After reviewing the usage,
   `DELETE /api/media/images/{imageId}?force=1` deletes it even when referenced.
   Those quizzes and attempts retain the image ID and show a missing-image icon.
 

@@ -92,7 +92,7 @@
 .tokens-table td:last-child { text-align: right; }
 .tokens-table td:last-child .text-button + .text-button { margin-left: 8px; }
 .token-dialog[data-activity-dialog] { width: min(760px, calc(100vw - 32px)); max-height: min(80vh, 720px); }
-.token-dialog[data-create-dialog], .token-dialog[data-access-dialog] { width: min(560px, calc(100vw - 32px)); max-height: min(85vh, 760px); }
+.token-dialog[data-create-dialog], .token-dialog[data-access-dialog], .token-dialog[data-app-access-dialog] { width: min(560px, calc(100vw - 32px)); max-height: min(85vh, 760px); }
 .token-dialog[data-reveal-dialog] { width: min(560px, calc(100vw - 32px)); }
 .token-reveal-content { display: grid; gap: 16px; margin-bottom: 20px; }
 .token-reveal-content > p { margin: 0; }
@@ -109,6 +109,7 @@
 .token-scopes label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .token-scopes input { accent-color: var(--accent); }
 .token-quiz-access { display: grid; gap: 10px; }
+.token-app-access { display: grid; gap: 10px; }
 .token-quiz-list { max-height: 230px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; }
 .token-quiz-list > label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .token-quiz-list > label:last-child { border-bottom: 0; }

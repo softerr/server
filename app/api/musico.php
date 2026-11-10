@@ -11,7 +11,7 @@ require_once __DIR__ . '/apps/musico/handlers.php';
 
 $path = apiRequestPath('/api/musico');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$authUser = currentSessionUser();
+$authUser = appAccessUser(currentSessionUser(), 'musico', $method !== 'GET');
 
 if ($path === '/me') {
     if ($method === 'PUT') handleMusicoMe($authUser);

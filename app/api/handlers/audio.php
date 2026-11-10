@@ -71,7 +71,7 @@ function publicMediaAudio(array $row): array
 
 function handleListMediaAudio(): never
 {
-    $user = currentSessionUser();
+    $user = appAccessUser(currentSessionUser(), 'musico', false);
     $db = connectMediaDb();
     $result = @pg_query_params($db,
         'SELECT id, original_name, mime_type, size_bytes, sha256, created
@@ -98,7 +98,7 @@ function handleListMediaAudio(): never
 
 function handleUploadMediaAudio(): never
 {
-    $user = currentSessionUser();
+    $user = appAccessUser(currentSessionUser(), 'musico', true);
     $nameHeader = $_SERVER['HTTP_X_AUDIO_NAME'] ?? null;
     $name = is_string($nameHeader) ? mediaAudioName(rawurldecode($nameHeader)) : '';
     if ($name === '') respond(400, ['error' => 'Audio filename is required']);
@@ -161,13 +161,13 @@ function streamMediaAudio($db, int $audioId, int $ownerId): never
 
 function handleGetMediaAudio(int $id): never
 {
-    $user = currentSessionUser();
+    $user = appAccessUser(currentSessionUser(), 'musico', false);
     streamMediaAudio(connectMediaDb(), $id, (int) $user['id']);
 }
 
 function handleDeleteMediaAudio(int $id): never
 {
-    $user = currentSessionUser();
+    $user = appAccessUser(currentSessionUser(), 'musico', true);
     // The same per-account lock serializes deletion with Musico track creation.
     $musico = connectMusicoDb();
     if (@pg_query($musico, 'BEGIN') === false
