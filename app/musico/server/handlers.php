@@ -234,15 +234,15 @@ function handleMusicoMe(array $authUser): never
     respond(200, ['id' => $id, 'auth_user_id' => (int) $authUser['id']]);
 }
 
-function musicoAudioFiles(array $rows, int $authUserId): array
+function musicoAudioFiles(array $rows, int|array $authUserId): array
 {
     $ids = array_values(array_unique(array_map(static fn (array $row): int =>
         (int) $row['media_audio_id'], $rows)));
     if ($ids === []) return [];
     $result = @pg_query_params(connectMediaDb(),
         'SELECT id, original_name, mime_type, size_bytes, sha256
-         FROM public.audio_file WHERE owner_auth_user_id = $1 AND id = ANY($2::bigint[])',
-        [$authUserId, '{' . implode(',', $ids) . '}']);
+         FROM public.audio_file WHERE owner_auth_user_id = ANY($1::bigint[]) AND id = ANY($2::bigint[])',
+        ['{' . implode(',', (array) $authUserId) . '}', '{' . implode(',', $ids) . '}']);
     if ($result === false) respond(500, ['error' => 'Could not load song audio']);
     $files = [];
     while (($file = pg_fetch_assoc($result)) !== false) $files[(int) $file['id']] = $file;
@@ -277,13 +277,13 @@ function publicMusicoTrack(array $row, int $authUserId, ?array $file = null): ar
     ];
 }
 
-function publicMusicoTracks($result, int $authUserId): array
+function publicMusicoTracks($result, int|array $authUserId): array
 {
     $rows = [];
     while (($row = pg_fetch_assoc($result)) !== false) $rows[] = $row;
     $files = musicoAudioFiles($rows, $authUserId);
     return array_map(static fn (array $row): array => publicMusicoTrack(
-        $row, $authUserId, $files[(int) $row['media_audio_id']]), $rows);
+        $row, (int) ((array) $authUserId)[0], $files[(int) $row['media_audio_id']]), $rows);
 }
 
 function handleListMusicoTracks(array $authUser): never
@@ -295,9 +295,17 @@ function handleListMusicoTracks(array $authUser): never
                 t.album, t.genre, t.release_year, t.track_number, t.rating, t.play_count, t.listen_ms, t.art_image_id, '
                 . musicoAnalysisProjection('t') . ', t.created
          FROM public.track t JOIN public."user" u ON u.id = t.user_id
-         WHERE u.auth_user_id = $1 ORDER BY t.id DESC', [$authUser['id']]);
+         WHERE u.auth_user_id = $1 OR (u.auth_user_id = $2
+            AND ($3::boolean OR EXISTS (SELECT 1 FROM public.playlist_track pt
+                WHERE pt.track_id = t.id AND pt.playlist_id = ANY($4::bigint[]))))
+         ORDER BY t.id DESC',
+        [$authUser['service_account_id'] ?? $authUser['id'], $authUser['service_owner_id'] ?? null,
+         tokenOwnerAccess($authUser, 'musico') !== null ? 't' : 'f',
+         '{' . implode(',', tokenOwnerResourceIds($authUser, 'musico')) . '}']);
     if ($result === false) respond(500, ['error' => 'Failed to load tracks']);
-    $tracks = publicMusicoTracks($result, (int) $authUser['id']);
+    $trackOwners = [(int) ($authUser['service_account_id'] ?? $authUser['id'])];
+    if (($authUser['service_owner_id'] ?? null) !== null) $trackOwners[] = (int) $authUser['service_owner_id'];
+    $tracks = publicMusicoTracks($result, $trackOwners);
     $order = @pg_query_params($db,
         'SELECT o.track_id FROM public.track_order o
          JOIN public."user" u ON u.id = o.user_id
@@ -649,10 +657,16 @@ function handleUpdateMusicoTrack(array $authUser, int $id): never
         }
         $mediaDb = connectMediaDb();
         $image = @pg_query_params($mediaDb,
-            'SELECT 1 FROM public.image WHERE id = $1 AND (owner_auth_user_id = $2 OR shared = TRUE)',
+            'SELECT shared FROM public.image WHERE id = $1 AND (owner_auth_user_id = $2 OR shared = TRUE)',
             [$artImageId, $authUser['id']]);
         if ($image === false) respond(500, ['error' => 'Could not check album art']);
         if (pg_num_rows($image) === 0) respond(400, ['error' => 'Choose album art from your image library']);
+        if (($authUser['api_token_id'] ?? null) !== null
+            && (int) $authUser['id'] === (int) $authUser['service_owner_id']
+            && pg_fetch_result($image, 0, 'shared') !== 't'
+            && !tokenOwnerImageUsable($artImageId, $authUser, 'musico')) {
+            respond(403, ['error' => 'Image is outside this token\'s playlists']);
+        }
     }
     $updated = @pg_query_params($db,
         'UPDATE public.track t SET title = $1, artist = $2, album = $3, genre = $4,
@@ -854,7 +868,11 @@ function handleListMusicoPlaylists(array $authUser): never
         'SELECT p.id, p.name, p.created, p.version,
             (SELECT COUNT(*) FROM public.playlist_track pt WHERE pt.playlist_id = p.id) AS track_count
          FROM public.playlist p JOIN public."user" u ON u.id = p.user_id
-         WHERE u.auth_user_id = $1 ORDER BY p.id DESC', [$authUser['id']]);
+         WHERE u.auth_user_id = $1 OR (u.auth_user_id = $2
+            AND ($3::boolean OR p.id = ANY($4::bigint[]))) ORDER BY p.id DESC',
+        [$authUser['service_account_id'] ?? $authUser['id'], $authUser['service_owner_id'] ?? null,
+         tokenOwnerAccess($authUser, 'musico') !== null ? 't' : 'f',
+         '{' . implode(',', tokenOwnerResourceIds($authUser, 'musico')) . '}']);
     if ($result === false) respond(500, ['error' => 'Could not load playlists']);
     $playlists = [];
     while (($row = pg_fetch_assoc($result)) !== false) $playlists[] = publicMusicoPlaylist($row);
@@ -974,6 +992,11 @@ function handleAddMusicoPlaylistTrack(array $authUser, int $playlistId): never
     $body = readJsonBody();
     $trackId = filter_var($body['track_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($trackId === false) respond(400, ['error' => 'Invalid track ID']);
+    if (($authUser['api_token_id'] ?? null) !== null
+        && (int) $authUser['id'] === (int) $authUser['service_owner_id']
+        && !musicoOwnerTrackGranted($authUser, (int) $trackId, false)) {
+        respond(403, ['error' => 'Song is outside this token\'s playlists']);
+    }
     $db = connectMusicoDb();
     beginMusicoMutation($db, $authUser);
     assertMusicoVersion($db, $authUser, 'playlist', $playlistId, $expected);
@@ -1016,6 +1039,14 @@ function handleReplaceMusicoPlaylistTracks(array $authUser, int $playlistId): ne
         || count($trackIds) !== count(array_unique($trackIds))
         || count(array_filter($trackIds, static fn ($id): bool => !is_int($id) || $id < 1)) > 0) {
         respond(400, ['error' => 'Invalid track IDs']);
+    }
+    if (($authUser['api_token_id'] ?? null) !== null
+        && (int) $authUser['id'] === (int) $authUser['service_owner_id']) {
+        foreach ($trackIds as $trackId) {
+            if (!musicoOwnerTrackGranted($authUser, $trackId, false)) {
+                respond(403, ['error' => 'Song is outside this token\'s playlists']);
+            }
+        }
     }
     $db = connectMusicoDb();
     beginMusicoMutation($db, $authUser);

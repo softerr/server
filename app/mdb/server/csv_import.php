@@ -233,6 +233,10 @@ function mdbCsvRelationPlan($db, array $user, ?array $existing, mixed $settings,
         && (string) $settings['database_id'] !== (string) $targetId) {
         respond(400, ['error' => "Related database cannot change for {$name}"]);
     }
+    if (($user['api_token_id'] ?? null) !== null && (int) $user['id'] === (int) $user['service_owner_id']
+        && tokenOwnerAccess($user, 'mdb', (int) $targetId, true) === null) {
+        respond(403, ['error' => 'Related database is not editable by this token']);
+    }
     mdbOwnedDatabase($db, (int) $user['id'], (int) $targetId);
     $result = @pg_query_params($db,
         'SELECT id, type, options FROM public.database_column WHERE database_id = $1 AND id = $2',

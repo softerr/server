@@ -158,7 +158,7 @@ backup_database() {
 }
 
 backup_database auth 'SELECT 1 FROM public."user", public.user_token, public.verification_email_outbox, public.approval_email_outbox LIMIT 0'
-backup_database media 'SELECT i.id, i.blob_id, b.sha256 FROM public.image i, public.image_blob b LIMIT 0' 0 2 1
+backup_database media 'SELECT i.id, i.blob_id, b.sha256, token_image.image_id FROM public.image i, public.image_blob b, public.api_token_image_access token_image LIMIT 0' 0 2 1
 for app in "${WEB_APPS[@]}"; do
   [[ -z "${APP_DATABASES[$app]}" ]] && continue
   backup_database "${APP_DATABASES[$app]}" "${APP_BACKUP_CHECKS[$app]}"

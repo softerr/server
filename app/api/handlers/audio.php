@@ -72,10 +72,16 @@ function publicMediaAudio(array $row): array
 function handleListMediaAudio(): never
 {
     $user = appAccessUser(currentSessionUser(), 'musico', false);
+    $ownerAudioIds = musicoOwnerAudioIds($user);
+    $allOwner = tokenOwnerAccess($user, 'musico') !== null;
     $db = connectMediaDb();
     $result = @pg_query_params($db,
         'SELECT id, original_name, mime_type, size_bytes, sha256, created
-         FROM public.audio_file WHERE owner_auth_user_id = $1 ORDER BY lower(original_name), id', [$user['id']]);
+         FROM public.audio_file WHERE owner_auth_user_id = $1
+            OR (owner_auth_user_id = $2 AND ($4::boolean OR id = ANY($3::bigint[])))
+         ORDER BY lower(original_name), id',
+        [$user['service_account_id'] ?? $user['id'], $user['service_owner_id'] ?? null,
+         '{' . implode(',', $ownerAudioIds) . '}', $allOwner ? 't' : 'f']);
     if ($result === false) respond(500, ['error' => 'Could not load audio files']);
     $items = [];
     while (($row = pg_fetch_assoc($result)) !== false) $items[] = publicMediaAudio($row);
@@ -83,7 +89,13 @@ function handleListMediaAudio(): never
     $used = @pg_query_params($musico,
         'SELECT t.media_audio_id, t.id FROM public.track t
          JOIN public."user" u ON u.id = t.user_id
-         WHERE u.auth_user_id = $1', [$user['id']]);
+         WHERE u.auth_user_id = $1 OR (u.auth_user_id = $2
+            AND ($5::boolean OR (t.media_audio_id = ANY($3::bigint[])
+              AND EXISTS (SELECT 1 FROM public.playlist_track pt
+                WHERE pt.track_id = t.id AND pt.playlist_id = ANY($4::bigint[])))))',
+        [$user['service_account_id'] ?? $user['id'], $user['service_owner_id'] ?? null,
+         '{' . implode(',', $ownerAudioIds) . '}',
+         '{' . implode(',', tokenOwnerResourceIds($user, 'musico')) . '}', $allOwner ? 't' : 'f']);
     if ($used === false) respond(500, ['error' => 'Could not check audio use']);
     $songIds = [];
     while (($song = pg_fetch_assoc($used)) !== false) {
@@ -161,13 +173,13 @@ function streamMediaAudio($db, int $audioId, int $ownerId): never
 
 function handleGetMediaAudio(int $id): never
 {
-    $user = appAccessUser(currentSessionUser(), 'musico', false);
+    $user = musicoAudioAccessUser(currentSessionUser(), $id, false);
     streamMediaAudio(connectMediaDb(), $id, (int) $user['id']);
 }
 
 function handleDeleteMediaAudio(int $id): never
 {
-    $user = appAccessUser(currentSessionUser(), 'musico', true);
+    $user = musicoAudioAccessUser(currentSessionUser(), $id, true);
     // The same per-account lock serializes deletion with Musico track creation.
     $musico = connectMusicoDb();
     if (@pg_query($musico, 'BEGIN') === false

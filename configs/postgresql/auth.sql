@@ -37,17 +37,33 @@ CREATE TABLE IF NOT EXISTS public.api_token (
     name VARCHAR(100) NOT NULL,
     token_hash CHAR(64) NOT NULL UNIQUE,
     scopes JSONB NOT NULL CHECK (jsonb_typeof(scopes) = 'array'),
-    read_owner_quizzes BOOLEAN NOT NULL DEFAULT FALSE,
-    edit_owner_quizzes BOOLEAN NOT NULL DEFAULT FALSE,
-    quiz_permissions JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(quiz_permissions) = 'object'),
-    app_access JSONB NOT NULL DEFAULT '{"musico":"none","mdb":"none"}'::jsonb CHECK (jsonb_typeof(app_access) = 'object'),
+    app_access JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(app_access) = 'object'),
     created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires TIMESTAMPTZ,
     last_used_at TIMESTAMPTZ,
     revoked_at TIMESTAMPTZ
 );
 ALTER TABLE public.api_token ADD COLUMN IF NOT EXISTS app_access JSONB NOT NULL
-    DEFAULT '{"musico":"none","mdb":"none"}'::jsonb CHECK (jsonb_typeof(app_access) = 'object');
+    DEFAULT '{}'::jsonb CHECK (jsonb_typeof(app_access) = 'object');
+DO $migrate$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+        AND table_name = 'api_token' AND column_name = 'quiz_permissions') THEN
+        UPDATE public.api_token t SET app_access = jsonb_build_object(
+            'quiz', jsonb_build_object('all', CASE WHEN t.edit_owner_quizzes THEN 'edit'
+                WHEN t.read_owner_quizzes THEN 'read' ELSE 'none' END,
+                'resources', COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                    'id', entry.key::bigint, 'permission', entry.value))
+                    FROM jsonb_each_text(t.quiz_permissions) entry), '[]'::jsonb)),
+            'musico', jsonb_build_object('all', COALESCE(t.app_access->>'musico', 'none'),
+                'resources', '[]'::jsonb),
+            'mdb', jsonb_build_object('all', COALESCE(t.app_access->>'mdb', 'none'),
+                'resources', '[]'::jsonb));
+        ALTER TABLE public.api_token DROP COLUMN quiz_permissions;
+        ALTER TABLE public.api_token DROP COLUMN read_owner_quizzes;
+        ALTER TABLE public.api_token DROP COLUMN edit_owner_quizzes;
+    END IF;
+END $migrate$;
+ALTER TABLE public.api_token ALTER COLUMN app_access SET DEFAULT '{}'::jsonb;
 CREATE INDEX IF NOT EXISTS api_token_user_id_idx ON public.api_token (user_id, id DESC);
 
 CREATE TABLE IF NOT EXISTS public.mobile_session (
@@ -124,7 +140,7 @@ GRANT UPDATE (password, verified, role, deleting, approved_at, approved_by) ON T
 GRANT DELETE ON TABLE public."user" TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_token TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.api_token TO auth_api;
-GRANT UPDATE (last_used_at, revoked_at, read_owner_quizzes, edit_owner_quizzes, quiz_permissions, app_access) ON TABLE public.api_token TO auth_api;
+GRANT UPDATE (last_used_at, revoked_at, app_access, scopes) ON TABLE public.api_token TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.api_token_activity TO auth_api;
 GRANT SELECT, INSERT, UPDATE (access_hash, refresh_hash, previous_refresh_hash, previous_refresh_until,
     rotation_nonce, access_expires, refresh_expires, last_used_at, revoked_at)

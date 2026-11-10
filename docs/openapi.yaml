@@ -678,7 +678,7 @@ paths:
       tags: [Musico]
       operationId: getMusicoChanges
       summary: Get an initial library snapshot or changes after a cursor
-      description: Without `after`, returns a consistent snapshot of track metadata, playlists with ordered track IDs, and an opaque cursor. Save that cursor after applying the snapshot. With `after`, returns up to `limit` changes; advance to `next_cursor` only after applying the page, then repeat while `has_more` is true. A cursor that no longer identifies the same change-log entry returns 409 with `reset_required`; discard the cursor and fetch a new snapshot. Upsert entries identify objects to fetch from the track or playlist detail endpoint. Delete entries are tombstones. Audio bytes are fetched separately.
+      description: Without `after`, returns a consistent snapshot of track metadata, playlists with ordered track IDs, and an opaque cursor. Save that cursor after applying the snapshot. With `after`, returns up to `limit` changes; advance to `next_cursor` only after applying the page, then repeat while `has_more` is true. A cursor that no longer identifies the same change-log entry returns 409 with `reset_required`; discard the cursor and fetch a new snapshot. Upsert entries identify objects to fetch from the track or playlist detail endpoint. Delete entries are tombstones. Audio bytes are fetched separately. API tokens with selected-playlist grants use the list endpoints; the change feed requires an all-playlist grant.
       security:
         - apiBearer: []
         - sessionCookie: []
@@ -1691,7 +1691,7 @@ paths:
       tags: [Authentication]
       operationId: createApiToken
       summary: Create a scoped API token
-      description: Browser session required. Creates a separate service account with the supplied name. The token secret is returned once. Quiz access can cover selected creator-owned quizzes or all current and future quizzes. App access can grant read or edit access to the creator's entire Musico library and MDB databases. Set `expires_in_days` to null for no expiry.
+      description: Browser session required. Creates a separate service account with the supplied name. The token secret is returned once. Access can cover selected creator-owned quizzes, playlists, and databases or all current and future resources in an app. Required app scopes are added automatically from access grants; optional scopes can give the service account access without a creator-data grant. Set `expires_in_days` to null for no expiry.
       security:
         - sessionCookie: []
       requestBody:
@@ -1700,16 +1700,14 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, scopes, expires_in_days]
+              required: [name, expires_in_days]
               properties:
                 name: {type: string, minLength: 1, maxLength: 100}
-                quiz_access: {$ref: '#/components/schemas/TokenQuizAccess'}
-                app_access: {$ref: '#/components/schemas/TokenAppAccess'}
+                access: {$ref: '#/components/schemas/TokenAccess'}
                 scopes:
                   type: array
-                  minItems: 1
                   uniqueItems: true
-                  items: {type: string, enum: ['quiz:read', 'quiz:write', 'musico:read', 'musico:write', 'mdb:read', 'mdb:write', 'media:read', 'media:write']}
+                  items: {type: string, pattern: '^[a-z][a-z0-9_]*:(read|write)$', description: Supported values are returned by GET /auth/token-capabilities.}
                 expires_in_days: {type: [integer, 'null'], minimum: 1, maximum: 365}
       responses:
         '201':
@@ -1729,6 +1727,55 @@ paths:
         '403': {description: Browser session required or account inactive.}
         '413': {description: Request body is too large.}
         '429': {description: At most 100 active tokens and 20 new tokens per account per day.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /auth/token-capabilities:
+    get:
+      tags: [Authentication]
+      operationId: getApiTokenCapabilities
+      summary: List token-enabled apps, scopes, and creator-owned resources
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Token policy and selectable resources for the current account.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apps, extra_scopes]
+                properties:
+                  apps:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, resource, read_scope, write_scope, read_label, write_label, resources]
+                      properties:
+                        id: {type: string}
+                        name: {type: string}
+                        resource: {type: string}
+                        read_scope: {type: string}
+                        write_scope: {type: string}
+                        read_label: {type: string}
+                        write_label: {type: string}
+                        resources:
+                          type: array
+                          items:
+                            type: object
+                            required: [id, name]
+                            properties:
+                              id: {type: integer, minimum: 1}
+                              name: {type: string}
+                  extra_scopes:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, label]
+                      properties:
+                        id: {type: string}
+                        label: {type: string}
+        '401': {description: No active session.}
+        '403': {description: Browser session required.}
         '500': {$ref: '#/components/responses/InternalError'}
 
   /auth/tokens/{tokenId}:
@@ -1789,7 +1836,7 @@ paths:
         '404': {description: Token not found.}
         '500': {$ref: '#/components/responses/InternalError'}
 
-  /auth/tokens/{tokenId}/quiz-access:
+  /auth/tokens/{tokenId}/access:
     parameters:
       - name: tokenId
         in: path
@@ -1797,9 +1844,9 @@ paths:
         schema: {type: integer, minimum: 1}
     patch:
       tags: [Authentication]
-      operationId: updateApiTokenQuizAccess
-      summary: Change a token's access to the creator's quizzes
-      description: Creator's browser session required. Read grants require quiz:read; edit grants require quiz:read and quiz:write. Edit grants cannot delete the quiz.
+      operationId: updateApiTokenAccess
+      summary: Change a token's access to creator-owned app resources
+      description: Creator's browser session required. Read and edit grants automatically add the matching app scopes. Existing scopes remain available for the service account when grants are removed. Selected Musico playlists also grant access to their songs. Editing a song affects every playlist containing it.
       security:
         - sessionCookie: []
       requestBody:
@@ -1808,49 +1855,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [quiz_access]
+              required: [access]
               properties:
-                quiz_access: {$ref: '#/components/schemas/TokenQuizAccess'}
-      responses:
-        '200':
-          description: Updated quiz access.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [quiz_access]
-                properties:
-                  quiz_access: {$ref: '#/components/schemas/TokenQuizAccess'}
-        '400': {description: Invalid quiz access or scope mismatch.}
-        '401': {description: No active session.}
-        '403': {description: Browser session required.}
-        '404': {description: Token not found.}
-        '409': {description: Token is revoked or expired.}
-        '413': {description: Request body is too large.}
-        '500': {$ref: '#/components/responses/InternalError'}
-
-  /auth/tokens/{tokenId}/app-access:
-    parameters:
-      - name: tokenId
-        in: path
-        required: true
-        schema: {type: integer, minimum: 1}
-    patch:
-      tags: [Authentication]
-      operationId: updateApiTokenAppAccess
-      summary: Change a token's access to the creator's Musico and MDB data
-      description: Creator's browser session required. Read grants require the app's read scope; edit grants require its read and write scopes.
-      security:
-        - sessionCookie: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [app_access]
-              properties:
-                app_access: {$ref: '#/components/schemas/TokenAppAccess'}
+                access: {$ref: '#/components/schemas/TokenAccess'}
       responses:
         '200':
           description: Updated app access.
@@ -1858,10 +1865,13 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [app_access]
+                required: [access, scopes]
                 properties:
-                  app_access: {$ref: '#/components/schemas/TokenAppAccess'}
-        '400': {description: Invalid app access or scope mismatch.}
+                  access: {$ref: '#/components/schemas/TokenAccess'}
+                  scopes:
+                    type: array
+                    items: {type: string}
+        '400': {description: Invalid resource access.}
         '401': {description: No active session.}
         '403': {description: Browser session required.}
         '404': {description: Token not found.}
@@ -2523,7 +2533,7 @@ paths:
       tags: [Media]
       operationId: uploadImage
       summary: Upload or reuse a personal image
-      description: PNG, JPEG, or WebP, at most 6 MiB and 4096 pixels per side. A mobile access token can upload to its owner's personal library. An API token with app edit access and media:write can set `for=musico` or `for=mdb` to upload into its creator's library. If identical bytes exist in the shared library, returns the shared entry without charging personal quota. Otherwise personal storage is limited to 1024 images and 64 MiB across apps.
+      description: PNG, JPEG, or WebP, at most 6 MiB and 4096 pixels per side. A mobile access token can upload to its owner's personal library. An API token with app edit access and media:write can set `for=musico` or `for=mdb` to upload into its creator's library. A selected-resource grant also requires resource_id. If identical bytes exist in the shared library, returns the shared entry without charging personal quota. Otherwise personal storage is limited to 1024 images and 64 MiB across apps.
       security:
         - sessionCookie: []
         - apiBearer: []
@@ -2531,8 +2541,12 @@ paths:
       parameters:
         - name: for
           in: query
-          schema: {type: string, enum: [musico, mdb]}
+          schema: {type: string, pattern: '^[a-z][a-z0-9_]*$'}
           description: For an API token with app edit access, choose the creator's image library for that app.
+        - name: resource_id
+          in: query
+          schema: {type: integer, minimum: 1}
+          description: Required for a selected-resource app grant; omit for an all-resource edit grant.
         - name: X-Image-Name
           in: header
           required: true
@@ -4876,42 +4890,43 @@ components:
             `YYYY-MM-DD HH:MM:SS`. No timezone or UTC guarantee is encoded;
             clients should not parse it as an instant without an agreed timezone.
           example: '2026-10-26 14:30:00'
-    TokenQuizAccess:
+    TokenResourceAccess:
       type: object
-      required: [all, quizzes]
+      required: [all, resources]
+      additionalProperties: false
       properties:
         all: {type: string, enum: [none, read, edit]}
-        quizzes:
+        resources:
           type: array
-          maxItems: 100
+          maxItems: 1000
           items:
             type: object
             required: [id, permission]
+            additionalProperties: false
             properties:
               id: {type: integer, minimum: 1}
               permission: {type: string, enum: [read, edit]}
-      description: When all is read or edit, quizzes must be empty. When all is none, quizzes lists selected creator-owned quizzes.
-    TokenAppAccess:
+      description: When all is read or edit, resources must be empty. Otherwise resources lists individually selected creator-owned items.
+    TokenAccess:
       type: object
-      required: [musico, mdb]
-      additionalProperties: false
+      additionalProperties: {$ref: '#/components/schemas/TokenResourceAccess'}
       properties:
-        musico: {type: string, enum: [none, read, edit]}
-        mdb: {type: string, enum: [none, read, edit]}
-      description: Grants to the token creator's entire current and future Musico library or MDB databases. Without a grant, the token uses its own service-account data.
+        quiz: {$ref: '#/components/schemas/TokenResourceAccess'}
+        musico: {$ref: '#/components/schemas/TokenResourceAccess'}
+        mdb: {$ref: '#/components/schemas/TokenResourceAccess'}
+      description: Keys are token-enabled app IDs. Omitted apps have no access to creator-owned data. The service account can still use its own data.
     ApiToken:
       type: object
-      required: [id, name, user_id, username, quiz_access, app_access, scopes, created, expires, last_used_at, revoked_at]
+      required: [id, name, user_id, username, access, scopes, created, expires, last_used_at, revoked_at]
       properties:
         id: {type: integer, minimum: 1}
         name: {type: string}
         user_id: {type: integer, minimum: 1}
         username: {type: string}
-        quiz_access: {$ref: '#/components/schemas/TokenQuizAccess'}
-        app_access: {$ref: '#/components/schemas/TokenAppAccess'}
+        access: {$ref: '#/components/schemas/TokenAccess'}
         scopes:
           type: array
-          items: {type: string, enum: ['quiz:read', 'quiz:write', 'musico:read', 'musico:write', 'mdb:read', 'mdb:write', 'media:read', 'media:write']}
+          items: {type: string, pattern: '^[a-z][a-z0-9_]*:(read|write)$'}
         created: {type: string, format: date-time}
         expires: {type: [string, 'null'], format: date-time}
         last_used_at: {type: [string, 'null'], format: date-time}

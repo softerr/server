@@ -22,8 +22,7 @@ function handleReadiness(): never
             u.account_kind, u.service_owner_id, u.display_name,
             t.hash, t.email_attempted_at, o.token_id, o.available_at, o.claimed_until, o.claim_id,
             a.applicant_id, a.recipient_id, a.available_at, a.claim_id,
-            api.token_hash, api.read_owner_quizzes, api.edit_owner_quizzes,
-            api.quiz_permissions, api.app_access, activity.token_id, activity.status,
+            api.token_hash, api.app_access, activity.token_id, activity.status,
             mobile.access_hash, mobile.refresh_hash, mobile.previous_refresh_hash,
             mobile.previous_refresh_until, mobile.rotation_nonce, mobile.password_fingerprint,
             mobile.access_expires, mobile.refresh_expires, mobile.revoked_at
@@ -60,6 +59,11 @@ function handleReadiness(): never
     }
     if (@pg_query($mediaDb, 'SELECT id, name FROM public.media_group LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media database schema is not ready']);
+    }
+    if (@pg_query($mediaDb,
+        'SELECT service_auth_user_id, app, resource_id, image_id
+         FROM public.api_token_image_access LIMIT 0') === false) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Media token image grants are not ready']);
     }
     if (@pg_query($mediaDb, 'SELECT id, quiz_id, image_ids FROM public.quiz_import_recovery LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media database schema is not ready']);

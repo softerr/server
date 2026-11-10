@@ -319,13 +319,18 @@ function handleUploadImage(): never
 {
     $user = currentSessionUser();
     $forApp = $_GET['for'] ?? null;
+    $serviceId = null;
+    $resourceId = null;
     if ($forApp !== null) {
-        if (!is_string($forApp) || !in_array($forApp, ['musico', 'mdb'], true)
-            || !isset($user['api_token_id'])
-            || ($user['owner_app_access'][$forApp] ?? 'none') !== 'edit') {
+        $resourceId = isset($_GET['resource_id'])
+            ? filter_var($_GET['resource_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) : null;
+        if (!is_string($forApp) || !(TOKEN_APPS[$forApp]['owner_image_upload'] ?? false)
+            || !isset($user['api_token_id']) || $resourceId === false
+            || tokenOwnerAccess($user, $forApp, $resourceId, true) === null) {
             respond(403, ['error' => 'API token cannot upload to the owner image library']);
         }
-        $user = appAccessUser($user, $forApp, true);
+        $serviceId = (int) $user['id'];
+        $user = appAccessUser($user, $forApp, true, $resourceId);
     }
     [$name, $bytes, $mime, $width, $height] = readMediaUpload();
     $db = connectMediaDb();
@@ -334,6 +339,13 @@ function handleUploadImage(): never
     if ($lock === false) respond(500, ['error' => 'Failed to save image']);
     ensureMediaAccountActive((int) $user['id']);
     $image = saveMediaImage($db, (int) $user['id'], $name, $bytes, $mime, $width, $height);
+    if ($serviceId !== null && @pg_query_params($db,
+        'INSERT INTO public.api_token_image_access
+            (service_auth_user_id, app, resource_id, image_id)
+         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+        [$serviceId, $forApp, $resourceId ?? 0, $image['id']]) === false) {
+        respond(500, ['error' => 'Failed to record token image access']);
+    }
     if (@pg_query($db, 'COMMIT') === false) respond(500, ['error' => 'Failed to save image']);
     respond(201, $image);
 }
@@ -458,28 +470,9 @@ function imageUsedByReadableOwnerQuiz(int $imageId, array $user): bool
 
 function imageUsedByReadableOwnerApp(int $imageId, array $user): bool
 {
-    $ownerId = $user['service_owner_id'] ?? null;
-    if ($ownerId === null) return false;
-    if (($user['owner_app_access']['musico'] ?? 'none') !== 'none') {
-        $result = @pg_query_params(connectMusicoDb(),
-            'SELECT 1 FROM public.track t JOIN public."user" u ON u.id = t.user_id
-             WHERE u.auth_user_id = $1 AND t.art_image_id = $2 LIMIT 1',
-            [$ownerId, $imageId]);
-        if ($result === false) respond(500, ['error' => 'Failed to check Musico image']);
-        if (pg_num_rows($result) > 0) return true;
-    }
-    if (($user['owner_app_access']['mdb'] ?? 'none') !== 'none') {
-        $result = @pg_query_params(connectMdbDb(),
-            'SELECT 1 FROM public.database_cell v
-             JOIN public.database_column c ON c.id = v.column_id AND c.database_id = v.database_id
-             JOIN public.user_database d ON d.id = v.database_id
-             JOIN public."user" u ON u.id = d.user_id
-             WHERE u.auth_user_id = $1 AND c.type = \'image\' AND v.value = $2::text LIMIT 1',
-            [$ownerId, $imageId]);
-        if ($result === false) respond(500, ['error' => 'Failed to check MDB image']);
-        if (pg_num_rows($result) > 0) return true;
-    }
-    return false;
+    return tokenUploadedOwnerImage($imageId, $user)
+        || tokenReferencedOwnerImage($imageId, $user, 'musico')
+        || tokenReferencedOwnerImage($imageId, $user, 'mdb');
 }
 
 function storedMediaThumbnail($db, array $row): array

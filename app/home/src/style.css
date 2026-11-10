@@ -92,7 +92,7 @@
 .tokens-table td:last-child { text-align: right; }
 .tokens-table td:last-child .text-button + .text-button { margin-left: 8px; }
 .token-dialog[data-activity-dialog] { width: min(760px, calc(100vw - 32px)); max-height: min(80vh, 720px); }
-.token-dialog[data-create-dialog], .token-dialog[data-access-dialog], .token-dialog[data-app-access-dialog] { width: min(560px, calc(100vw - 32px)); max-height: min(85vh, 760px); }
+.token-dialog[data-create-dialog], .token-dialog[data-access-dialog] { width: min(560px, calc(100vw - 32px)); max-height: min(85vh, 760px); overflow-y: auto; }
 .token-dialog[data-reveal-dialog] { width: min(560px, calc(100vw - 32px)); }
 .token-reveal-content { display: grid; gap: 16px; margin-bottom: 20px; }
 .token-reveal-content > p { margin: 0; }
@@ -103,18 +103,19 @@
 .token-dialog form { display: grid; gap: 16px; }
 .token-dialog .field select { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--field); color: var(--text-h); font: inherit; }
 .token-dialog .field select:focus-visible { outline: 1px solid var(--accent); border-color: var(--accent); }
+.token-access-description { margin: 0; color: var(--text-grey); font-size: 14px; }
 .token-scopes { margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 4px; }
 .token-scopes legend { padding: 0 5px; color: var(--text-h); font-size: 13px; font-weight: 800; text-transform: uppercase; }
 .token-scopes > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .token-scopes label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .token-scopes input { accent-color: var(--accent); }
-.token-quiz-access { display: grid; gap: 10px; }
-.token-app-access { display: grid; gap: 10px; }
-.token-quiz-list { max-height: 230px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; }
-.token-quiz-list > label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-.token-quiz-list > label:last-child { border-bottom: 0; }
-.token-quiz-list > label span { min-width: 0; overflow-wrap: anywhere; }
-.token-quiz-list select { flex: 0 0 110px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 4px; background: var(--field); color: var(--text-h); font: inherit; }
+.token-app-access { display: grid; gap: 18px; }
+.token-app-access section { display: grid; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.token-resource-list { max-height: 230px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; }
+.token-resource-list > label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.token-resource-list > label:last-child { border-bottom: 0; }
+.token-resource-list > label span { min-width: 0; overflow-wrap: anywhere; }
+.token-resource-list select { flex: 0 0 110px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 4px; background: var(--field); color: var(--text-h); font: inherit; }
 .token-dialog [data-revealed-token] { font-family: monospace; font-size: 13px; }
 
 @media (max-width: 480px) {

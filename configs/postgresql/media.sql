@@ -41,6 +41,16 @@ CREATE INDEX IF NOT EXISTS image_group_id_idx
 CREATE INDEX IF NOT EXISTS image_shared_name_idx
     ON public.image (lower(original_name), id) WHERE shared = TRUE;
 
+CREATE TABLE IF NOT EXISTS public.api_token_image_access (
+    service_auth_user_id BIGINT NOT NULL,
+    app VARCHAR(32) NOT NULL,
+    resource_id BIGINT NOT NULL DEFAULT 0 CHECK (resource_id >= 0),
+    image_id BIGINT NOT NULL REFERENCES public.image(id) ON DELETE CASCADE,
+    PRIMARY KEY (service_auth_user_id, app, resource_id, image_id)
+);
+CREATE INDEX IF NOT EXISTS api_token_image_access_image_idx
+    ON public.api_token_image_access (image_id, service_auth_user_id);
+
 CREATE TABLE IF NOT EXISTS public.image_source (
     image_id BIGINT PRIMARY KEY REFERENCES public.image(id) ON DELETE CASCADE,
     source_page TEXT NOT NULL,
@@ -82,6 +92,7 @@ GRANT SELECT, INSERT, DELETE ON TABLE public.image_blob TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.audio_file TO auth_api;
 GRANT UPDATE (thumbnail_content, thumbnail_mime_type) ON TABLE public.image_blob TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.image TO auth_api;
+GRANT SELECT, INSERT, DELETE ON TABLE public.api_token_image_access TO auth_api;
 GRANT UPDATE (owner_auth_user_id, shared, group_id, original_name) ON TABLE public.image TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.media_group TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.image_source TO auth_api;

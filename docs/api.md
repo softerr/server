@@ -303,38 +303,39 @@ backups, or admin-only media actions. A malformed or revoked bearer token is
 rejected even when the request also carries a valid session cookie. Deleting
 the human owner blocks and removes its service accounts and tokens.
 
-By default, a service account sees only its own quizzes and public quizzes.
-Set `quiz_access` to grant access to the creator's quizzes. Use
-`{"all":"read","quizzes":[]}` or `{"all":"edit","quizzes":[]}` for every
-current and future quiz. To choose individual quizzes, use
-`{"all":"none","quizzes":[{"id":123,"permission":"read"},{"id":456,"permission":"edit"}]}`.
-Selected quizzes must belong to the token creator. Read access requires
-`quiz:read`; edit access requires both `quiz:read` and `quiz:write`. Edit grants
-allow changing quiz settings and questions, but not deleting the quiz. Quiz
-grants do not expose the creator's other private data. Existing token grants
-can be changed with `PATCH /api/auth/tokens/{tokenId}/quiz-access` using the
-same `quiz_access` object. Set `expires_in_days` to `null` for no expiry.
+By default, a service account sees only its own resources and public quizzes.
+Use the same `access` format for Quiz quizzes, Musico playlists, and MDB
+databases. Each app accepts `{"all":"read","resources":[]}` or
+`{"all":"edit","resources":[]}` for every current and future resource. For
+individual resources, use
+`{"all":"none","resources":[{"id":123,"permission":"read"},{"id":456,"permission":"edit"}]}`.
+Selected IDs must belong to the token creator. A read grant automatically adds
+the app's `:read` scope; an edit grant adds both `:read` and `:write`. Omit an app
+from `access` to give it no creator-data grant. `GET /api/auth/token-capabilities`
+returns the available apps, scopes, and selectable resource IDs. Change grants
+with `PATCH /api/auth/tokens/{tokenId}/access`; newly required scopes are added
+to the token, while existing scopes remain available for its service account.
+Set `expires_in_days` to
+`null` for no expiry.
 
-Musico and MDB tokens can also work with their creator's existing data. Set
-`app_access` to `{"musico":"read","mdb":"edit"}` when creating a token, or
-change it with `PATCH /api/auth/tokens/{tokenId}/app-access`. Each app accepts
-`none`, `read`, or `edit`; a grant covers the creator's entire current and future
-Musico library or MDB databases. Read requires the app's `:read` scope. Edit
-requires both `:read` and `:write`. Without a grant, the token works with its
-service account's own app data. With a grant, app requests use the creator's
-data; `read` blocks mutations and `edit` permits them. The token's service
-account remains visible in its action log. Musico audio file requests under
-`/api/media/audio` follow the Musico grant and also require the matching media
-scope. To upload an image into the creator's media library for an app, use
-`POST /api/media/images?for=musico` or `?for=mdb` with app edit access and
-`media:write`. Images already referenced by an accessible Musico track or MDB
-cell can be fetched with `media:read`.
+Selected Musico playlists also expose their songs. Editing a song changes it
+in every playlist that contains it. A token cannot add an ungranted song to a
+selected playlist. The Musico change feed requires an all-playlist grant;
+use the list endpoints for selected playlists. Musico audio requests under
+`/api/media/audio` follow the playlist grant and require the matching media
+scope. To upload an image into the creator's media library, use
+`POST /api/media/images?for=musico&resource_id=123` for a selected playlist
+or `?for=mdb&resource_id=456` for a selected database, with edit and
+`media:write` access. Omit `resource_id` for an all-resource edit grant.
+Images referenced by an accessible song or MDB cell can be fetched with
+`media:read`. A token cannot attach an unrelated personal image by guessing
+its ID. Quiz edit grants cannot delete creator-owned quizzes.
 
 Example for a signed-in user whose session is saved in a cookie jar:
 
 ```bash
 curl -b cookies.txt -H 'Content-Type: application/json' \
-  -d '{"name":"Quiz automation","scopes":["quiz:read","quiz:write"],"quiz_access":{"all":"read","quizzes":[]},"expires_in_days":30}' \
+  -d '{"name":"Quiz automation","access":{"quiz":{"all":"read","resources":[]}},"expires_in_days":30}' \
   https://YOUR_HOST/api/auth/tokens
 ```
 

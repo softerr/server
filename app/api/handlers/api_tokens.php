@@ -1,87 +1,57 @@
 <?php
 declare(strict_types=1);
 
-const API_TOKEN_SCOPES = ['quiz:read', 'quiz:write', 'musico:read', 'musico:write',
-    'mdb:read', 'mdb:write', 'media:read', 'media:write'];
-const API_TOKEN_MAX_QUIZ_GRANTS = 1000;
+require_once __DIR__ . '/../lib/token_apps.php';
+const API_TOKEN_MAX_RESOURCE_GRANTS = 1000;
 
-function validatedAppAccess(mixed $input, array $scopes): array
+function validatedTokenAccess(int $ownerId, mixed $input): array
 {
-    if (!is_array($input) || count($input) !== 2
-        || !array_key_exists('musico', $input) || !array_key_exists('mdb', $input)) {
-        respond(400, ['error' => 'Invalid app access']);
+    if (!is_array($input) || count(array_diff(array_keys($input), array_keys(TOKEN_APPS))) !== 0) {
+        respond(400, ['error' => 'Invalid token access']);
     }
-    foreach (['musico', 'mdb'] as $app) {
-        $access = $input[$app];
-        if (!is_string($access) || !in_array($access, ['none', 'read', 'edit'], true)) {
-            respond(400, ['error' => 'Invalid app access']);
+    $access = emptyTokenAccess();
+    foreach (TOKEN_APPS as $app => $_) {
+        $grant = $input[$app] ?? $access[$app];
+        if (!is_array($grant) || count($grant) !== 2
+            || !in_array($grant['all'] ?? null, ['none', 'read', 'edit'], true)
+            || !is_array($grant['resources'] ?? null) || !array_is_list($grant['resources'])
+            || count($grant['resources']) > API_TOKEN_MAX_RESOURCE_GRANTS
+            || ($grant['all'] !== 'none' && $grant['resources'] !== [])) {
+            respond(400, ['error' => "Invalid $app access"]);
         }
-        if ($access !== 'none' && !in_array("{$app}:read", $scopes, true)) {
-            respond(400, ['error' => 'App access requires matching read scope']);
+        $seen = [];
+        foreach ($grant['resources'] as $resource) {
+            if (!is_array($resource) || count($resource) !== 2
+                || !is_int($resource['id'] ?? null) || $resource['id'] < 1
+                || !in_array($resource['permission'] ?? null, ['read', 'edit'], true)
+                || isset($seen[$resource['id']])) {
+                respond(400, ['error' => "Invalid $app access"]);
+            }
+            $seen[$resource['id']] = true;
         }
-        if ($access === 'edit' && !in_array("{$app}:write", $scopes, true)) {
-            respond(400, ['error' => 'App edit access requires matching write scope']);
+        if ($seen !== []) {
+            $owned = array_column(tokenAccessResources($app, $ownerId), null, 'id');
+            foreach (array_keys($seen) as $id) {
+                if (!isset($owned[$id])) respond(400, ['error' => "$app access includes a resource you do not own"]);
+            }
         }
+        $access[$app] = $grant;
     }
-    return $input;
+    return $access;
 }
 
-function publicAppAccess(array $row): array
+function scopesForTokenAccess(array $access): array
 {
-    $access = json_decode($row['app_access'], true) ?: [];
-    return ['musico' => $access['musico'] ?? 'none', 'mdb' => $access['mdb'] ?? 'none'];
-}
-
-function validatedQuizAccess(int $ownerId, mixed $input, array $scopes): array
-{
-    if (!is_array($input) || !is_string($input['all'] ?? null)
-        || !in_array($input['all'], ['none', 'read', 'edit'], true)
-        || !is_array($input['quizzes'] ?? null) || !array_is_list($input['quizzes'])
-        || count($input['quizzes']) > API_TOKEN_MAX_QUIZ_GRANTS
-        || ($input['all'] !== 'none' && $input['quizzes'] !== [])) {
-        respond(400, ['error' => 'Invalid quiz access']);
-    }
-    $permissions = [];
-    foreach ($input['quizzes'] as $grant) {
-        if (!is_array($grant) || !is_int($grant['id'] ?? null) || $grant['id'] < 1
-            || !in_array($grant['permission'] ?? null, ['read', 'edit'], true)
-            || isset($permissions[(string) $grant['id']])) {
-            respond(400, ['error' => 'Invalid quiz access']);
-        }
-        $permissions[(string) $grant['id']] = $grant['permission'];
-    }
-    $needsRead = $input['all'] !== 'none' || $permissions !== [];
-    $needsEdit = $input['all'] === 'edit' || in_array('edit', $permissions, true);
-    if (($needsRead && !in_array('quiz:read', $scopes, true))
-        || ($needsEdit && !in_array('quiz:write', $scopes, true))) {
-        respond(400, ['error' => 'Quiz access requires matching quiz scopes']);
-    }
-    if ($permissions !== []) {
-        $quizDb = connectQuizDb();
-        $result = @pg_query_params($quizDb,
-            'SELECT COUNT(*) FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
-             WHERE u.auth_user_id = $1 AND q.id = ANY($2::bigint[])',
-            [$ownerId, '{' . implode(',', array_keys($permissions)) . '}']);
-        if ($result === false) respond(500, ['error' => 'Failed to validate quiz access']);
-        if ((int) pg_fetch_result($result, 0, 0) !== count($permissions)) {
-            respond(400, ['error' => 'Quiz access includes a quiz you do not own']);
+    $scopes = [];
+    foreach (TOKEN_APPS as $app => $_) {
+        $grant = $access[$app];
+        if ($grant['all'] !== 'none' || $grant['resources'] !== []) $scopes[] = "$app:read";
+        if ($grant['all'] === 'edit'
+            || in_array('edit', array_column($grant['resources'], 'permission'), true)) {
+            $scopes[] = "$app:write";
         }
     }
-    return [$input['all'] === 'read', $input['all'] === 'edit', $permissions];
-}
-
-function publicQuizAccess(array $row): array
-{
-    $permissions = json_decode($row['quiz_permissions'], true) ?: [];
-    $quizzes = [];
-    foreach ($permissions as $id => $permission) {
-        $quizzes[] = ['id' => (int) $id, 'permission' => $permission];
-    }
-    return [
-        'all' => $row['edit_owner_quizzes'] === 't' ? 'edit'
-            : ($row['read_owner_quizzes'] === 't' ? 'read' : 'none'),
-        'quizzes' => $quizzes,
-    ];
+    return $scopes;
 }
 
 function tokenTimestamp(?string $value): ?string
@@ -106,8 +76,7 @@ function publicApiToken(array $row): array
         'name' => $row['name'],
         'user_id' => (int) $row['user_id'],
         'username' => $row['username'],
-        'quiz_access' => publicQuizAccess($row),
-        'app_access' => publicAppAccess($row),
+        'access' => json_decode($row['app_access'], true) ?: emptyTokenAccess(),
         'scopes' => json_decode($row['scopes'], true),
         'created' => tokenTimestamp($row['created']),
         'expires' => tokenTimestamp($row['expires']),
@@ -122,8 +91,7 @@ function handleListApiTokens(): never
     $db = connectDb();
     $result = @pg_query_params($db,
         'SELECT t.id, t.name, t.user_id, u.display_name AS username,
-                t.scopes, t.read_owner_quizzes, t.edit_owner_quizzes, t.quiz_permissions,
-                t.app_access,
+                t.scopes, t.app_access,
                 t.created, t.expires, t.last_used_at, t.revoked_at
          FROM public.api_token t JOIN public."user" u ON u.id = t.user_id
          WHERE t.created_by = $1
@@ -141,18 +109,17 @@ function handleCreateApiToken(): never
     $owner = requireTokenOwner();
     $payload = readJsonBody(262144);
     $name = $payload['name'] ?? null;
-    $scopes = $payload['scopes'] ?? null;
+    $scopes = $payload['scopes'] ?? [];
     $days = $payload['expires_in_days'] ?? null;
-    $quizAccess = $payload['quiz_access'] ?? ['all' => 'none', 'quizzes' => []];
-    $appAccess = $payload['app_access'] ?? ['musico' => 'none', 'mdb' => 'none'];
+    $access = $payload['access'] ?? emptyTokenAccess();
     if ($payload === null || !array_key_exists('expires_in_days', $payload)
         || !is_string($name) || trim($name) === '' || strlen(trim($name)) > 100
         || preg_match('//u', $name) !== 1
         || preg_match('/[\x00-\x1F\x7F]/u', $name) === 1
-        || !is_array($scopes) || !array_is_list($scopes) || $scopes === []
-        || count($scopes) > count(API_TOKEN_SCOPES)
+        || !is_array($scopes) || !array_is_list($scopes)
+        || count($scopes) > count(tokenScopes())
         || count(array_filter($scopes, static fn ($scope) => is_string($scope)
-            && in_array($scope, API_TOKEN_SCOPES, true))) !== count($scopes)
+            && in_array($scope, tokenScopes(), true))) !== count($scopes)
         || count(array_unique($scopes)) !== count($scopes)
         || ($days !== null && (!is_int($days) || $days < 1 || $days > 365))) {
         respond(400, ['error' => 'Invalid token name, scopes, or expiry']);
@@ -176,8 +143,9 @@ function handleCreateApiToken(): never
     if ((int) $counts['active'] >= 100 || (int) $counts['recent'] >= 20) {
         respond(429, ['error' => 'API token limit reached']);
     }
-    [$allRead, $allEdit, $permissions] = validatedQuizAccess((int) $owner['id'], $quizAccess, $scopes);
-    $appAccess = validatedAppAccess($appAccess, $scopes);
+    $access = validatedTokenAccess((int) $owner['id'], $access);
+    $scopes = array_values(array_unique([...$scopes, ...scopesForTokenAccess($access)]));
+    if ($scopes === []) respond(400, ['error' => 'Choose at least one token permission']);
     $service = @pg_query_params($db,
         'INSERT INTO public."user"
             (username, account_kind, service_owner_id, display_name, verified, approved_at)
@@ -187,15 +155,13 @@ function handleCreateApiToken(): never
     $serviceId = pg_fetch_result($service, 0, 0);
     $token = 'sat_' . rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
     $result = @pg_query_params($db,
-        'INSERT INTO public.api_token (user_id, created_by, name, token_hash, scopes, expires,
-            read_owner_quizzes, edit_owner_quizzes, quiz_permissions, app_access)
+        'INSERT INTO public.api_token (user_id, created_by, name, token_hash, scopes, expires, app_access)
          VALUES ($1, $2, $3, $4, $5::jsonb, CURRENT_TIMESTAMP + ($6::int * INTERVAL \'1 day\'),
-            $7, $8, $9::jsonb, $10::jsonb)
+            $7::jsonb)
          RETURNING id, created, expires',
         [$serviceId, $owner['id'], trim($name), hash('sha256', $token),
-         json_encode($scopes, JSON_THROW_ON_ERROR), $days, $allRead ? 't' : 'f', $allEdit ? 't' : 'f',
-         json_encode((object) $permissions, JSON_THROW_ON_ERROR),
-         json_encode($appAccess, JSON_THROW_ON_ERROR)]);
+         json_encode($scopes, JSON_THROW_ON_ERROR), $days,
+         json_encode($access, JSON_THROW_ON_ERROR)]);
     if ($result === false || @pg_query($db, 'COMMIT') === false) {
         respond(500, ['error' => 'Failed to create API token']);
     }
@@ -219,71 +185,53 @@ function handleRevokeApiToken(int $tokenId): never
     exit;
 }
 
-function handleUpdateApiTokenQuizAccess(int $tokenId): never
+function handleTokenCapabilities(): never
 {
     $owner = requireTokenOwner();
-    $payload = readJsonBody(262144);
-    if ($payload === null || !array_key_exists('quiz_access', $payload)) {
-        respond(400, ['error' => 'Quiz access is required']);
+    $apps = [];
+    foreach (TOKEN_APPS as $id => $definition) {
+        $apps[] = ['id' => $id, 'name' => $definition['name'],
+            'resource' => $definition['resource'],
+            'read_scope' => "$id:read", 'write_scope' => "$id:write",
+            'read_label' => $definition['read'], 'write_label' => $definition['write'],
+            'resources' => tokenAccessResources($id, (int) $owner['id'])];
     }
-    $db = connectDb();
-    if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to update quiz access']);
-    $result = @pg_query_params($db,
-        'SELECT scopes, revoked_at, expires FROM public.api_token
-         WHERE id = $1 AND created_by = $2 FOR UPDATE', [$tokenId, $owner['id']]);
-    if ($result === false) respond(500, ['error' => 'Failed to update quiz access']);
-    $token = pg_fetch_assoc($result);
-    if ($token === false) respond(404, ['error' => 'API token not found']);
-    if ($token['revoked_at'] !== null || ($token['expires'] !== null
-        && new DateTimeImmutable($token['expires']) <= new DateTimeImmutable())) {
-        respond(409, ['error' => 'Token is no longer active']);
-    }
-    $scopes = json_decode($token['scopes'], true);
-    [$allRead, $allEdit, $permissions] = validatedQuizAccess(
-        (int) $owner['id'], $payload['quiz_access'], $scopes ?: []);
-    $updated = @pg_query_params($db,
-        'UPDATE public.api_token SET read_owner_quizzes = $1,
-            edit_owner_quizzes = $2, quiz_permissions = $3::jsonb WHERE id = $4',
-        [$allRead ? 't' : 'f', $allEdit ? 't' : 'f',
-         json_encode((object) $permissions, JSON_THROW_ON_ERROR), $tokenId]);
-    if ($updated === false || @pg_query($db, 'COMMIT') === false) {
-        respond(500, ['error' => 'Failed to update quiz access']);
-    }
-    respond(200, ['quiz_access' => [
-        'all' => $allEdit ? 'edit' : ($allRead ? 'read' : 'none'),
-        'quizzes' => array_map(static fn ($id, $permission): array =>
-            ['id' => (int) $id, 'permission' => $permission],
-            array_keys($permissions), array_values($permissions)),
+    respond(200, ['apps' => $apps, 'extra_scopes' => [
+        ['id' => 'media:read', 'label' => 'Read media'],
+        ['id' => 'media:write', 'label' => 'Upload and edit media'],
     ]]);
 }
 
-function handleUpdateApiTokenAppAccess(int $tokenId): never
+function handleUpdateApiTokenAccess(int $tokenId): never
 {
     $owner = requireTokenOwner();
     $payload = readJsonBody(262144);
-    if ($payload === null || !array_key_exists('app_access', $payload)) {
-        respond(400, ['error' => 'App access is required']);
+    if ($payload === null || !array_key_exists('access', $payload)) {
+        respond(400, ['error' => 'Token access is required']);
     }
     $db = connectDb();
-    if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to update app access']);
+    if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to update token access']);
     $result = @pg_query_params($db,
         'SELECT scopes, revoked_at, expires FROM public.api_token
          WHERE id = $1 AND created_by = $2 FOR UPDATE', [$tokenId, $owner['id']]);
-    if ($result === false) respond(500, ['error' => 'Failed to update app access']);
+    if ($result === false) respond(500, ['error' => 'Failed to update token access']);
     $token = pg_fetch_assoc($result);
     if ($token === false) respond(404, ['error' => 'API token not found']);
     if ($token['revoked_at'] !== null || ($token['expires'] !== null
         && new DateTimeImmutable($token['expires']) <= new DateTimeImmutable())) {
         respond(409, ['error' => 'Token is no longer active']);
     }
-    $access = validatedAppAccess($payload['app_access'], json_decode($token['scopes'], true) ?: []);
+    $access = validatedTokenAccess((int) $owner['id'], $payload['access']);
+    $scopes = array_values(array_unique([
+        ...(json_decode($token['scopes'], true) ?: []), ...scopesForTokenAccess($access),
+    ]));
     $updated = @pg_query_params($db,
-        'UPDATE public.api_token SET app_access = $1::jsonb WHERE id = $2',
-        [json_encode($access, JSON_THROW_ON_ERROR), $tokenId]);
+        'UPDATE public.api_token SET app_access = $1::jsonb, scopes = $2::jsonb WHERE id = $3',
+        [json_encode($access, JSON_THROW_ON_ERROR), json_encode($scopes, JSON_THROW_ON_ERROR), $tokenId]);
     if ($updated === false || @pg_query($db, 'COMMIT') === false) {
-        respond(500, ['error' => 'Failed to update app access']);
+        respond(500, ['error' => 'Failed to update token access']);
     }
-    respond(200, ['app_access' => $access]);
+    respond(200, ['access' => $access, 'scopes' => $scopes]);
 }
 
 function handleApiTokenActivity(int $tokenId): never

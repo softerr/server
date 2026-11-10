@@ -11,14 +11,28 @@ require_once __DIR__ . '/apps/musico/handlers.php';
 
 $path = apiRequestPath('/api/musico');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$authUser = appAccessUser(currentSessionUser(), 'musico', $method !== 'GET');
+$requestUser = currentSessionUser();
+if (is_string($path) && preg_match('#^/playlists/([1-9][0-9]*)(?:/|$)#D', $path, $resourceMatch)) {
+    $authUser = appAccessUser($requestUser, 'musico', $method !== 'GET', (int) $resourceMatch[1]);
+} elseif (is_string($path) && preg_match('#^/tracks/([1-9][0-9]*)(?:/|$)#D', $path, $resourceMatch)) {
+    $authUser = musicoTrackAccessUser($requestUser, (int) $resourceMatch[1], $method !== 'GET');
+} else {
+    $authUser = appAccessUser($requestUser, 'musico', $method !== 'GET');
+}
 
 if ($path === '/me') {
     if ($method === 'PUT') handleMusicoMe($authUser);
     respond(405, ['error' => 'Method not allowed']);
 }
 if ($path === '/changes') {
-    if ($method === 'GET') handleMusicoChanges($authUser);
+    if ($method === 'GET') {
+        if (($requestUser['api_token_id'] ?? null) !== null
+            && tokenOwnerAccess($requestUser, 'musico') === null
+            && tokenOwnerResourceIds($requestUser, 'musico') !== []) {
+            respond(403, ['error' => 'Change feed requires access to all playlists']);
+        }
+        handleMusicoChanges($authUser);
+    }
     respond(405, ['error' => 'Method not allowed']);
 }
 if ($path === '/tracks') {

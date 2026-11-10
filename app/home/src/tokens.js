@@ -1,21 +1,5 @@
-const SCOPES = [
-  ['quiz:read', 'Read quizzes'],
-  ['quiz:write', 'Edit quizzes and attempts'],
-  ['musico:read', 'Read Musico'],
-  ['musico:write', 'Edit Musico'],
-  ['mdb:read', 'Read MDB'],
-  ['mdb:write', 'Edit MDB'],
-  ['media:read', 'Read media'],
-  ['media:write', 'Upload and edit media'],
-]
-
-function dateLabel(value) {
-  return value ? new Date(value).toLocaleString() : 'Never'
-}
-
-function isExpired(token) {
-  return token.expires !== null && new Date(token.expires) <= new Date()
-}
+const dateLabel = (value) => value ? new Date(value).toLocaleString() : 'Never'
+const expired = (token) => token.expires !== null && new Date(token.expires) <= new Date()
 
 export function renderTokens(app, { requestJson, responseError, setStatus }) {
   const page = app.querySelector('#page')
@@ -23,23 +7,20 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
     <main class="tokens-page">
       <div class="tokens-heading">
         <h1 class="section-title">API tokens</h1>
-        <button type="button" class="auth-button auth-button-primary" data-create-token>Create token</button>
+        <button type="button" class="auth-button auth-button-primary" data-create disabled>Create token</button>
       </div>
       <p class="tokens-description">Each token has its own service account. Its name identifies actions made with that token.</p>
-      <p class="form-status" data-tokens-status role="status" aria-live="polite">Loading tokens…</p>
-      <div class="tokens-table-wrap" data-tokens-table hidden>
-        <table class="tokens-table">
-          <thead><tr><th>Service account</th><th>Permissions</th><th>My quizzes</th><th>Musico</th><th>MDB</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr></thead>
-          <tbody data-tokens-body></tbody>
-        </table>
+      <p class="form-status" data-status role="status" aria-live="polite">Loading tokens…</p>
+      <div class="tokens-table-wrap" data-table hidden>
+        <table class="tokens-table"><thead data-head></thead><tbody data-body></tbody></table>
       </div>
       <dialog class="user-dialog token-dialog" data-create-dialog aria-labelledby="create-token-title">
         <h2 id="create-token-title">Create API token</h2>
-        <form data-token-form>
+        <form data-form>
           <label class="field"><span>Name</span><input name="name" maxlength="100" required placeholder="Automation name"></label>
-          <fieldset class="token-scopes"><legend>Permissions</legend><div data-scope-choices></div></fieldset>
-          <div class="token-quiz-access" data-create-access></div>
-          <div class="token-app-access" data-create-app-access></div>
+          <p class="token-access-description">A token can have its own quizzes, playlists, and databases, separate from yours. Choose which data it can use.</p>
+          <div class="token-app-access" data-create-access></div>
+          <fieldset class="token-scopes"><legend>Media permissions</legend><div data-media-scopes></div></fieldset>
           <label class="field"><span>Expires after</span><select name="expires_in_days">
             <option value="7">7 days</option><option value="30" selected>30 days</option>
             <option value="90">90 days</option><option value="365">365 days</option>
@@ -52,18 +33,9 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
           </div>
         </form>
       </dialog>
-      <dialog class="user-dialog token-dialog" data-app-access-dialog aria-labelledby="token-app-access-title">
-        <h2 id="token-app-access-title">App access</h2>
-        <div class="token-app-access" data-edit-app-access></div>
-        <p class="form-status" data-app-access-status role="status" aria-live="polite"></p>
-        <div class="user-dialog-actions">
-          <button type="button" class="auth-button auth-button-secondary" data-cancel-app-access>Cancel</button>
-          <button type="button" class="auth-button auth-button-primary" data-save-app-access>Save access</button>
-        </div>
-      </dialog>
       <dialog class="user-dialog token-dialog" data-access-dialog aria-labelledby="token-access-title">
-        <h2 id="token-access-title">Quiz access</h2>
-        <div class="token-quiz-access" data-edit-access></div>
+        <h2 id="token-access-title">App access</h2>
+        <div class="token-app-access" data-edit-access></div>
         <p class="form-status" data-access-status role="status" aria-live="polite"></p>
         <div class="user-dialog-actions">
           <button type="button" class="auth-button auth-button-secondary" data-cancel-access>Cancel</button>
@@ -78,8 +50,8 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
           <p class="form-status" data-copy-status role="status" aria-live="polite"></p>
         </div>
         <div class="user-dialog-actions">
-          <button type="button" class="auth-button auth-button-secondary" data-copy-token>Copy</button>
-          <button type="button" class="auth-button auth-button-primary" data-done-token>Done</button>
+          <button type="button" class="auth-button auth-button-secondary" data-copy>Copy</button>
+          <button type="button" class="auth-button auth-button-primary" data-done>Done</button>
         </div>
       </dialog>
       <dialog class="user-dialog token-dialog" data-activity-dialog aria-labelledby="token-activity-title">
@@ -91,157 +63,136 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
             <tbody data-activity-body></tbody>
           </table></div>
         </div>
-        <div class="user-dialog-actions"><button type="button" class="auth-button auth-button-secondary" data-close-activity>Close</button></div>
+        <div class="user-dialog-actions"><button type="button" class="auth-button auth-button-primary" data-close-activity>Close</button></div>
       </dialog>
-    </main>
-  `
-  const status = page.querySelector('[data-tokens-status]')
-  const table = page.querySelector('[data-tokens-table]')
-  const body = page.querySelector('[data-tokens-body]')
-  const createButton = page.querySelector('[data-create-token]')
+    </main>`
+
+  const status = page.querySelector('[data-status]')
+  const form = page.querySelector('[data-form]')
   const createDialog = page.querySelector('[data-create-dialog]')
-  const form = page.querySelector('[data-token-form]')
-  const createStatus = page.querySelector('[data-create-status]')
-  const revealDialog = page.querySelector('[data-reveal-dialog]')
-  const revealedToken = page.querySelector('[data-revealed-token]')
-  const copyStatus = page.querySelector('[data-copy-status]')
-  const activityDialog = page.querySelector('[data-activity-dialog]')
-  const activityStatus = page.querySelector('[data-activity-status]')
-  const activityBody = page.querySelector('[data-activity-body]')
   const accessDialog = page.querySelector('[data-access-dialog]')
-  const accessStatus = page.querySelector('[data-access-status]')
-  const appAccessDialog = page.querySelector('[data-app-access-dialog]')
-  const appAccessStatus = page.querySelector('[data-app-access-status]')
+  const revealDialog = page.querySelector('[data-reveal-dialog]')
+  const activityDialog = page.querySelector('[data-activity-dialog]')
+  const body = page.querySelector('[data-body]')
+  let apps = []
   let tokens = []
-  let quizzes = []
   let editingToken = null
   let busy = false
-
-  for (const [scope, label] of SCOPES) {
-    const choice = document.createElement('label')
-    const checkbox = document.createElement('input')
-    checkbox.type = 'checkbox'
-    checkbox.value = scope
-    checkbox.name = 'scope'
-    const text = document.createElement('span')
-    text.textContent = label
-    choice.append(checkbox, text)
-    form.querySelector('[data-scope-choices]').append(choice)
-  }
-  function accessLabel(access) {
-    if (access.all === 'read') return 'All · read'
-    if (access.all === 'edit') return 'All · edit'
-    if (!access.quizzes.length) return 'None'
-    return `${access.quizzes.length} selected`
-  }
-
-  function renderAppAccess(container, access = { musico: 'none', mdb: 'none' }, scopes = []) {
-    container.replaceChildren()
-    for (const [appName, label] of [['musico', 'Musico library'], ['mdb', 'MDB databases']]) {
-      const field = document.createElement('label')
-      field.className = 'field'
-      const caption = document.createElement('span')
-      caption.textContent = label
-      const select = document.createElement('select')
-      select.dataset.appAccess = appName
-      select.innerHTML = '<option value="none">No access to my data</option><option value="read">Read my data</option><option value="edit">Edit my data</option>'
-      select.value = access[appName] ?? 'none'
-      select.querySelector('[value="read"]').disabled = !scopes.includes(`${appName}:read`)
-      select.querySelector('[value="edit"]').disabled = !scopes.includes(`${appName}:read`) || !scopes.includes(`${appName}:write`)
-      if (select.selectedOptions[0]?.disabled) select.value = 'none'
-      field.append(caption, select)
-      container.append(field)
-    }
-  }
-
-  function collectAppAccess(container) {
-    return Object.fromEntries([...container.querySelectorAll('[data-app-access]')]
-      .map((select) => [select.dataset.appAccess, select.value]))
-  }
-
-  function renderAccess(container, access = { all: 'none', quizzes: [] }, scopes = null) {
-    container.replaceChildren()
-    const label = document.createElement('label')
-    label.className = 'field'
-    const caption = document.createElement('span')
-    caption.textContent = 'My quizzes'
-    const mode = document.createElement('select')
-    mode.innerHTML = '<option value="none">No access</option><option value="selected">Selected quizzes</option><option value="read">All quizzes · read</option><option value="edit">All quizzes · edit</option>'
-    mode.value = access.all === 'none' && access.quizzes.length ? 'selected' : access.all
-    label.append(caption, mode)
-    container.append(label)
-    const list = document.createElement('div')
-    list.className = 'token-quiz-list'
-    const selected = new Map(access.quizzes.map((quiz) => [quiz.id, quiz.permission]))
-    for (const quiz of quizzes) {
-      const row = document.createElement('label')
-      const name = document.createElement('span')
-      name.textContent = quiz.name
-      const permission = document.createElement('select')
-      permission.dataset.quizId = String(quiz.id)
-      permission.innerHTML = '<option value="none">No access</option><option value="read">Read</option><option value="edit">Edit</option>'
-      permission.value = selected.get(quiz.id) || 'none'
-      row.append(name, permission)
-      list.append(row)
-    }
-    if (!quizzes.length) list.textContent = 'No quizzes in your library.'
-    container.append(list)
-    const update = () => {
-      list.hidden = mode.value !== 'selected'
-      if (scopes) {
-        const hasRead = scopes.includes('quiz:read')
-        const hasWrite = scopes.includes('quiz:write')
-        mode.querySelector('[value="read"]').disabled = !hasRead
-        mode.querySelector('[value="edit"]').disabled = !hasRead || !hasWrite
-        mode.querySelector('[value="selected"]').disabled = !hasRead
-        for (const select of list.querySelectorAll('select')) {
-          select.querySelector('[value="read"]').disabled = !hasRead
-          select.querySelector('[value="edit"]').disabled = !hasRead || !hasWrite
-        }
-      }
-    }
-    mode.addEventListener('change', update)
-    update()
-  }
+  const scopes = (access) => [
+    ...apps.flatMap((entry) => {
+      const section = form.querySelector(`[data-app="${entry.id}"]`)
+      const mode = section.querySelector('[data-mode]').value
+      const grant = access[entry.id]
+      const read = mode === 'service-read' || mode === 'service-edit'
+        || grant.all !== 'none' || grant.resources.length > 0
+      const edit = mode === 'service-edit' || grant.all === 'edit'
+        || grant.resources.some((resource) => resource.permission === 'edit')
+      return read ? [entry.read_scope, ...(edit ? [entry.write_scope] : [])] : []
+    }),
+    ...[...form.querySelectorAll('[name="scope"]:checked')].map((input) => input.value),
+  ]
+  const emptyAccess = () => Object.fromEntries(apps.map(({ id }) => [id, { all: 'none', resources: [] }]))
 
   function collectAccess(container) {
-    const mode = container.querySelector('.field select').value
-    return { all: mode === 'selected' ? 'none' : mode,
-      quizzes: mode === 'selected' ? [...container.querySelectorAll('[data-quiz-id]')]
-        .filter((select) => select.value !== 'none')
-        .map((select) => ({ id: Number(select.dataset.quizId), permission: select.value })) : [] }
+    const access = {}
+    for (const entry of apps) {
+      const section = [...container.querySelectorAll('[data-app]')].find((item) => item.dataset.app === entry.id)
+      const mode = section.querySelector('[data-mode]').value
+      access[entry.id] = {
+        all: mode === 'selected' || mode.startsWith('service-') ? 'none' : mode,
+        resources: mode === 'selected'
+          ? [...section.querySelectorAll('[data-resource]')]
+            .filter((select) => select.value !== 'none')
+            .map((select) => ({ id: Number(select.dataset.resource), permission: select.value }))
+          : [],
+      }
+    }
+    return access
   }
 
-  function createScopes() {
-    return [...form.querySelectorAll('[name="scope"]:checked')].map((item) => item.value)
+  function renderAccess(container, access, choosePermissions = false) {
+    container.replaceChildren()
+    for (const entry of apps) {
+      const grant = access?.[entry.id] ?? { all: 'none', resources: [] }
+      const section = document.createElement('section')
+      section.dataset.app = entry.id
+      const label = document.createElement('label')
+      label.className = 'field'
+      const title = document.createElement('span')
+      title.textContent = choosePermissions ? `${entry.name} access` : `My ${entry.resource}`
+      const mode = document.createElement('select')
+      mode.dataset.mode = ''
+      const choices = [['none', 'No access']]
+      if (choosePermissions) choices.push(['service-read', 'This token’s own data · read'],
+        ['service-edit', 'This token’s own data · edit'])
+      choices.push(['selected', `Selected ${entry.resource}`],
+        ['read', `All my ${entry.resource} · read`], ['edit', `All my ${entry.resource} · edit`])
+      for (const [value, text] of choices) {
+        mode.add(new Option(text, value))
+      }
+      mode.value = grant.all === 'none' && grant.resources.length ? 'selected' : grant.all
+      label.append(title, mode)
+      section.append(label)
+      const list = document.createElement('div')
+      list.className = 'token-resource-list'
+      const selected = new Map(grant.resources.map((resource) => [resource.id, resource.permission]))
+      for (const resource of entry.resources) {
+        const row = document.createElement('label')
+        const name = document.createElement('span')
+        name.textContent = resource.name
+        const permission = document.createElement('select')
+        permission.dataset.resource = String(resource.id)
+        for (const value of ['none', 'read', 'edit']) permission.add(new Option(value === 'none' ? 'No access' : value, value))
+        permission.value = selected.get(resource.id) ?? 'none'
+        row.append(name, permission)
+        list.append(row)
+      }
+      if (!entry.resources.length) list.textContent = `No ${entry.resource} in your library.`
+      section.append(list)
+      const update = () => { list.hidden = mode.value !== 'selected' }
+      mode.addEventListener('change', update)
+      update()
+      container.append(section)
+    }
   }
-  form.querySelector('[data-scope-choices]').addEventListener('change', () => {
-    const access = collectAccess(page.querySelector('[data-create-access]'))
-    renderAccess(page.querySelector('[data-create-access]'), access, createScopes())
-    const appAccess = collectAppAccess(page.querySelector('[data-create-app-access]'))
-    renderAppAccess(page.querySelector('[data-create-app-access]'), appAccess, createScopes())
-  })
+
+  function accessLabel(grant) {
+    if (grant?.all === 'read') return 'All · read'
+    if (grant?.all === 'edit') return 'All · edit'
+    return grant?.resources?.length ? `${grant.resources.length} selected` : 'None'
+  }
 
   function renderRows() {
+    const head = page.querySelector('[data-head]')
+    head.replaceChildren()
+    const headings = document.createElement('tr')
+    for (const name of ['Service account', 'Permissions', ...apps.map((entry) => `My ${entry.resource}`),
+      'Expires', 'Last used', 'Status', '']) {
+      const cell = document.createElement('th')
+      cell.textContent = name
+      headings.append(cell)
+    }
+    head.append(headings)
     body.replaceChildren()
     for (const token of tokens) {
       const row = document.createElement('tr')
       for (const value of [`${token.username} · #${token.user_id}`, token.scopes.join(', '),
-        accessLabel(token.quiz_access),
-        token.app_access.musico, token.app_access.mdb,
+        ...apps.map((entry) => accessLabel(token.access?.[entry.id])),
         dateLabel(token.expires), dateLabel(token.last_used_at),
-        token.revoked_at ? 'Revoked' : isExpired(token) ? 'Expired' : 'Active']) {
+        token.revoked_at ? 'Revoked' : expired(token) ? 'Expired' : 'Active']) {
         const cell = document.createElement('td')
         cell.textContent = value
         row.append(cell)
       }
-      const actionCell = document.createElement('td')
-      const activityButton = document.createElement('button')
-      activityButton.type = 'button'
-      activityButton.className = 'text-button'
-      activityButton.textContent = 'Activity'
-      activityButton.addEventListener('click', async () => {
-        activityBody.replaceChildren()
+      const actions = document.createElement('td')
+      const activity = document.createElement('button')
+      activity.type = 'button'
+      activity.className = 'text-button'
+      activity.textContent = 'Activity'
+      activity.addEventListener('click', async () => {
+        const content = page.querySelector('[data-activity-body]')
+        const activityStatus = page.querySelector('[data-activity-status]')
+        content.replaceChildren()
         activityDialog.querySelector('h2').textContent = `${token.username} actions`
         setStatus(activityStatus, 'Loading…')
         activityDialog.showModal()
@@ -259,36 +210,23 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
               cell.textContent = String(value)
               actionRow.append(cell)
             }
-            activityBody.append(actionRow)
+            content.append(actionRow)
           }
-        } catch {
-          setStatus(activityStatus, 'Could not load token activity.', true)
-        }
+        } catch { setStatus(activityStatus, 'Could not load token activity.', true) }
       })
-      actionCell.append(activityButton)
-      if (!token.revoked_at && !isExpired(token)) {
-        const appEdit = document.createElement('button')
-        appEdit.type = 'button'
-        appEdit.className = 'text-button'
-        appEdit.textContent = 'App access'
-        appEdit.addEventListener('click', () => {
-          editingToken = token
-          renderAppAccess(page.querySelector('[data-edit-app-access]'), token.app_access, token.scopes)
-          setStatus(appAccessStatus, '')
-          appAccessDialog.showModal()
-        })
-        actionCell.append(appEdit)
+      actions.append(activity)
+      if (!token.revoked_at && !expired(token)) {
         const edit = document.createElement('button')
         edit.type = 'button'
         edit.className = 'text-button'
-        edit.textContent = 'Quiz access'
+        edit.textContent = 'Access'
         edit.addEventListener('click', () => {
           editingToken = token
-          renderAccess(page.querySelector('[data-edit-access]'), token.quiz_access, token.scopes)
-          setStatus(accessStatus, '')
+          renderAccess(page.querySelector('[data-edit-access]'), token.access)
+          setStatus(page.querySelector('[data-access-status]'), '')
           accessDialog.showModal()
         })
-        actionCell.append(edit)
+        actions.append(edit)
         const revoke = document.createElement('button')
         revoke.type = 'button'
         revoke.className = 'text-button'
@@ -299,78 +237,87 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
           revoke.disabled = true
           try {
             const [response, payload] = await requestJson('DELETE', `/api/auth/tokens/${token.id}`)
-            if (!response.ok) {
-              setStatus(status, responseError(response, payload), true)
-              revoke.disabled = false
-              return
-            }
+            if (!response.ok) { setStatus(status, responseError(response, payload), true); revoke.disabled = false; return }
             token.revoked_at = new Date().toISOString()
             renderRows()
             setStatus(status, 'Token revoked.', false, true)
-          } catch {
-            setStatus(status, 'Could not revoke token.', true)
-            revoke.disabled = false
-          }
+          } catch { setStatus(status, 'Could not revoke token.', true); revoke.disabled = false }
         })
-        actionCell.append(revoke)
+        actions.append(revoke)
       }
-      row.append(actionCell)
+      row.append(actions)
       body.append(row)
     }
-    table.hidden = tokens.length === 0
+    page.querySelector('[data-table]').hidden = tokens.length === 0
     if (!tokens.length) setStatus(status, 'No API tokens yet.')
   }
 
-  Promise.all([requestJson('GET', '/api/auth/tokens'), requestJson('GET', '/api/quiz/quizzes')]).then(([[tokenResponse, tokenData], [quizResponse, quizData]]) => {
-    if (!page.isConnected) return
-    if (!tokenResponse.ok || !Array.isArray(tokenData?.tokens)) {
-      setStatus(status, responseError(tokenResponse, tokenData), true)
-      return
-    }
-    tokens = tokenData.tokens
-    if (quizResponse.ok && Array.isArray(quizData?.quizzes)) quizzes = quizData.quizzes
-    else setStatus(status, 'Tokens loaded, but quiz access choices could not be loaded.', true)
-    setStatus(status, '')
-    renderRows()
-  }).catch(() => {
-    if (page.isConnected) setStatus(status, 'Could not load API tokens.', true)
-  })
+  Promise.all([requestJson('GET', '/api/auth/tokens'), requestJson('GET', '/api/auth/token-capabilities')])
+    .then(([[tokenResponse, tokenData], [capResponse, capData]]) => {
+      if (!page.isConnected) return
+      if (!tokenResponse.ok || !Array.isArray(tokenData?.tokens)
+        || !capResponse.ok || !Array.isArray(capData?.apps)) {
+        setStatus(status, 'Could not load API token settings.', true)
+        return
+      }
+      apps = capData.apps
+      tokens = tokenData.tokens
+      const scopeChoices = form.querySelector('[data-media-scopes]')
+      for (const [scope, label] of (capData.extra_scopes ?? []).map((entry) => [entry.id, entry.label])) {
+        const row = document.createElement('label')
+        const checkbox = document.createElement('input')
+        checkbox.type = 'checkbox'
+        checkbox.name = 'scope'
+        checkbox.value = scope
+        const caption = document.createElement('span')
+        caption.textContent = label
+        row.append(checkbox, caption)
+        scopeChoices.append(row)
+      }
+      page.querySelector('[data-create]').disabled = false
+      setStatus(status, '')
+      renderRows()
+    }).catch(() => { if (page.isConnected) setStatus(status, 'Could not load API tokens.', true) })
 
-  createButton.addEventListener('click', () => {
+  page.querySelector('[data-create]').addEventListener('click', () => {
     form.reset()
-    renderAccess(page.querySelector('[data-create-access]'), undefined, createScopes())
-    renderAppAccess(page.querySelector('[data-create-app-access]'), undefined, createScopes())
-    setStatus(createStatus, '')
+    renderAccess(page.querySelector('[data-create-access]'), emptyAccess(), true)
+    setStatus(page.querySelector('[data-create-status]'), '')
     createDialog.showModal()
     form.elements.name.focus()
   })
-  form.querySelector('[data-cancel-create]').addEventListener('click', () => createDialog.close())
+  page.querySelector('[data-cancel-create]').addEventListener('click', () => createDialog.close())
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
     if (busy) return
-    const scopes = createScopes()
-    if (!scopes.length) {
-      setStatus(createStatus, 'Select at least one permission.', true)
+    const createStatus = page.querySelector('[data-create-status]')
+    const accessContainer = page.querySelector('[data-create-access]')
+    const access = collectAccess(accessContainer)
+    const emptySelection = apps.find((entry) => {
+      const section = [...accessContainer.querySelectorAll('[data-app]')]
+        .find((item) => item.dataset.app === entry.id)
+      return section.querySelector('[data-mode]').value === 'selected'
+        && access[entry.id].resources.length === 0
+    })
+    if (emptySelection) {
+      setStatus(createStatus, `Select at least one ${emptySelection.name} item.`, true)
       return
     }
+    const selectedScopes = scopes(access)
+    if (!selectedScopes.length) { setStatus(createStatus, 'Choose an app or media permission.', true); return }
     busy = true
     form.querySelector('[type="submit"]').disabled = true
     try {
       const [response, payload] = await requestJson('POST', '/api/auth/tokens', {
-        name: form.elements.name.value.trim(),
-        scopes,
-        quiz_access: collectAccess(page.querySelector('[data-create-access]')),
-        app_access: collectAppAccess(page.querySelector('[data-create-app-access]')),
+        name: form.elements.name.value.trim(), scopes: selectedScopes,
+        access,
         expires_in_days: form.elements.expires_in_days.value === 'never'
           ? null : Number(form.elements.expires_in_days.value),
       })
-      if (!response.ok) {
-        setStatus(createStatus, responseError(response, payload), true)
-        return
-      }
+      if (!response.ok) { setStatus(createStatus, responseError(response, payload), true); return }
       createDialog.close()
-      revealedToken.value = payload.token
-      setStatus(copyStatus, '')
+      page.querySelector('[data-revealed-token]').value = payload.token
+      setStatus(page.querySelector('[data-copy-status]'), '')
       revealDialog.showModal()
       try {
         const [listResponse, listPayload] = await requestJson('GET', '/api/auth/tokens')
@@ -378,61 +325,38 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
           tokens = listPayload.tokens
           renderRows()
           setStatus(status, '')
-        } else {
-          setStatus(status, 'Token created; refresh to update the list.', true)
-        }
-      } catch {
-        setStatus(status, 'Token created; refresh to update the list.', true)
-      }
-    } catch {
-      setStatus(createStatus, 'Could not create token.', true)
-    } finally {
-      busy = false
-      form.querySelector('[type="submit"]').disabled = false
-    }
+        } else setStatus(status, 'Token created; refresh to update the list.', true)
+      } catch { setStatus(status, 'Token created; refresh to update the list.', true) }
+    } catch { setStatus(createStatus, 'Could not create token.', true) }
+    finally { busy = false; form.querySelector('[type="submit"]').disabled = false }
   })
-  page.querySelector('[data-copy-token]').addEventListener('click', async () => {
+  page.querySelector('[data-copy]').addEventListener('click', async () => {
+    const field = page.querySelector('[data-revealed-token]')
+    const copyStatus = page.querySelector('[data-copy-status]')
     try {
-      await navigator.clipboard.writeText(revealedToken.value)
+      await navigator.clipboard.writeText(field.value)
       setStatus(copyStatus, 'Copied.', false, true)
-    } catch {
-      revealedToken.select()
-      setStatus(copyStatus, 'Select and copy the token shown above.', true)
-    }
+    } catch { field.select(); setStatus(copyStatus, 'Select and copy the token shown above.', true) }
   })
-  page.querySelector('[data-done-token]').addEventListener('click', () => revealDialog.close())
-  revealDialog.addEventListener('close', () => { revealedToken.value = '' })
+  page.querySelector('[data-done]').addEventListener('click', () => revealDialog.close())
+  revealDialog.addEventListener('close', () => { page.querySelector('[data-revealed-token]').value = '' })
   page.querySelector('[data-close-activity]').addEventListener('click', () => activityDialog.close())
   page.querySelector('[data-cancel-access]').addEventListener('click', () => accessDialog.close())
-  page.querySelector('[data-cancel-app-access]').addEventListener('click', () => appAccessDialog.close())
-  page.querySelector('[data-save-app-access]').addEventListener('click', async () => {
-    if (!editingToken) return
-    const save = page.querySelector('[data-save-app-access]')
-    save.disabled = true
-    try {
-      const [response, payload] = await requestJson('PATCH', `/api/auth/tokens/${editingToken.id}/app-access`,
-        { app_access: collectAppAccess(page.querySelector('[data-edit-app-access]')) })
-      if (!response.ok) { setStatus(appAccessStatus, responseError(response, payload), true); return }
-      editingToken.app_access = payload.app_access
-      renderRows()
-      appAccessDialog.close()
-      setStatus(status, 'App access saved.', false, true)
-    } catch { setStatus(appAccessStatus, 'Could not save app access.', true) }
-    finally { save.disabled = false }
-  })
   page.querySelector('[data-save-access]').addEventListener('click', async () => {
     if (!editingToken) return
     const save = page.querySelector('[data-save-access]')
+    const accessStatus = page.querySelector('[data-access-status]')
     save.disabled = true
     try {
-      const [response, payload] = await requestJson('PATCH', `/api/auth/tokens/${editingToken.id}/quiz-access`,
-        { quiz_access: collectAccess(page.querySelector('[data-edit-access]')) })
+      const [response, payload] = await requestJson('PATCH', `/api/auth/tokens/${editingToken.id}/access`,
+        { access: collectAccess(page.querySelector('[data-edit-access]')) })
       if (!response.ok) { setStatus(accessStatus, responseError(response, payload), true); return }
-      editingToken.quiz_access = payload.quiz_access
+      editingToken.access = payload.access
+      editingToken.scopes = payload.scopes
       renderRows()
       accessDialog.close()
-      setStatus(status, 'Quiz access saved.', false, true)
-    } catch { setStatus(accessStatus, 'Could not save quiz access.', true) }
+      setStatus(status, 'Access saved.', false, true)
+    } catch { setStatus(accessStatus, 'Could not save access.', true) }
     finally { save.disabled = false }
   })
 }

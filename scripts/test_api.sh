@@ -105,7 +105,8 @@ cleanup_test_users() {
     DELETE FROM public.\"user\" WHERE auth_user_id IN (${ids});" >/dev/null || return 1
   test_psql musico "DELETE FROM public.\"user\" WHERE auth_user_id IN (${ids});" >/dev/null || return 1
   test_psql mdb "DELETE FROM public.\"user\" WHERE auth_user_id IN (${ids});" >/dev/null || return 1
-  test_psql media "DELETE FROM public.image WHERE owner_auth_user_id IN (${ids})
+  test_psql media "DELETE FROM public.api_token_image_access WHERE service_auth_user_id IN (${ids});
+    DELETE FROM public.image WHERE owner_auth_user_id IN (${ids})
     OR (shared = TRUE AND left(original_name, length('${auth_prefix}')) = '${auth_prefix}');
     DELETE FROM public.audio_file WHERE owner_auth_user_id IN (${ids});
     DELETE FROM public.quiz_import_recovery WHERE owner_auth_user_id IN (${ids});

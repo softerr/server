@@ -12,7 +12,10 @@ require_once __DIR__ . '/apps/mdb/csv_import.php';
 
 $path = apiRequestPath('/api/mdb');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$authUser = appAccessUser(currentSessionUser(), 'mdb', $method !== 'GET');
+$requestUser = currentSessionUser();
+$resourceId = is_string($path) && preg_match('#^/databases/([1-9][0-9]*)(?:/|$)#D', $path, $resourceMatch)
+    ? filter_var($resourceMatch[1], FILTER_VALIDATE_INT) : null;
+$authUser = appAccessUser($requestUser, 'mdb', $method !== 'GET', $resourceId ?: null);
 if ($path === '/databases') {
     $user = $authUser;
     if ($method === 'GET') handleListMdbDatabases($user);

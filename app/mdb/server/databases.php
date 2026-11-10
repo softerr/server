@@ -72,6 +72,10 @@ function mdbColumnSettings(array $payload, ?array $current = null): array
 function mdbRequireRelatedDatabase($db, array $user, ?int $relationId, ?int $displayId): void
 {
     if ($relationId === null) return;
+    if (($user['api_token_id'] ?? null) !== null && (int) $user['id'] === (int) $user['service_owner_id']
+        && tokenOwnerAccess($user, 'mdb', $relationId) === null) {
+        respond(400, ['error' => 'Related database is not available to this token']);
+    }
     $result = @pg_query_params($db,
         'SELECT 1 FROM public.user_database d JOIN public."user" u ON u.id = d.user_id
          WHERE d.id = $1 AND u.auth_user_id = $2', [$relationId, $user['id']]);
@@ -223,7 +227,11 @@ function handleListMdbDatabases(array $user): never
     $result = @pg_query_params($db,
         'SELECT d.id, d.name, d.created FROM public.user_database d
          JOIN public."user" u ON u.id = d.user_id
-         WHERE u.auth_user_id = $1 ORDER BY d.id DESC', [$user['id']]);
+         WHERE u.auth_user_id = $1 OR (u.auth_user_id = $2
+             AND ($3::boolean OR d.id = ANY($4::bigint[]))) ORDER BY d.id DESC',
+        [$user['service_account_id'] ?? $user['id'], $user['service_owner_id'] ?? null,
+         tokenOwnerAccess($user, 'mdb') !== null ? 't' : 'f',
+         '{' . implode(',', tokenOwnerResourceIds($user, 'mdb')) . '}']);
     if ($result === false) respond(500, ['error' => 'Failed to load databases']);
     $databases = [];
     while ($row = pg_fetch_assoc($result)) $databases[] = publicMdbDatabase($row);
@@ -689,6 +697,9 @@ function handleGetMdbRowUsage(array $user, int $databaseId, int $rowId): never
     if ($result === false) respond(500, ['error' => 'Failed to check row usage']);
     $uses = [];
     while (($usage = pg_fetch_assoc($result)) !== false) {
+        if (($user['api_token_id'] ?? null) !== null
+            && (int) $user['id'] === (int) $user['service_owner_id']
+            && tokenOwnerAccess($user, 'mdb', (int) $usage['database_id']) === null) continue;
         $uses[] = [
             'database_id' => (int) $usage['database_id'],
             'database_name' => $usage['database_name'],
@@ -711,6 +722,23 @@ function handleDeleteMdbItem(array $user, int $databaseId, int $itemId, string $
     };
     $db = connectMdbDb();
     mdbBeginWrite($db, $user, $databaseId);
+    if ($kind === 'rows' && ($user['api_token_id'] ?? null) !== null
+        && (int) $user['id'] === (int) $user['service_owner_id']) {
+        $references = @pg_query_params($db,
+            'SELECT DISTINCT c.database_id FROM public.database_column c
+             JOIN public.database_cell cell
+               ON cell.database_id = c.database_id AND cell.column_id = c.id
+             WHERE c.relation_database_id = $1
+               AND (c.type = \'relation\' AND cell.value = $2::text
+                 OR c.type = \'multi_relation\' AND cell.value::jsonb @> jsonb_build_array($2::bigint))',
+            [$databaseId, $itemId]);
+        if ($references === false) respond(500, ['error' => 'Failed to check related rows']);
+        while (($reference = pg_fetch_assoc($references)) !== false) {
+            if (tokenOwnerAccess($user, 'mdb', (int) $reference['database_id'], true) === null) {
+                respond(403, ['error' => 'Row is used by a database this token cannot edit']);
+            }
+        }
+    }
     $deleted = @pg_query_params($db,
         "DELETE FROM {$table} WHERE database_id = $1 AND id = $2 RETURNING position",
         [$databaseId, $itemId]);
@@ -741,7 +769,25 @@ function handleSaveMdbCell(array $user, int $databaseId, int $rowId, int $column
     if ($members === false) respond(500, ['error' => 'Failed to save cell']);
     $column = pg_fetch_assoc($members);
     if ($column === false) respond(404, ['error' => 'Row or column not found']);
+    if (in_array($column['type'], ['relation', 'multi_relation'], true)
+        && ($user['api_token_id'] ?? null) !== null
+        && (int) $user['id'] === (int) $user['service_owner_id']
+        && tokenOwnerAccess($user, 'mdb', (int) $column['relation_database_id']) === null) {
+        respond(403, ['error' => 'Related database is not available to this token']);
+    }
     [$stored, $public] = mdbCellStorage($db, $column, $payload['value'], (int) $user['id']);
+    if ($column['type'] === 'image' && $public !== null
+        && ($user['api_token_id'] ?? null) !== null
+        && (int) $user['id'] === (int) $user['service_owner_id']) {
+        $image = @pg_query_params(connectMediaDb(),
+            'SELECT shared FROM public.image WHERE id = $1', [$public]);
+        if ($image === false) respond(500, ['error' => 'Failed to check image access']);
+        if (pg_num_rows($image) === 0) respond(400, ['error' => 'Image not found']);
+        if (pg_fetch_result($image, 0, 'shared') !== 't'
+            && !tokenOwnerImageUsable((int) $public, $user, 'mdb')) {
+            respond(403, ['error' => 'Image is outside this token\'s databases']);
+        }
+    }
     if ($stored === null) {
         $saved = @pg_query_params($db,
             'DELETE FROM public.database_cell WHERE database_id = $1 AND row_id = $2 AND column_id = $3',
