@@ -32,6 +32,16 @@ const sortUpIcon = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" s
 const sortDownIcon = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
   <path d="M10 4v12m-5-5 5 5 5-5"/>
 </svg>`
+const importCsvIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3"/>
+</svg>`
+const exportCsvIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M12 16V4m-4 4 4-4 4 4M4 17v3h16v-3"/>
+</svg>`
+const suggestionsIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M20 11.5c0 4.2-3.6 7.5-8 7.5-1.1 0-2.1-.2-3-.6L4 20l1.1-4.1A7.2 7.2 0 0 1 4 11.5C4 7.4 7.6 4 12 4s8 3.4 8 7.5Z"/>
+  <path d="M8.5 10h7M8.5 13h5"/>
+</svg>`
 
 function renderDatabases(app, { requestJson, postJson, responseError, setStatus }) {
   const page = app.querySelector('#page')
@@ -149,9 +159,9 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
             <input id="mdb-row-search" type="search" aria-label="Search rows" placeholder="Search rows" autocomplete="off" />
           </label>
-          <button id="mdb-import-button" class="auth-button auth-button-secondary" type="button">Import CSV</button>
-          <button id="mdb-export-button" class="auth-button auth-button-secondary" type="button" disabled>Export CSV</button>
-          <button id="mdb-suggestions-button" class="auth-button auth-button-secondary" type="button">Suggestions</button>
+          <button id="mdb-import-button" class="auth-button auth-button-secondary mdb-editor-tool" type="button" aria-label="Import CSV" title="Import CSV">${importCsvIcon}</button>
+          <button id="mdb-export-button" class="auth-button auth-button-secondary mdb-editor-tool" type="button" aria-label="Export CSV" title="Export CSV" disabled>${exportCsvIcon}</button>
+          <button id="mdb-suggestions-button" class="auth-button auth-button-secondary mdb-editor-tool" type="button" aria-label="Suggestions" title="Suggestions">${suggestionsIcon}<span class="mdb-suggestions-count" aria-hidden="true" hidden></span></button>
           <input id="mdb-import-file" type="file" accept=".csv,text/csv" hidden />
         </div>
       </header>
@@ -1388,7 +1398,8 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       }
       setStatus(status, '')
       exportButton.disabled = payload.columns.length === 0
-      exportButton.title = payload.columns.length === 0 ? 'Add a column before exporting CSV' : ''
+      exportButton.title = payload.columns.length === 0
+        ? 'Add a column before exporting CSV' : 'Export CSV'
       return true
     } catch (error) {
       if (page.isConnected && generation === refreshGeneration) {

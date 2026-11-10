@@ -411,14 +411,36 @@
 }
 .mdb-editor-search:focus-within { border-color: var(--accent); }
 
-#mdb-import-button,
-#mdb-export-button {
-  min-width: 0;
-  padding: 8px 12px;
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  white-space: nowrap;
+.mdb-editor-tool {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  padding: 0;
 }
+.mdb-editor-tool svg { width: 20px; height: 20px; }
+.mdb-suggestions-count {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  display: grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--black);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.mdb-suggestions-count[hidden] { display: none; }
 
 .mdb-table-area {
   --mdb-grid-line: rgb(85 85 85 / 42%);

@@ -90,7 +90,30 @@
 .tokens-table tr:last-child td { border-bottom: 0; }
 .tokens-table td:nth-child(3) { min-width: 150px; overflow-wrap: anywhere; }
 .tokens-table td:last-child { text-align: right; }
-.tokens-table td:last-child .text-button + .text-button { margin-left: 8px; }
+.token-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.token-action-button,
+.backup-download {
+  display: grid;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-grey);
+  text-decoration: none;
+  cursor: pointer;
+}
+.token-action-button svg,
+.backup-download svg { width: 19px; height: 19px; }
+.token-action-button:hover,
+.token-action-button:focus-visible,
+.backup-download:hover,
+.backup-download:focus-visible { color: var(--accent); }
+.token-action-button:focus-visible,
+.backup-download:focus-visible { outline: 1px solid var(--accent); }
+.token-action-button:disabled { opacity: 0.45; cursor: not-allowed; }
 .token-dialog[data-activity-dialog] { width: min(760px, calc(100vw - 32px)); max-height: min(80vh, 720px); }
 .token-dialog[data-create-dialog], .token-dialog[data-access-dialog] { width: min(560px, calc(100vw - 32px)); max-height: min(85vh, 760px); overflow-y: auto; }
 .token-dialog[data-reveal-dialog] { width: min(560px, calc(100vw - 32px)); }
@@ -152,17 +175,9 @@
 .backups-table th:nth-child(2),
 .backups-table td:nth-child(2) { width: 120px; }
 .backups-table th:last-child,
-.backups-table td:last-child { width: 170px; text-align: right; }
+.backups-table td:last-child { width: 100px; text-align: right; }
 .backups-table tbody tr:last-child td { border-bottom: 0; }
-.backup-download {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  padding: 9px 12px;
-  box-sizing: border-box;
-  text-decoration: none;
-}
+.backup-download { display: inline-grid; }
 
 .users-table-wrap {
   overflow-x: auto;

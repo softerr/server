@@ -1,5 +1,7 @@
 import { formatBytes } from '../../shared/format.js'
 
+const downloadIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3"/></svg>'
+
 export function renderBackups(app, { requestJson, responseError, setStatus }) {
   const page = app.querySelector('#page')
   page.innerHTML = `
@@ -39,10 +41,11 @@ export function renderBackups(app, { requestJson, responseError, setStatus }) {
       sizeCell.textContent = formatBytes(backup.size_bytes, { minimumUnit: 'KiB', roundUp: true })
       const downloadCell = document.createElement('td')
       const download = document.createElement('a')
-      download.className = 'auth-button auth-button-secondary backup-download'
+      download.className = 'backup-download'
       download.href = `/api/auth/backups/${encodeURIComponent(backup.id)}/download`
-      download.textContent = 'Download ZIP'
+      download.innerHTML = downloadIcon
       download.setAttribute('aria-label', `Download backup from ${date.textContent}`)
+      download.title = 'Download ZIP'
       downloadCell.append(download)
       row.append(dateCell, sizeCell, downloadCell)
       list.append(row)

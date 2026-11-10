@@ -1,3 +1,5 @@
+const logoutIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5"/><path d="m14 7 5 5-5 5M19 12H9"/></svg>'
+
 export function startAuthApp(config) {
   const app = document.querySelector('#app')
   let signedUpEmail = ''
@@ -305,7 +307,7 @@ export function startAuthApp(config) {
         <nav class="site-nav" aria-label="${config.name} navigation">
           <a class="site-brand" href="${config.homeHref}">${config.name}</a>
           ${currentUser
-            ? `${links}<div class="site-account"><span id="nav-username"></span><button class="nav-logout" type="button" id="logout-button">Log out</button></div>`
+            ? `${links}<div class="site-account"><span id="nav-username"></span><button class="nav-logout" type="button" id="logout-button" aria-label="Log out" title="Log out">${logoutIcon}</button></div>`
             : `${links}${config.showGuestLogin ? '<button class="nav-login" type="button" data-view="login">Log in</button>' : ''}`}
         </nav>
       </header>

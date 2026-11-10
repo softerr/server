@@ -1,3 +1,8 @@
+import { editIcon } from '../../shared/icons.js'
+
+const activityIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
+const revokeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg>'
+
 const dateLabel = (value) => value ? new Date(value).toLocaleString() : 'Never'
 const expired = (token) => token.expires !== null && new Date(token.expires) <= new Date()
 
@@ -185,10 +190,15 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
         row.append(cell)
       }
       const actions = document.createElement('td')
+      const actionGroup = document.createElement('div')
+      actionGroup.className = 'token-row-actions'
+      actions.append(actionGroup)
       const activity = document.createElement('button')
       activity.type = 'button'
-      activity.className = 'text-button'
-      activity.textContent = 'Activity'
+      activity.className = 'token-action-button'
+      activity.innerHTML = activityIcon
+      activity.setAttribute('aria-label', `Activity for ${token.name}`)
+      activity.title = 'Activity'
       activity.addEventListener('click', async () => {
         const content = page.querySelector('[data-activity-body]')
         const activityStatus = page.querySelector('[data-activity-status]')
@@ -214,24 +224,27 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
           }
         } catch { setStatus(activityStatus, 'Could not load token activity.', true) }
       })
-      actions.append(activity)
+      actionGroup.append(activity)
       if (!token.revoked_at && !expired(token)) {
         const edit = document.createElement('button')
         edit.type = 'button'
-        edit.className = 'text-button'
-        edit.textContent = 'Access'
+        edit.className = 'token-action-button'
+        edit.innerHTML = editIcon
+        edit.setAttribute('aria-label', `Edit access for ${token.name}`)
+        edit.title = 'Access'
         edit.addEventListener('click', () => {
           editingToken = token
           renderAccess(page.querySelector('[data-edit-access]'), token.access)
           setStatus(page.querySelector('[data-access-status]'), '')
           accessDialog.showModal()
         })
-        actions.append(edit)
+        actionGroup.append(edit)
         const revoke = document.createElement('button')
         revoke.type = 'button'
-        revoke.className = 'text-button'
-        revoke.textContent = 'Revoke'
+        revoke.className = 'token-action-button'
+        revoke.innerHTML = revokeIcon
         revoke.setAttribute('aria-label', `Revoke ${token.name}`)
+        revoke.title = 'Revoke'
         revoke.addEventListener('click', async () => {
           if (!window.confirm(`Revoke ${token.name}?`)) return
           revoke.disabled = true
@@ -243,7 +256,7 @@ export function renderTokens(app, { requestJson, responseError, setStatus }) {
             setStatus(status, 'Token revoked.', false, true)
           } catch { setStatus(status, 'Could not revoke token.', true); revoke.disabled = false }
         })
-        actions.append(revoke)
+        actionGroup.append(revoke)
       }
       row.append(actions)
       body.append(row)

@@ -36,7 +36,12 @@ export function setupMdbSuggestions(page, { endpoint, requestJson, responseError
   function renderList() {
     list.replaceChildren()
     const pending = suggestions.filter((item) => item.status === 'pending').length
-    button.textContent = pending ? `Suggestions (${pending})` : 'Suggestions'
+    const label = pending ? `Suggestions (${pending} pending)` : 'Suggestions'
+    button.setAttribute('aria-label', label)
+    button.title = label
+    const count = button.querySelector('.mdb-suggestions-count')
+    count.hidden = pending === 0
+    count.textContent = pending > 99 ? '99+' : String(pending)
     if (!suggestions.length) {
       list.textContent = 'No suggestions yet.'
       return

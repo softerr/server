@@ -202,6 +202,17 @@ h1 {
   border-color: var(--accent);
 }
 
+.nav-logout {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+
+.nav-logout svg { width: 20px; height: 20px; }
+
 #center {
   display: flex;
   flex-direction: column;
