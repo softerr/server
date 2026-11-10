@@ -115,7 +115,7 @@ prune_remote() {
   done < <(awk -v prefix="${db}-" 'index($1,prefix)==1' <<< "${listing}" | sort -r)
 }
 
-# Move verified archives from the previous local-backup implementation to MEGA.
+# Retry archives left behind when an earlier MEGA upload failed.
 shopt -s nullglob
 for archive in "${BACKUP_DIR}"/*.dump; do
   upload_verified "${archive}"

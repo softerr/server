@@ -110,9 +110,6 @@ install -m 644 "${SCRIPT_DIR}/lib/app_registry.sh" /usr/local/lib/softerr/app_re
 echo "Preparing backup directory and existing archives..."
 install -d -o postgres -g www-data -m 2750 /var/backups/softerr
 chmod 2750 /var/backups/softerr
-# Existing verified archives remain readable by the MEGA uploader during migration.
-find /var/backups/softerr -maxdepth 1 -type f -name '*.dump' \
-  -exec chgrp www-data -- {} + -exec chmod 640 -- {} +
 install -m 755 "${BACKUP_SCRIPT_FILE}" /usr/local/lib/softerr/backup_postgresql.sh
 install -m 644 "${BACKUP_SERVICE_FILE}" /etc/systemd/system/softerr-backup-postgresql.service
 install -m 644 "${BACKUP_TIMER_FILE}" /etc/systemd/system/softerr-backup-postgresql.timer

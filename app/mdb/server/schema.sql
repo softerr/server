@@ -27,7 +27,6 @@ CREATE TABLE IF NOT EXISTS public.database_column (
     UNIQUE (database_id, id),
     UNIQUE (database_id, position)
 );
-ALTER TABLE public.database_column ADD COLUMN IF NOT EXISTS width INTEGER CHECK (width BETWEEN 96 AND 1200);
 CREATE UNIQUE INDEX IF NOT EXISTS database_column_name_idx
     ON public.database_column (database_id, lower(name));
 CREATE INDEX IF NOT EXISTS database_column_relation_database_id_idx
