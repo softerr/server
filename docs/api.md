@@ -53,16 +53,21 @@ can be chosen. The editor shows thumbnails and lets users pick or upload an
 image. Empty values clear cells. All routes
 require the owner's browser session or an API token with the matching MDB scope.
 An API token with `mdb:read` and read access to one of the owner's databases can
-propose cell edits without `mdb:write`: `POST /api/mdb/databases/{databaseId}/suggestions`
-with a title and 1–100 changes. Each change supplies `row_id`, `column_id`,
+propose cell edits, row creations, or row deletions without `mdb:write`:
+`POST /api/mdb/databases/{databaseId}/suggestions` with a title and 1–100
+proposed items in total. Each cell change supplies `row_id`, `column_id`,
 `before` (the current value, or `null` for an empty cell), `value` (the proposed
-value), and `reason`. Values use the same types as cell writes. An optional
+value), and `reason`. A `row_creations` item supplies `values` keyed by column
+ID and a `reason`; at least one value must be non-null. A `row_deletions` item
+supplies `row_id`, the current `before` values keyed by column ID, and a
+`reason`. Values use the same types as cell writes. An optional
 UUID `request_id` makes retries safe. The server rejects stale or invalid
 changes and limits each database to 100 pending suggestions; the token cannot
 accept its own proposal. In the database editor,
 **Suggestions** shows the diff and the token name. The owner can accept or
-decline the whole batch. Acceptance checks every original cell again and
-applies all changes in one transaction, or returns 409 if anything changed.
+decline the whole batch. Acceptance checks original cells, row snapshots, and
+proposed columns again and applies the whole batch in one transaction, or
+returns 409 if stale.
 The owner can also use `GET /api/mdb/databases/{databaseId}/suggestions`,
 `GET /api/mdb/databases/{databaseId}/suggestions/{suggestionId}`, and
 `POST /api/mdb/databases/{databaseId}/suggestions/{suggestionId}/accept` or
@@ -71,6 +76,10 @@ The owner can also use `GET /api/mdb/databases/{databaseId}/suggestions`,
 ```bash
 curl -H "Authorization: Bearer $MDB_TOKEN" -H 'Content-Type: application/json' \
   -d '{"title":"Correct movie title","changes":[{"row_id":42,"column_id":7,"before":"Old title","value":"Correct title","reason":"Corrected spelling"}]}' \
+  https://YOUR_HOST/api/mdb/databases/3/suggestions
+
+curl -H "Authorization: Bearer $MDB_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"title":"Add missing movie","row_creations":[{"values":{"7":"Movie title","8":"2024"},"reason":"Missing from the list"}]}' \
   https://YOUR_HOST/api/mdb/databases/3/suggestions
 ```
 

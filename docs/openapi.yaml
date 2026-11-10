@@ -664,8 +664,8 @@ paths:
     post:
       tags: [MDB]
       operationId: createMdbSuggestion
-      summary: Propose a batch of MDB cell changes
-      description: Requires an API token with mdb:read and read access to this creator-owned database. The token cannot accept or decline suggestions. An optional request_id makes retries safe.
+      summary: Propose MDB cell changes, row creations, or row deletions
+      description: Requires an API token with mdb:read and read access to this creator-owned database. At least one change, row creation, or row deletion is required, with at most 100 total. Each row creation supplies at least one typed value keyed by column ID; the columns must still match when accepted. Row deletions may be proposed while the row is referenced, but cannot be accepted until its references are removed. The token cannot accept or decline suggestions. An optional request_id makes retries safe.
       security:
         - apiBearer: []
       requestBody:
@@ -674,13 +674,22 @@ paths:
           application/json:
             schema:
               type: object
-              required: [title, changes]
+              required: [title]
+              anyOf:
+                - required: [changes]
+                  properties:
+                    changes: {type: array, minItems: 1}
+                - required: [row_deletions]
+                  properties:
+                    row_deletions: {type: array, minItems: 1}
+                - required: [row_creations]
+                  properties:
+                    row_creations: {type: array, minItems: 1}
               properties:
                 title: {type: string, minLength: 1, maxLength: 100}
                 request_id: {type: string, format: uuid}
                 changes:
                   type: array
-                  minItems: 1
                   maxItems: 100
                   items:
                     type: object
@@ -690,6 +699,32 @@ paths:
                       column_id: {type: integer, minimum: 1}
                       before: {description: Current typed cell value, or null for an empty cell.}
                       value: {description: Proposed typed cell value, using the cell-write format.}
+                      reason: {type: string, minLength: 1, maxLength: 500}
+                row_deletions:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [row_id, before, reason]
+                    properties:
+                      row_id: {type: integer, minimum: 1}
+                      before:
+                        type: object
+                        description: Current typed row values keyed by column ID, as returned by GET /mdb/databases/{databaseId}.
+                        additionalProperties: {$ref: '#/components/schemas/MdbCellValue'}
+                      reason: {type: string, minLength: 1, maxLength: 500}
+                row_creations:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [values, reason]
+                    properties:
+                      values:
+                        type: object
+                        minProperties: 1
+                        description: Typed values keyed by column ID. At least one value must be non-null.
+                        additionalProperties: {$ref: '#/components/schemas/MdbCellValue'}
                       reason: {type: string, minLength: 1, maxLength: 500}
       responses:
         '201':
@@ -718,7 +753,7 @@ paths:
         '401': {description: No active session.}
         '403': {description: Token cannot suggest changes to this database.}
         '404': {description: Database, row, or column not found.}
-        '409': {description: Cell changed or request_id was reused with different content.}
+        '409': {description: Cell or row changed, or request_id was reused with different content.}
         '413': {description: Request body is too large.}
         '429': {description: Database already has 100 pending suggestions.}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -736,13 +771,13 @@ paths:
     get:
       tags: [MDB]
       operationId: getMdbSuggestion
-      summary: Review a suggestion's cell diff
+      summary: Review a suggestion's cell changes, row creations, or row deletions
       description: The database owner's browser session is required.
       security:
         - sessionCookie: []
       responses:
         '200':
-          description: Suggestion and proposed cell changes.
+          description: Suggestion and proposed cell changes, row creations, or row deletions.
           content:
             application/json:
               schema:
@@ -752,7 +787,11 @@ paths:
                   suggestion: {$ref: '#/components/schemas/MdbSuggestionSummary'}
                   changes:
                     type: array
-                    items: {$ref: '#/components/schemas/MdbSuggestionChange'}
+                    items:
+                      oneOf:
+                        - {$ref: '#/components/schemas/MdbSuggestionChange'}
+                        - {$ref: '#/components/schemas/MdbSuggestionRowDeletion'}
+                        - {$ref: '#/components/schemas/MdbSuggestionRowCreation'}
         '401': {description: No active session.}
         '403': {description: Browser session required.}
         '404': {description: Database or suggestion not found.}
@@ -776,7 +815,7 @@ paths:
       tags: [MDB]
       operationId: reviewMdbSuggestion
       summary: Accept or decline a suggestion
-      description: The database owner's browser session is required. Acceptance checks all original values and applies the batch atomically; stale suggestions return 409.
+      description: The database owner's browser session is required. Acceptance checks original cells, row snapshots, and proposed columns, then applies the batch atomically; stale suggestions or row deletions with remaining references return 409.
       security:
         - sessionCookie: []
       responses:
@@ -793,7 +832,7 @@ paths:
         '401': {description: No active session.}
         '403': {description: Browser session required.}
         '404': {description: Database or suggestion not found.}
-        '409': {description: Suggestion already reviewed or is stale.}
+        '409': {description: Suggestion already reviewed, is stale, or a row is still referenced.}
         '500': {$ref: '#/components/responses/InternalError'}
 
   /musico/me:
@@ -4517,8 +4556,9 @@ components:
         change_count: {type: integer, minimum: 1}
     MdbSuggestionChange:
       type: object
-      required: [row_id, row_position, row_label, column_id, column, type, before, value, reason]
+      required: [kind, row_id, row_position, row_label, column_id, column, type, before, value, reason]
       properties:
+        kind: {type: string, const: cell}
         row_id: {type: integer, format: int64, minimum: 1}
         row_position: {type: [integer, 'null'], format: int64, minimum: 1}
         row_label: {type: [string, 'null'], description: Current first nonempty text cell for the row.}
@@ -4527,6 +4567,44 @@ components:
         type: {type: string}
         before: {$ref: '#/components/schemas/MdbCellValue'}
         value: {$ref: '#/components/schemas/MdbCellValue'}
+        reason: {type: string}
+    MdbSuggestionRowDeletion:
+      type: object
+      required: [kind, row_id, row_position, row_label, before, fields, reason]
+      properties:
+        kind: {type: string, const: row_delete}
+        row_id: {type: integer, format: int64, minimum: 1}
+        row_position: {type: [integer, 'null'], format: int64, minimum: 1}
+        row_label: {type: [string, 'null']}
+        before:
+          type: object
+          additionalProperties: {$ref: '#/components/schemas/MdbCellValue'}
+        fields:
+          type: array
+          items:
+            type: object
+            required: [column_id, column, value]
+            properties:
+              column_id: {type: integer, format: int64, minimum: 1}
+              column: {type: string}
+              value: {$ref: '#/components/schemas/MdbCellValue'}
+        reason: {type: string}
+    MdbSuggestionRowCreation:
+      type: object
+      required: [kind, item_index, fields, reason]
+      properties:
+        kind: {type: string, const: row_create}
+        item_index: {type: integer, minimum: 1}
+        fields:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [column_id, column, value]
+            properties:
+              column_id: {type: integer, format: int64, minimum: 1}
+              column: {type: string}
+              value: {$ref: '#/components/schemas/MdbCellValue'}
         reason: {type: string}
     MusicoCursor:
       type: string

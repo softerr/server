@@ -82,6 +82,24 @@ CREATE TABLE IF NOT EXISTS public.cell_suggestion_change (
     reason VARCHAR(500) NOT NULL,
     PRIMARY KEY (suggestion_id, row_id, column_id)
 );
+-- Keep the proposed row ID even if the owner deletes the row before reviewing it.
+CREATE TABLE IF NOT EXISTS public.row_delete_suggestion (
+    suggestion_id BIGINT NOT NULL REFERENCES public.cell_suggestion(id) ON DELETE CASCADE,
+    row_id BIGINT NOT NULL,
+    before_values JSONB NOT NULL,
+    before_fields JSONB NOT NULL,
+    row_label TEXT,
+    reason VARCHAR(500) NOT NULL,
+    PRIMARY KEY (suggestion_id, row_id)
+);
+CREATE TABLE IF NOT EXISTS public.row_create_suggestion (
+    suggestion_id BIGINT NOT NULL REFERENCES public.cell_suggestion(id) ON DELETE CASCADE,
+    item_index INTEGER NOT NULL CHECK (item_index > 0),
+    proposed_values JSONB NOT NULL,
+    proposed_fields JSONB NOT NULL,
+    reason VARCHAR(500) NOT NULL,
+    PRIMARY KEY (suggestion_id, item_index)
+);
 
 GRANT CONNECT ON DATABASE mdb TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
@@ -93,6 +111,8 @@ GRANT UPDATE (position) ON TABLE public.database_row TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.database_cell TO auth_api;
 GRANT SELECT, INSERT, UPDATE (status, reviewed_at) ON TABLE public.cell_suggestion TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.cell_suggestion_change TO auth_api;
+GRANT SELECT, INSERT ON TABLE public.row_delete_suggestion TO auth_api;
+GRANT SELECT, INSERT ON TABLE public.row_create_suggestion TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.user_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.user_database_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.database_column_id_seq, public.database_row_id_seq TO auth_api;

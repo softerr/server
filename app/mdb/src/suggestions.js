@@ -85,22 +85,38 @@ export function setupMdbSuggestions(page, { endpoint, requestJson, responseError
       meta.className = 'mdb-suggestion-meta'
       meta.textContent = `Proposed by ${payload.suggestion.proposer} · ${new Date(payload.suggestion.created).toLocaleString()}`
       detail.append(heading, meta)
+      const hasDeletion = payload.changes.some((change) => change.kind === 'row_delete')
+      const hasCreation = payload.changes.some((change) => change.kind === 'row_create')
+      dialog.querySelector('[data-accept]').textContent = hasDeletion && hasCreation
+        ? 'Accept row changes' : hasDeletion ? 'Accept and delete rows'
+          : hasCreation ? 'Accept and create rows' : 'Accept changes'
       for (const change of payload.changes) {
         const card = document.createElement('section')
         card.className = 'mdb-suggestion-change'
         const name = document.createElement('h4')
-        const rowName = change.row_position === null
+        const rowName = change.kind === 'row_create' ? `New row ${change.item_index}`
+          : change.row_position === null
           ? `Deleted row (ID ${change.row_id})`
           : `Row ${change.row_position}${change.row_label ? `: ${change.row_label}` : ''}`
-        name.textContent = `${rowName} · ${change.column}`
+        name.textContent = change.kind === 'row_delete'
+          ? `${rowName} · Delete row` : change.kind === 'row_create'
+            ? `${rowName} · Create row` : `${rowName} · ${change.column}`
         const values = document.createElement('div')
         values.className = 'mdb-suggestion-values'
-        for (const [label, value] of [['Current', change.before], ['Proposed', change.value]]) {
+        const current = change.kind === 'row_delete'
+          ? change.fields.map((field) => `${field.column}: ${displayValue(field.value)}`).join('\n') || '(empty row)'
+          : change.kind === 'row_create' ? '(new row)'
+          : displayValue(change.before)
+        const proposed = change.kind === 'row_delete' ? 'Delete this row'
+          : change.kind === 'row_create'
+            ? change.fields.map((field) => `${field.column}: ${displayValue(field.value)}`).join('\n')
+            : displayValue(change.value)
+        for (const [label, value] of [['Current', current], ['Proposed', proposed]]) {
           const cell = document.createElement('div')
           const caption = document.createElement('span')
           caption.textContent = label
           const content = document.createElement('p')
-          content.textContent = displayValue(value)
+          content.textContent = value
           cell.append(caption, content)
           values.append(cell)
         }
@@ -108,6 +124,12 @@ export function setupMdbSuggestions(page, { endpoint, requestJson, responseError
         reason.className = 'mdb-suggestion-reason'
         reason.textContent = change.reason
         card.append(name, values, reason)
+        if (change.kind === 'row_delete') {
+          const warning = document.createElement('p')
+          warning.className = 'mdb-suggestion-reason'
+          warning.textContent = 'A row that is still referenced cannot be deleted.'
+          card.append(warning)
+        }
         detail.append(card)
       }
       actions.hidden = payload.suggestion.status !== 'pending'

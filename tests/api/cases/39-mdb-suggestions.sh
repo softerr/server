@@ -115,6 +115,184 @@ test_mdb_suggestions() (
   [[ "$(curl -sS -o /dev/null -w '%{http_code}' -b "$cookie" -X POST \
     "$base/mdb/databases/$database_id/suggestions/$suggestion_id/decline")" == 200 ]] ||
     { fail_test 'owner could not decline stale suggestion'; return 1; }
+
+  local delete_row_id delete_suggestion_id delete_proposal stale_row_id relation_id related_row_id
+  response="$(curl -sS -b "$cookie" -H 'Content-Type: application/json' \
+    --data '{}' "$base/mdb/databases/$database_id/rows")"
+  delete_row_id="$(jq -r '.id' <<<"$response")"
+  [[ "$delete_row_id" =~ ^[1-9][0-9]*$ ]] || { fail_test "could not create deletion fixture: $response"; return 1; }
+  response="$(curl -sS -b "$cookie" -X PUT -H 'Content-Type: application/json' \
+    --data '{"value":"Second row"}' \
+    "$base/mdb/databases/$database_id/rows/$delete_row_id/cells/$title_id")"
+  [[ "$(jq -r '.value' <<<"$response")" == 'Second row' ]] ||
+    { fail_test "could not seed deletion fixture: $response"; return 1; }
+  [[ "$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $token" \
+    "$base/mdb/databases/$database_id/rows/$delete_row_id")" == 403 ]] ||
+    { fail_test 'read token deleted a row directly'; return 1; }
+  delete_proposal="$(jq -nc --argjson first "$row_id" --argjson second "$delete_row_id" \
+    --arg title "$title_id" --arg request 'ac19bc6e-f41a-4f34-a35d-aa0990dac324' \
+    '{title:"Remove duplicate rows",request_id:$request,row_deletions:[
+      {row_id:$first,before:{($title):"Owner changed it"},reason:"Duplicate one"},
+      {row_id:$second,before:{($title):"Second row"},reason:"Duplicate two"}]}')"
+  response="$(curl -sS -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+    --data "$delete_proposal" -w $'\n%{http_code}' \
+    "$base/mdb/databases/$database_id/suggestions")"
+  [[ "${response##*$'\n'}" == 201 && "$(jq -r '.change_count' <<<"${response%$'\n'*}")" == 2 ]] ||
+    { fail_test "row deletion suggestion failed: $response"; return 1; }
+  delete_suggestion_id="$(jq -r '.id' <<<"${response%$'\n'*}")"
+  response="$(curl -sS -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+    --data "$delete_proposal" -w $'\n%{http_code}' \
+    "$base/mdb/databases/$database_id/suggestions")"
+  [[ "${response##*$'\n'}" == 200
+    && "$(jq -r '.id' <<<"${response%$'\n'*}")" == "$delete_suggestion_id"
+    && "$(jq -r '.change_count' <<<"${response%$'\n'*}")" == 2 ]] ||
+    { fail_test "row deletion retry was not idempotent: $response"; return 1; }
+  response="$(curl -sS -b "$cookie" \
+    "$base/mdb/databases/$database_id/suggestions/$delete_suggestion_id")"
+  jq -e '.suggestion.change_count == 2 and (.changes | length) == 2
+    and all(.changes[]; .kind == "row_delete" and .fields[0].column == "Title")' \
+    <<<"$response" >/dev/null || { fail_test "row deletion review missing: $response"; return 1; }
+  response="$(curl -sS -b "$cookie" -X POST -w $'\n%{http_code}' \
+    "$base/mdb/databases/$database_id/suggestions/$delete_suggestion_id/accept")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "owner could not accept row deletions: $response"; return 1; }
+  [[ "$(test_psql mdb "SELECT count(*) FROM public.database_row
+    WHERE id IN ($row_id, $delete_row_id);")" == 0 ]] ||
+    { fail_test 'accepted row deletion left rows behind'; return 1; }
+
+  response="$(curl -sS -b "$cookie" -H 'Content-Type: application/json' \
+    --data '{}' "$base/mdb/databases/$database_id/rows")"
+  stale_row_id="$(jq -r '.id' <<<"$response")"
+  response="$(curl -sS -b "$cookie" -X PUT -H 'Content-Type: application/json' \
+    --data '{"value":"Before"}' \
+    "$base/mdb/databases/$database_id/rows/$stale_row_id/cells/$title_id")"
+  [[ "$(jq -r '.value' <<<"$response")" == 'Before' ]] ||
+    { fail_test "could not seed stale row: $response"; return 1; }
+  delete_proposal="$(jq -nc --argjson row "$stale_row_id" --arg title "$title_id" \
+    '{title:"Delete stale row",row_deletions:[{row_id:$row,before:{($title):"Before"},reason:"Duplicate"}]}')"
+  response="$(curl -sS -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+    --data "$delete_proposal" "$base/mdb/databases/$database_id/suggestions")"
+  delete_suggestion_id="$(jq -r '.id' <<<"$response")"
+  [[ "$delete_suggestion_id" =~ ^[1-9][0-9]*$ ]] ||
+    { fail_test "stale row suggestion failed: $response"; return 1; }
+  curl -sS -b "$cookie" -X PUT -H 'Content-Type: application/json' \
+    --data '{"value":"After"}' \
+    "$base/mdb/databases/$database_id/rows/$stale_row_id/cells/$title_id" >/dev/null
+  [[ "$(curl -sS -o /dev/null -w '%{http_code}' -b "$cookie" -X POST \
+    "$base/mdb/databases/$database_id/suggestions/$delete_suggestion_id/accept")" == 409 ]] ||
+    { fail_test 'stale row deletion was accepted'; return 1; }
+  [[ "$(test_psql mdb "SELECT count(*) FROM public.database_row WHERE id = $stale_row_id;")" == 1 ]] ||
+    { fail_test 'stale row was deleted'; return 1; }
+
+  response="$(curl -sS -b "$cookie" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --argjson target "$database_id" --argjson display "$title_id" \
+      '{name:"Related",type:"relation",relation_database_id:$target,relation_display_column_id:$display}')" \
+    "$base/mdb/databases/$other_id/columns")"
+  relation_id="$(jq -r '.id' <<<"$response")"
+  response="$(curl -sS -b "$cookie" -H 'Content-Type: application/json' \
+    --data '{}' "$base/mdb/databases/$other_id/rows")"
+  related_row_id="$(jq -r '.id' <<<"$response")"
+  [[ "$relation_id" =~ ^[1-9][0-9]*$ && "$related_row_id" =~ ^[1-9][0-9]*$ ]] ||
+    { fail_test 'could not create referencing row'; return 1; }
+  response="$(curl -sS -b "$cookie" -X PUT -H 'Content-Type: application/json' \
+    --data "$(jq -nc --argjson value "$stale_row_id" '{value:$value}')" \
+    "$base/mdb/databases/$other_id/rows/$related_row_id/cells/$relation_id")"
+  [[ "$(jq -r '.value' <<<"$response")" == "$stale_row_id" ]] ||
+    { fail_test "could not link referencing row: $response"; return 1; }
+  delete_proposal="$(jq -nc --argjson row "$stale_row_id" --arg title "$title_id" \
+    '{title:"Delete referenced row",row_deletions:[{row_id:$row,before:{($title):"After"},reason:"Duplicate"}]}')"
+  response="$(curl -sS -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+    --data "$delete_proposal" "$base/mdb/databases/$database_id/suggestions")"
+  delete_suggestion_id="$(jq -r '.id' <<<"$response")"
+  [[ "$delete_suggestion_id" =~ ^[1-9][0-9]*$ ]] ||
+    { fail_test "referenced row suggestion failed: $response"; return 1; }
+  [[ "$(curl -sS -o /dev/null -w '%{http_code}' -b "$cookie" -X POST \
+    "$base/mdb/databases/$database_id/suggestions/$delete_suggestion_id/accept")" == 409 ]] ||
+    { fail_test 'referenced row deletion was accepted'; return 1; }
+  response="$(curl -sS -b "$cookie" -X PUT -H 'Content-Type: application/json' \
+    --data '{"value":null}' \
+    "$base/mdb/databases/$other_id/rows/$related_row_id/cells/$relation_id")"
+  [[ "$(jq -r '.value' <<<"$response")" == null ]] ||
+    { fail_test "could not unlink referencing row: $response"; return 1; }
+  [[ "$(curl -sS -o /dev/null -w '%{http_code}' -b "$cookie" -X POST \
+    "$base/mdb/databases/$database_id/suggestions/$delete_suggestion_id/accept")" == 200 ]] ||
+    { fail_test 'row deletion stayed blocked after unlinking'; return 1; }
+  [[ "$(test_psql mdb "SELECT count(*) FROM public.database_row WHERE id = $stale_row_id;")" == 0 ]] ||
+    { fail_test 'unlinked row was not deleted'; return 1; }
+
+  local create_proposal create_suggestion_id row_count_before
+  [[ "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" \
+    -H 'Content-Type: application/json' --data '{}' \
+    "$base/mdb/databases/$database_id/rows")" == 403 ]] ||
+    { fail_test 'read token created a row directly'; return 1; }
+  create_proposal="$(jq -nc --arg title "$title_id" --arg note "$note_id" \
+    --arg request 'c8817537-9e3a-4c6c-959a-c17f9567d6cd' \
+    '{title:"Add missing movies",request_id:$request,row_creations:[
+      {values:{($title):"First movie",($note):"First note"},reason:"Missing movie"},
+      {values:{($title):"Second movie"},reason:"Another missing movie"}]}')"
+  response="$(curl -sS -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+    --data "$create_proposal" -w $'\n%{http_code}' \
+    "$base/mdb/databases/$database_id/suggestions")"
+  [[ "${response##*$'\n'}" == 201 && "$(jq -r '.change_count' <<<"${response%$'\n'*}")" == 2 ]] ||
+    { fail_test "row creation suggestion failed: $response"; return 1; }
+  create_suggestion_id="$(jq -r '.id' <<<"${response%$'\n'*}")"
+  response="$(curl -sS -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+    --data "$create_proposal" -w $'\n%{http_code}' \
+    "$base/mdb/databases/$database_id/suggestions")"
+  [[ "${response##*$'\n'}" == 200
+    && "$(jq -r '.id' <<<"${response%$'\n'*}")" == "$create_suggestion_id"
+    && "$(jq -r '.change_count' <<<"${response%$'\n'*}")" == 2 ]] ||
+    { fail_test "row creation retry was not idempotent: $response"; return 1; }
+  response="$(curl -sS -b "$cookie" \
+    "$base/mdb/databases/$database_id/suggestions/$create_suggestion_id")"
+  jq -e '.suggestion.change_count == 2 and (.changes | length) == 2
+    and .changes[0].kind == "row_create" and .changes[0].item_index == 1
+    and .changes[0].fields[0].value == "First movie"
+    and .changes[1].fields[0].value == "Second movie"' \
+    <<<"$response" >/dev/null || { fail_test "row creation review missing: $response"; return 1; }
+  response="$(curl -sS -b "$cookie" -X POST -w $'\n%{http_code}' \
+    "$base/mdb/databases/$database_id/suggestions/$create_suggestion_id/accept")"
+  [[ "${response##*$'\n'}" == 200 ]] ||
+    { fail_test "owner could not accept row creations: $response"; return 1; }
+  [[ "$(test_psql mdb "SELECT COUNT(*) FROM public.database_row r
+    JOIN public.database_cell c ON c.row_id = r.id AND c.database_id = r.database_id
+    WHERE r.database_id = $database_id AND c.column_id = $title_id
+    AND c.value IN ('First movie', 'Second movie');")" == 2 ]] ||
+    { fail_test 'accepted row creation did not add both rows'; return 1; }
+  [[ "$(test_psql mdb "SELECT COUNT(*) FROM public.database_cell c
+    JOIN public.database_row r ON r.id = c.row_id
+    WHERE r.database_id = $database_id AND c.column_id = $note_id
+    AND c.value = 'First note';")" == 1 ]] ||
+    { fail_test 'accepted row creation lost a cell'; return 1; }
+  [[ "$(curl -sS -o /dev/null -w '%{http_code}' -b "$cookie" -X POST \
+    "$base/mdb/databases/$database_id/suggestions/$create_suggestion_id/accept")" == 409 ]] ||
+    { fail_test 'accepted row creation could be accepted again'; return 1; }
+  create_proposal="$(jq -nc --arg title "$title_id" --arg note "$note_id" \
+    '{title:"Stale new rows",row_creations:[
+      {values:{($title):"Should not exist"},reason:"Test"},
+      {values:{($note):"Should not exist either"},reason:"Test"}]}')"
+  response="$(curl -sS -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+    --data "$create_proposal" "$base/mdb/databases/$database_id/suggestions")"
+  create_suggestion_id="$(jq -r '.id' <<<"$response")"
+  [[ "$create_suggestion_id" =~ ^[1-9][0-9]*$ ]] ||
+    { fail_test "stale row creation suggestion failed: $response"; return 1; }
+  row_count_before="$(test_psql mdb "SELECT COUNT(*) FROM public.database_row
+    WHERE database_id = $database_id;")"
+  response="$(curl -sS -b "$cookie" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"Notes renamed"}' -w $'\n%{http_code}' \
+    "$base/mdb/databases/$database_id/columns/$note_id")"
+  [[ "${response##*$'\n'}" == 200 ]] ||
+    { fail_test "could not rename column for stale check: $response"; return 1; }
+  [[ "$(curl -sS -o /dev/null -w '%{http_code}' -b "$cookie" -X POST \
+    "$base/mdb/databases/$database_id/suggestions/$create_suggestion_id/accept")" == 409 ]] ||
+    { fail_test 'stale row creation was accepted'; return 1; }
+  [[ "$(test_psql mdb "SELECT COUNT(*) FROM public.database_cell c
+    JOIN public.database_row r ON r.id = c.row_id
+    WHERE r.database_id = $database_id AND c.value IN
+      ('Should not exist', 'Should not exist either');")" == 0 ]] ||
+    { fail_test 'stale row creation partly added rows'; return 1; }
+  [[ "$(test_psql mdb "SELECT COUNT(*) FROM public.database_row
+    WHERE database_id = $database_id;")" == "$row_count_before" ]] ||
+    { fail_test 'stale row creation added blank rows'; return 1; }
 )
 
 register_test_case test_mdb_suggestions
