@@ -32,6 +32,7 @@ require_command curl
 require_command jq
 require_command php
 php "${TEST_ROOT}/attempt_presentation.php"
+php "${TEST_ROOT}/backup_zip_stream.php"
 
 echo "API test base URL: ${API_TEST_BASE_URL}"
 echo "API DB name: ${API_TEST_DB_NAME}"

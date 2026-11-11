@@ -1,9 +1,24 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/../lib/backup_zip_stream.php';
+
 const BACKUP_MEGA_DIRECTORY = '/softerr-backups';
 const BACKUP_MEGA_HOME = '/var/lib/softerr-mega';
 const BACKUP_APP_REGISTRY = '/etc/softerr/apps.tsv';
+const BACKUP_DOWNLOAD_HEADROOM_BYTES = 512 * 1024 * 1024;
+
+function requireBackupDownloadSpace(string $directory, float $needed): void
+{
+    $available = @disk_free_space($directory);
+    if ($available === false) {
+        error_log('Could not check temporary disk space for backup download');
+        respond(503, ['error' => 'Backup download is unavailable']);
+    }
+    if ($available < $needed) {
+        respond(503, ['error' => 'Not enough temporary disk space to prepare backup download']);
+    }
+}
 
 function backupDatabases(): array
 {
@@ -37,20 +52,22 @@ function authorizeBackupDownload(): void
     if ($user['role'] !== 'admin') respond(403, ['error' => 'Admin access required']);
 }
 
-function backupMegaCommand(array $command): string
+function runBackupMegaCommand(array $command): string
 {
     $executable = '/usr/local/bin/' . $command[0];
     if (!is_executable($executable)) $executable = '/usr/bin/' . $command[0];
     if (!is_executable($executable)) {
         error_log('MEGA backup command is missing: ' . $command[0]);
-        respond(503, ['error' => 'Backup storage is unavailable']);
+        throw new RuntimeException('Backup storage is unavailable');
     }
     $command[0] = $executable;
     $output = tempnam(sys_get_temp_dir(), 'mega-output-');
     $errors = tempnam(sys_get_temp_dir(), 'mega-errors-');
     if ($output === false || $errors === false) {
+        if ($output !== false) @unlink($output);
+        if ($errors !== false) @unlink($errors);
         error_log('Could not create temporary MEGA command output files');
-        respond(503, ['error' => 'Backup storage is unavailable']);
+        throw new RuntimeException('Backup storage is unavailable');
     }
     try {
         $process = @proc_open($command, [0 => ['file', '/dev/null', 'r'],
@@ -58,18 +75,40 @@ function backupMegaCommand(array $command): string
             ['HOME' => BACKUP_MEGA_HOME, 'PATH' => '/usr/local/bin:/usr/bin:/bin']);
         if (!is_resource($process)) {
             error_log('Could not launch MEGA backup command: ' . $command[0]);
-            respond(503, ['error' => 'Backup storage is unavailable']);
+            throw new RuntimeException('Backup storage is unavailable');
         }
         $status = proc_close($process);
         if ($status !== 0) {
             error_log('MEGA backup command failed: ' . implode(' ', array_slice($command, 0, 2)) . ': ' . substr((string) file_get_contents($errors), 0, 500));
-            respond(503, ['error' => 'Backup storage is unavailable']);
+            throw new RuntimeException('Backup storage is unavailable');
         }
-        return (string) file_get_contents($output);
+        $result = file_get_contents($output);
+        if ($result === false) throw new RuntimeException('Backup storage is unavailable');
+        return $result;
     } finally {
         @unlink($output);
         @unlink($errors);
     }
+}
+
+function backupMegaCommand(array $command): string
+{
+    try {
+        return runBackupMegaCommand($command);
+    } catch (RuntimeException $error) {
+        respond(503, ['error' => 'Backup storage is unavailable']);
+    }
+}
+
+function downloadBackupArtifact(array $file, string $directory): string
+{
+    runBackupMegaCommand(['mega-get', BACKUP_MEGA_DIRECTORY . '/' . $file['name'], $directory]);
+    $path = $directory . '/' . $file['name'];
+    clearstatcache(true, $path);
+    if (!is_file($path) || filesize($path) !== $file['size']) {
+        throw new RuntimeException('Backup archive size does not match the MEGA listing');
+    }
+    return $path;
 }
 
 function availableBackupSets(): array
@@ -122,42 +161,63 @@ function handleDownloadBackup(string $stamp): never
     authorizeBackupDownload();
     $files = availableBackupSets()[$stamp] ?? null;
     if ($files === null) respond(404, ['error' => 'Backup not found']);
+    $entries = [];
+    $largestFile = 0;
+    foreach (backupArtifacts() as $artifact => $extension) {
+        $file = $files[$artifact];
+        if ($file['size'] < 1) respond(503, ['error' => 'Backup archive is unavailable']);
+        $entries[$artifact . '.' . $extension] = $file['size'];
+        $largestFile = max($largestFile, $file['size']);
+    }
+    try {
+        $length = BackupZipStream::expectedLength($entries);
+    } catch (OverflowException $error) {
+        respond(503, ['error' => 'Backup archive is too large']);
+    }
+    // Only the current archive is staged; the ZIP goes directly to the client.
+    requireBackupDownloadSpace(sys_get_temp_dir(), $largestFile + BACKUP_DOWNLOAD_HEADROOM_BYTES);
     set_time_limit(0);
     $directory = sys_get_temp_dir() . '/softerr-backup-' . bin2hex(random_bytes(12));
     if (!@mkdir($directory, 0700)) respond(500, ['error' => 'Could not prepare backup download']);
-    $path = $directory . '/backup.zip';
     register_shutdown_function(static function () use ($directory): void {
-        foreach (glob($directory . '/*') ?: [] as $file) @unlink($file);
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($files as $file) {
+            if ($file->isDir() && !$file->isLink()) @rmdir($file->getPathname());
+            else @unlink($file->getPathname());
+        }
         @rmdir($directory);
     });
-    foreach ($files as $file) {
-        backupMegaCommand(['mega-get', BACKUP_MEGA_DIRECTORY . '/' . $file['name'], $directory]);
-        $download = $directory . '/' . $file['name'];
-        clearstatcache(true, $download);
-        if (!is_file($download) || filesize($download) !== $file['size']) {
-            respond(503, ['error' => 'Backup archive is unavailable']);
-        }
+    $firstArtifact = array_key_first($files);
+    try {
+        $firstPath = downloadBackupArtifact($files[$firstArtifact], $directory);
+    } catch (RuntimeException $error) {
+        error_log('Could not begin backup download: ' . $error->getMessage());
+        respond(503, ['error' => 'Backup archive is unavailable']);
     }
-    $zip = new ZipArchive();
-    if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-        respond(500, ['error' => 'Could not prepare backup download']);
-    }
-    foreach (backupArtifacts() as $artifact => $extension) {
-        $name = $artifact . '.' . $extension;
-        if (!$zip->addFile($directory . '/' . $files[$artifact]['name'], $name)
-            || !$zip->setCompressionName($name, ZipArchive::CM_STORE)) {
-            $zip->close();
-            respond(500, ['error' => 'Could not prepare backup download']);
-        }
-    }
-    if (!$zip->close()) respond(500, ['error' => 'Could not prepare backup download']);
-    clearstatcache(true, $path);
-    $size = filesize($path);
-    if ($size === false) respond(500, ['error' => 'Could not prepare backup download']);
-
+    $output = @fopen('php://output', 'wb');
+    if ($output === false) respond(500, ['error' => 'Could not prepare backup download']);
     header('Content-Type: application/zip');
     header('Content-Disposition: attachment; filename="softerr-backup-' . $stamp . '.zip"');
-    header('Content-Length: ' . $size);
-    readfile($path);
+    header('Content-Length: ' . $length);
+    header('X-Accel-Buffering: no');
+    try {
+        $zip = new BackupZipStream($output);
+        foreach (backupArtifacts() as $artifact => $extension) {
+            $file = $files[$artifact];
+            $path = $artifact === $firstArtifact ? $firstPath : downloadBackupArtifact($file, $directory);
+            $zip->addFile($path, $artifact . '.' . $extension, $file['size']);
+            if (!@unlink($path)) throw new RuntimeException('Could not remove temporary backup archive');
+        }
+        $zip->finish();
+    } catch (Throwable $error) {
+        // Once the response starts, Content-Length makes an incomplete ZIP
+        // fail at the client instead of presenting a partial backup as valid.
+        error_log('Backup ZIP stream failed: ' . $error->getMessage());
+    } finally {
+        fclose($output);
+    }
     exit;
 }

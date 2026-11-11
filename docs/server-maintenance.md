@@ -152,7 +152,7 @@ sudo journalctl -u softerr-backup-postgresql.service -n 100 --no-pager
 sudo -u www-data env HOME=/var/lib/softerr-mega mega-ls -l /softerr-backups
 ```
 
-An admin can list and download a complete backup set as a ZIP from **Home → Backups**. The server downloads the selected archives to a temporary directory to assemble the ZIP, then removes those temporary files. Keep the ZIP private because it contains account data and password hashes. The database role and password also need to be recreated during disaster recovery. To move an existing server to MEGA backups, rerun `bootstrap_server.sh` interactively to install MEGAcmd and sign in, then run **Setup PostgreSQL On Server**.
+An admin can list and download a complete backup set as a ZIP from **Home → Backups**. The server stages one MEGA archive at a time, streams it into a ZIP64 response, then removes the staged file before fetching the next. It checks for temporary space equal to the largest archive plus 512 MiB of headroom before starting. The server does not keep a complete ZIP. If a later MEGA fetch fails, the browser receives an incomplete download, so verify the ZIP before using it to restore. Keep the ZIP private because it contains account data and password hashes. The database role and password also need to be recreated during disaster recovery. To move an existing server to MEGA backups, rerun `bootstrap_server.sh` interactively to install MEGAcmd and sign in, then run **Setup PostgreSQL On Server**.
 
 ## 7. Restore a backup for inspection
 

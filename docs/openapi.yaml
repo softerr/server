@@ -2248,7 +2248,7 @@ paths:
       tags: [Administration]
       operationId: listBackups
       summary: List complete, verified backup sets
-      description: Requires a current admin session. Each set contains auth, media, quiz, musico, and mdb database dumps plus a media-files TAR from one backup run, newest first. Archives are stored on MEGA and downloaded to the server temporarily for ZIP creation. Responses are not cached.
+      description: Requires a current admin session. Each set contains auth, media, quiz, musico, and mdb database dumps plus a media-files TAR from one backup run, newest first. Archives are stored on MEGA. Responses are not cached.
       security:
         - sessionCookie: []
       responses:
@@ -2286,7 +2286,7 @@ paths:
       tags: [Administration]
       operationId: downloadBackup
       summary: Download a complete backup set in one ZIP
-      description: Requires a current admin session. The ZIP contains all database dumps and media-files.tar. Restore the media database and media files together. Responses are not cached.
+      description: Requires a current admin session. The ZIP streams all database dumps and media-files.tar, staging one MEGA archive at a time. Restore the media database and media files together. Responses are not cached. If retrieval fails after streaming begins, the download ends incomplete.
       security:
         - sessionCookie: []
       responses:
@@ -2307,7 +2307,7 @@ paths:
         '500':
           description: Could not assemble the ZIP.
         '503':
-          description: Backup storage or an archive is unavailable.
+          description: Backup storage or the first archive is unavailable, or temporary disk space is insufficient to stage the largest archive.
 
   /auth/users/{userId}/role:
     parameters:
