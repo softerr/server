@@ -21,6 +21,7 @@ on:
       - "scripts/setup_tls_certificate.sh"
       - "scripts/setup_postgresql.sh"
       - "scripts/backup_postgresql.sh"
+      - "scripts/migrate_media_files.php"
       - "tests/deploy/**"
       - "tests/frontend/**"
       - ".github/workflows/deploy-apps.yml"
@@ -50,6 +51,7 @@ on:
       - "scripts/setup_tls_certificate.sh"
       - "scripts/setup_postgresql.sh"
       - "scripts/backup_postgresql.sh"
+      - "scripts/migrate_media_files.php"
       - "tests/deploy/**"
       - "tests/frontend/**"
       - ".github/workflows/deploy-apps.yml"
@@ -72,6 +74,9 @@ jobs:
 
       - name: Check app registry and modules
         run: bash tests/deploy/app_registry.sh
+
+      - name: Check media archive verification
+        run: python3 tests/deploy/media_archive.py
 
       - name: Check atomic app replacement
         run: bash tests/deploy/atomic_deploy.sh

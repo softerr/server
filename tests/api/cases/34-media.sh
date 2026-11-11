@@ -97,6 +97,12 @@ test_shared_media_across_users_and_quizzes() (
   shared_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
   [[ "$status" == 201 && "$shared_id" =~ ^[0-9]+$ ]] \
     || { fail_test "admin personal upload failed: ${response}"; return 1; }
+  local image_hash
+  image_hash="$(sha256sum "$png_file" | cut -d ' ' -f 1)"
+  [[ "$(test_psql media "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'image_blob' AND column_name IN ('content', 'thumbnail_content')")" == 0 ]] \
+    || { fail_test 'Image bytes remain in PostgreSQL'; return 1; }
+  sudo -n cmp -s "$png_file" "/var/lib/softerr/media/images/${image_hash:0:2}/${image_hash}" \
+    || { fail_test 'Uploaded image file does not match its source'; return 1; }
   test_psql media "INSERT INTO public.image_source
       (image_id, source_page, creator, license_name, license_url, attribution)
       VALUES (${shared_id}, 'https://commons.wikimedia.org/wiki/File:Fixture',
@@ -442,15 +448,19 @@ test_shared_media_across_users_and_quizzes() (
   [[ "$(curl -sS -o /dev/null -w '%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${large_id}/thumbnail")" == 401 ]] \
     || { fail_test 'thumbnail was available without authentication'; return 1; }
-  test_psql media "UPDATE public.image_blob SET thumbnail_content = NULL, thumbnail_mime_type = NULL
+  local large_hash
+  large_hash="$(test_psql media "SELECT b.sha256 FROM public.image i
+    JOIN public.image_blob b ON b.id = i.blob_id WHERE i.id = ${large_id};")"
+  [[ "$large_hash" =~ ^[a-f0-9]{64}$ ]] || { fail_test 'large image hash is invalid'; return 1; }
+  sudo -u www-data rm -f -- "/var/lib/softerr/media/thumbnails/${large_hash:0:2}/${large_hash}"
+  test_psql media "UPDATE public.image_blob SET thumbnail_mime_type = NULL
     WHERE id = (SELECT blob_id FROM public.image WHERE id = ${large_id});" >/dev/null
   [[ "$(test_psql media "SELECT has_column_privilege('auth_api', 'public.image_blob',
-    'thumbnail_content', 'UPDATE') AND has_column_privilege('auth_api', 'public.image_blob',
     'thumbnail_mime_type', 'UPDATE');")" == t ]] \
-    || { fail_test 'API role cannot update thumbnail columns'; return 1; }
+    || { fail_test 'API role cannot update thumbnail metadata'; return 1; }
   status="$(curl -sS -b "$admin_cookie" -o "$thumbnail_file" -w '%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${large_id}/thumbnail")"
-  [[ "$status" == 200 && "$(test_psql media "SELECT thumbnail_content IS NOT NULL
+  [[ "$status" == 200 && "$(test_psql media "SELECT thumbnail_mime_type IS NOT NULL
     FROM public.image_blob WHERE id = (SELECT blob_id FROM public.image WHERE id = ${large_id});")" == t ]] \
     || { fail_test "existing image thumbnail was not generated: HTTP ${status}"; return 1; }
   truncate -s 6291457 "$large_file"

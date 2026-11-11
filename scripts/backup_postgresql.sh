@@ -7,6 +7,7 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 BACKUP_DIR=/var/backups/softerr
+MEDIA_DIR=/var/lib/softerr/media
 MEGA_DIR=/softerr-backups
 MEGA_HOME=/var/lib/softerr-mega
 RETENTION_DAYS=7
@@ -21,7 +22,7 @@ postgres() { runuser -u postgres -- "$@"; }
 # The listing is parsed only for archives with our generated, single-token names.
 remote_files() {
   mega mega-ls -l "${MEGA_DIR}" |
-    awk '$3 ~ /^[0-9]+$/ && $NF ~ /^[a-z][a-z0-9_]*-[0-9]+T[0-9]+Z\.[A-Za-z0-9]+\.dump$/ {print $NF " " $3}'
+    awk '$3 ~ /^[0-9]+$/ && $NF ~ /^([a-z][a-z0-9_]*-[0-9]+T[0-9]+Z\.[A-Za-z0-9]+\.dump|media-files-[0-9]+T[0-9]+Z\.[A-Za-z0-9]+\.tar)$/ {print $NF " " $3}'
 }
 
 umask 077
@@ -40,6 +41,7 @@ partial=''
 restore_db=''
 restore_created=false
 progress_log=''
+media_manifest=''
 cleanup() {
   local result=$?
   trap - EXIT
@@ -48,6 +50,7 @@ cleanup() {
   fi
   [[ -z "${partial}" ]] || rm -f -- "${partial}"
   [[ -z "${progress_log}" ]] || rm -f -- "${progress_log}"
+  [[ -z "${media_manifest}" ]] || rm -f -- "${media_manifest}"
   exit "${result}"
 }
 trap cleanup EXIT
@@ -112,12 +115,17 @@ prune_remote() {
       mega mega-rm -f "${MEGA_DIR}/${name}"
       echo "Removed expired MEGA backup: ${name}"
     fi
-  done < <(awk -v prefix="${db}-" 'index($1,prefix)==1' <<< "${listing}" | sort -r)
+  done < <(awk -v prefix="${db}-" 'index($1,prefix)==1 {
+    rest=substr($1,length(prefix)+1); if (rest ~ /^[0-9]+T[0-9]+Z\./) print
+  }' <<< "${listing}" | sort -r)
 }
 
 # Retry archives left behind when an earlier MEGA upload failed.
 shopt -s nullglob
 for archive in "${BACKUP_DIR}"/*.dump; do
+  upload_verified "${archive}"
+done
+for archive in "${BACKUP_DIR}"/*.tar; do
   upload_verified "${archive}"
 done
 
@@ -159,6 +167,47 @@ backup_database() {
 
 backup_database auth 'SELECT 1 FROM public."user", public.user_token, public.verification_email_outbox, public.approval_email_outbox LIMIT 0'
 backup_database media 'SELECT i.id, i.blob_id, b.sha256, token_image.image_id FROM public.image i, public.image_blob b, public.api_token_image_access token_image LIMIT 0' 0 2 1
+backup_media_files() {
+  local archive partial_name started require_files
+  require_files="$(postgres psql -X -Atqc "SELECT NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'image_blob' AND column_name = 'content'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'audio_file' AND column_name = 'content'
+  )" --dbname=media)"
+  if [[ "${require_files}" != t ]]; then
+    echo 'Legacy media byte columns remain; the media file archive starts after API migration.'
+    return
+  fi
+  partial="$(mktemp -- "${BACKUP_DIR}/.media-files-${stamp}.XXXXXXXX.partial")"
+  chown root:www-data "${partial}"
+  chmod 640 "${partial}"
+  partial_name="${partial##*/}"
+  archive="${BACKUP_DIR}/${partial_name#.}"
+  archive="${archive%.partial}.tar"
+  echo 'Archiving private media files...'
+  started=$SECONDS
+  media_manifest="$(mktemp -- "${BACKUP_DIR}/.media-manifest.XXXXXXXX")"
+  postgres psql -X -At -F '|' -d media -c \
+    "SELECT 'images', trim(sha256), size_bytes FROM public.image_blob
+     UNION ALL SELECT 'audio', trim(sha256), size_bytes FROM public.audio_file" \
+    > "${media_manifest}"
+  tar -C "${MEDIA_DIR}" --exclude='.upload-*' -cf "${partial}" images thumbnails audio
+  python3 /usr/local/lib/softerr/verify_media_archive.py \
+    "${partial}" "${MEDIA_DIR}" "${media_manifest}"
+  rm -f -- "${media_manifest}"
+  media_manifest=''
+  echo "Archived and checked media files in $((SECONDS - started)) seconds."
+  if [[ -e "${archive}" ]]; then
+    echo "Refusing to overwrite existing backup: ${archive}" >&2
+    return 1
+  fi
+  mv -- "${partial}" "${archive}"
+  partial=''
+  upload_verified "${archive}"
+}
+backup_media_files
 for app in "${WEB_APPS[@]}"; do
   [[ -z "${APP_DATABASES[$app]}" ]] && continue
   backup_database "${APP_DATABASES[$app]}" "${APP_BACKUP_CHECKS[$app]}"
@@ -167,7 +216,46 @@ done
 # Keep the preceding complete set until every database in this run is verified.
 prune_remote auth "${RETENTION_COUNT}"
 prune_remote media 1
+prune_remote media-files 1
 for app in "${WEB_APPS[@]}"; do
   [[ -z "${APP_DATABASES[$app]}" ]] && continue
   prune_remote "${APP_DATABASES[$app]}" "${RETENTION_COUNT}"
 done
+
+# Uploaded media archives retain deleted files; prune old local orphans only
+# after a complete backup set is safely on MEGA.
+python3 - "${MEDIA_DIR}" <<'PY'
+import os
+import re
+import subprocess
+import sys
+import time
+
+root = sys.argv[1]
+cutoff = time.time() - 2 * 86400
+sql = "SELECT 'images', trim(sha256) FROM public.image_blob UNION ALL SELECT 'audio', trim(sha256) FROM public.audio_file"
+rows = subprocess.check_output(['runuser', '-u', 'postgres', '--', 'psql', '-X', '-At', '-F', '|', '-d', 'media', '-c', sql], text=True)
+referenced = {'images': set(), 'audio': set(), 'thumbnails': set()}
+for row in rows.splitlines():
+    kind, digest = row.split('|')
+    referenced[kind].add(digest)
+    if kind == 'images':
+        referenced['thumbnails'].add(digest)
+
+removed = 0
+for kind, keep in referenced.items():
+    directory = os.path.join(root, kind)
+    for shard in os.scandir(directory):
+        if not shard.is_dir(follow_symlinks=False):
+            continue
+        for entry in os.scandir(shard.path):
+            if (entry.is_file(follow_symlinks=False) and re.fullmatch('[a-f0-9]{64}', entry.name)
+                    and entry.name not in keep and entry.stat().st_mtime < cutoff):
+                os.unlink(entry.path)
+                removed += 1
+            elif (entry.is_file(follow_symlinks=False) and entry.name.startswith('.upload-')
+                    and entry.stat().st_mtime < cutoff):
+                os.unlink(entry.path)
+                removed += 1
+print(f'Removed {removed} unreferenced local media files.')
+PY

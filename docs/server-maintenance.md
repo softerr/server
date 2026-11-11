@@ -131,11 +131,15 @@ Export tokens to CSV:
 sudo -u postgres psql -d auth -c "\copy (SELECT * FROM public.user_token ORDER BY id) TO '/tmp/auth_user_token.csv' CSV HEADER"
 ```
 
-## 6. Verified database backups
+## 6. Verified backups
 
-PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after 03:00 server time, dumps `auth`, `media`, `quiz`, `musico`, and `mdb`, restores each dump into a temporary database, checks the expected tables, then uploads it to `/softerr-backups` in MEGA. The temporary local dump is removed after MEGA reports the expected file size. If upload fails, the verified dump remains in `/var/backups/softerr` for retry on the next run. Existing local backups are also uploaded on the next run. MEGA keeps up to 7 days and 7 archives per database, except `media`, which keeps one. A failed dump, restore, or upload makes the service fail. Keep enough temporary disk space for a dump, its restored database, and an admin download ZIP. The MEGA session belongs to `www-data` under `/var/lib/softerr-mega`; bootstrap opens the interactive MEGAcmd shell once; use `login YOUR_MEGA_EMAIL`, answer its password and 2FA prompts, then `exit --only-shell`. Do not log this account out while automated backups are in use.
+PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after 03:00 server time, dumps `auth`, `media`, `quiz`, `musico`, and `mdb`, restores each dump into a temporary database, checks the expected tables, and uploads it to `/softerr-backups` in MEGA. It also archives the private files in `/var/lib/softerr/media` as `media-files.tar` and compares the archive contents with the source files. A complete backup set includes both `media.dump` and `media-files.tar`; restore both to recover images and audio. The temporary local archives are removed after MEGA reports the expected sizes. Failed uploads remain in `/var/backups/softerr` for retry. MEGA keeps up to 7 days and 7 archives per database, except `media` and `media-files`, which keep one each. A failed dump, restore, archive check, or upload makes the service fail. Keep enough temporary disk space for a dump, its restored database, a media TAR, and an admin download ZIP. The MEGA session belongs to `www-data` under `/var/lib/softerr-mega`; bootstrap opens the interactive MEGAcmd shell once; use `login YOUR_MEGA_EMAIL`, answer its password and 2FA prompts, then `exit --only-shell`. Do not log this account out while automated backups are in use.
 
-The media archive skips PostgreSQL dump compression because most stored images and audio are already compressed. This reduces backup CPU work but may increase archive size. Its restore check uses two parallel jobs. The backup log reports dump, restore, check, and temporary-database removal durations separately.
+Images and audio are stored as private files; PostgreSQL holds their hashes, sizes, and ownership. The media database dump skips compression and its restore check uses two parallel jobs. On the first deployment after this storage change, API deployment copies legacy database bytes to private files while the old API is running, pauses PHP-FPM for a final catch-up, verifies the new release, and then removes the old byte columns. Keep enough free disk space for both copies during this one-time transition.
+
+While legacy byte columns remain, database backups continue but no modern `media-files.tar` set is published. After migration, API deployment starts a new verified backup in the background. Check its completion with `sudo systemctl status softerr-backup-postgresql.service` before relying on the new backup set.
+
+Dropped byte columns disappear from new dumps immediately. PostgreSQL may retain their old disk space until the table is rewritten; plan that maintenance separately if server disk space is tight.
 
 Server setup reuses a complete MEGA backup set from the past two days when the daily timer is enabled and its last backup succeeded. It runs the full backup and restore check during first-time setup or if that check fails. Data changed after the reused backup is not covered until the next scheduled backup.
 
@@ -166,6 +170,17 @@ sudo rmdir /var/backups/softerr/restore
 ```
 
 This does not modify the live `auth` database. For a production recovery, keep the application stopped while validating and switching databases.
+
+To inspect media files from the same backup set, extract `media-files.tar` into a separate directory:
+
+```bash
+sudo install -d -o www-data -g www-data -m 750 /var/backups/softerr/restore
+sudo -u www-data env HOME=/var/lib/softerr-mega mega-get /softerr-backups/MEDIA_FILES_ARCHIVE.tar /var/backups/softerr/restore
+sudo install -d -m 700 /var/backups/softerr/media-restore-check
+sudo tar -xf /var/backups/softerr/restore/MEDIA_FILES_ARCHIVE.tar -C /var/backups/softerr/media-restore-check
+```
+
+Restore the extracted `images`, `thumbnails`, and `audio` directories under `/var/lib/softerr/media` together with `media.dump` when recovering production; current media database dumps contain no image or audio bytes.
 
 ## 8. Timers and redeployment
 

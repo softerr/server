@@ -527,7 +527,7 @@ function handleExportQuizZip(int $quizId): never
     $mediaDb = connectMediaDb();
     foreach ($imageIds as $id) {
         $imageResult = @pg_query_params($mediaDb,
-            'SELECT i.original_name, b.mime_type, b.content,
+            'SELECT i.original_name, b.mime_type, b.sha256,
                     s.source_page, s.creator, s.license_name, s.license_url, s.attribution
              FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
              LEFT JOIN public.image_source s ON s.image_id = i.id
@@ -537,7 +537,13 @@ function handleExportQuizZip(int $quizId): never
         $image = pg_fetch_assoc($imageResult);
         if ($image === false) respond(500, ['error' => 'Quiz image is missing']);
         $filename = "images/{$id}/{$image['original_name']}";
-        if (!$zip->addFromString($filename, pg_unescape_bytea($image['content']))) {
+        try {
+            $imageBytes = mediaStorageRead('images', $image['sha256']);
+        } catch (RuntimeException $error) {
+            error_log($error->getMessage());
+            respond(500, ['error' => 'Quiz image is missing']);
+        }
+        if (!$zip->addFromString($filename, $imageBytes)) {
             respond(500, ['error' => 'Failed to export quiz']);
         }
         $entry = ['id' => $id, 'name' => $image['original_name'], 'file' => $filename];

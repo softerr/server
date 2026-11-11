@@ -93,7 +93,7 @@ function handleListSharedImages(): never
     $db = connectMediaDb();
     $result = @pg_query($db,
         'SELECT i.id, i.original_name, i.shared, i.group_id, b.mime_type, b.width, b.height,
-                octet_length(b.content) AS size_bytes
+                b.size_bytes AS size_bytes
          FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
          WHERE i.shared = TRUE
          ORDER BY lower(i.original_name), i.original_name, i.id');

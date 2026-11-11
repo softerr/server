@@ -150,7 +150,7 @@ function mediaImageByHash($db, int $authUserId, string $hash, bool $reuseShared 
 {
     $result = @pg_query_params($db,
         'SELECT i.id, i.original_name, i.shared, i.group_id, b.mime_type, b.width, b.height,
-                octet_length(b.content) AS size_bytes,
+                b.size_bytes AS size_bytes,
                 s.source_page, s.creator, s.license_name, s.license_url, s.attribution
          FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
          LEFT JOIN public.image_source s ON s.image_id = i.id
@@ -164,19 +164,30 @@ function mediaImageByHash($db, int $authUserId, string $hash, bool $reuseShared 
 
 function mediaBlobId($db, string $hash, string $bytes, string $mime, int $width, int $height): string
 {
+    try {
+        mediaStorageWrite('images', $hash, $bytes);
+    } catch (RuntimeException $error) {
+        error_log($error->getMessage());
+        respond(500, ['error' => 'Failed to save image']);
+    }
     $existing = @pg_query_params($db,
         'SELECT id FROM public.image_blob WHERE sha256 = $1', [$hash]);
     if ($existing === false) respond(500, ['error' => 'Failed to save image']);
     if (pg_num_rows($existing) > 0) return pg_fetch_result($existing, 0, 'id');
 
     [$thumbnailMime, $thumbnailBytes] = mediaThumbnail($bytes, $mime, $width, $height);
+    try {
+        mediaStorageWrite('thumbnails', $hash, $thumbnailBytes);
+    } catch (RuntimeException $error) {
+        error_log($error->getMessage());
+        respond(500, ['error' => 'Failed to save image thumbnail']);
+    }
     $insert = @pg_query_params($db,
-        'INSERT INTO public.image_blob (sha256, mime_type, width, height, content,
-                                        thumbnail_mime_type, thumbnail_content)
-         VALUES ($1, $2, $3, $4, $5::bytea, $6, $7::bytea)
+        'INSERT INTO public.image_blob (sha256, mime_type, width, height, size_bytes,
+                                        thumbnail_mime_type)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (sha256) DO NOTHING',
-        [$hash, $mime, $width, $height, '\\x' . bin2hex($bytes),
-         $thumbnailMime, '\\x' . bin2hex($thumbnailBytes)]);
+        [$hash, $mime, $width, $height, strlen($bytes), $thumbnailMime]);
     $blob = $insert === false ? false : @pg_query_params($db,
         'SELECT id FROM public.image_blob WHERE sha256 = $1', [$hash]);
     $blobId = $blob === false ? false : pg_fetch_result($blob, 0, 'id');
@@ -223,10 +234,18 @@ function saveMediaImage($db, int $authUserId, string $name, string $bytes,
 {
     $hash = hash('sha256', $bytes);
     $existing = mediaImageByHash($db, $authUserId, $hash, $reuseShared);
-    if ($existing !== null) return $existing;
+    if ($existing !== null) {
+        try {
+            mediaStorageWrite('images', $hash, $bytes);
+        } catch (RuntimeException $error) {
+            error_log($error->getMessage());
+            respond(500, ['error' => 'Failed to save image']);
+        }
+        return $existing;
+    }
 
     $usage = @pg_query_params($db,
-            'SELECT COUNT(*) AS total, COALESCE(SUM(octet_length(b.content)), 0) AS bytes
+            'SELECT COUNT(*) AS total, COALESCE(SUM(b.size_bytes), 0) AS bytes
              FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
              WHERE i.owner_auth_user_id = $1', [$authUserId]);
     if ($usage === false) respond(500, ['error' => 'Failed to save image']);
@@ -245,7 +264,7 @@ function saveMediaImage($db, int $authUserId, string $name, string $bytes,
     if ($insert === false) respond(500, ['error' => 'Failed to save image']);
     $stored = @pg_query_params($db,
         'SELECT i.id, i.original_name, i.shared, i.group_id, b.mime_type, b.width, b.height,
-                octet_length(b.content) AS size_bytes
+                b.size_bytes AS size_bytes
          FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
          WHERE i.blob_id = $1 AND i.owner_auth_user_id = $2
          LIMIT 1', [$blobId, $authUserId]);
@@ -263,7 +282,7 @@ function listMediaImages(bool $mineOnly): never
     $db = connectMediaDb();
     $result = @pg_query_params($db,
         'SELECT i.id, i.original_name, i.shared, i.group_id, b.mime_type, b.width, b.height,
-                octet_length(b.content) AS size_bytes,
+                b.size_bytes AS size_bytes,
                 s.source_page, s.creator, s.license_name, s.license_url, s.attribution
          FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
          LEFT JOIN public.image_source s ON s.image_id = i.id
@@ -376,7 +395,7 @@ function handleUploadSharedImage(?int $groupId = null): never
     $created = pg_num_rows($insert) > 0;
     $stored = @pg_query_params($db,
         'SELECT i.id, i.original_name, i.shared, i.group_id, b.mime_type, b.width, b.height,
-                octet_length(b.content) AS size_bytes
+                b.size_bytes AS size_bytes
          FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
          WHERE i.blob_id = $1 AND i.shared = TRUE', [$blobId]);
     $row = $stored === false ? false : pg_fetch_assoc($stored);
@@ -400,7 +419,7 @@ function handlePublishImage(int $imageId): never
     ensureMediaAccountActive((int) $user['id'], true);
     $image = @pg_query_params($db,
         'SELECT i.id, i.blob_id, i.original_name, i.shared, i.group_id, b.mime_type, b.width, b.height,
-                octet_length(b.content) AS size_bytes
+                b.size_bytes AS size_bytes
          FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
          WHERE i.id = $1 AND i.owner_auth_user_id = $2 AND i.shared = FALSE
          FOR UPDATE OF i', [$imageId, $user['id']]);
@@ -477,15 +496,32 @@ function imageUsedByReadableOwnerApp(int $imageId, array $user): bool
 
 function storedMediaThumbnail($db, array $row): array
 {
-    if ($row['thumbnail_content'] !== null) {
-        return [$row['thumbnail_mime_type'], pg_unescape_bytea($row['thumbnail_content'])];
+    $hash = trim($row['sha256']);
+    try {
+        if (is_file(mediaStoragePath('thumbnails', $hash))) {
+            $stored = mediaStorageRead('thumbnails', $hash);
+            if ($row['thumbnail_mime_type'] !== null) {
+                return [$row['thumbnail_mime_type'], $stored];
+            }
+            $mime = @getimagesizefromstring($stored)['mime'] ?? null;
+            if (in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)) {
+                $bytes = $stored;
+            } else {
+                throw new RuntimeException('Stored image thumbnail is invalid');
+            }
+        } else {
+            $original = mediaStorageRead('images', $hash);
+            [$mime, $bytes] = mediaThumbnail($original, $row['mime_type'],
+                (int) $row['width'], (int) $row['height']);
+            mediaStorageWrite('thumbnails', $hash, $bytes);
+        }
+    } catch (RuntimeException $error) {
+        error_log($error->getMessage());
+        respond(500, ['error' => 'Could not load image thumbnail']);
     }
-    [$mime, $bytes] = mediaThumbnail(pg_unescape_bytea($row['content']), $row['mime_type'],
-        (int) $row['width'], (int) $row['height']);
     $saved = @pg_query_params($db,
-        'UPDATE public.image_blob SET thumbnail_mime_type = $2, thumbnail_content = $3::bytea
-         WHERE id = $1 AND thumbnail_content IS NULL',
-        [$row['blob_id'], $mime, '\\x' . bin2hex($bytes)]);
+        'UPDATE public.image_blob SET thumbnail_mime_type = $2 WHERE id = $1',
+        [$row['blob_id'], $mime]);
     if ($saved === false) respond(500, ['error' => 'Could not save image thumbnail']);
     return [$mime, $bytes];
 }
@@ -494,10 +530,8 @@ function handleGetImage(int $imageId, bool $thumbnail = false): never
 {
     $user = currentSessionUser();
     $db = connectMediaDb();
-    $columns = $thumbnail
-        ? 'b.id AS blob_id, b.mime_type, b.width, b.height, b.thumbnail_mime_type,
-           b.thumbnail_content, CASE WHEN b.thumbnail_content IS NULL THEN b.content ELSE NULL END AS content'
-        : 'b.mime_type, b.content';
+    $columns = 'b.id AS blob_id, b.sha256, b.mime_type, b.width, b.height,
+                b.size_bytes, b.thumbnail_mime_type';
     $result = @pg_query_params($db,
         'SELECT i.original_name, ' . $columns . '
          FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
@@ -525,7 +559,15 @@ function handleGetImage(int $imageId, bool $thumbnail = false): never
         [$mime, $bytes] = storedMediaThumbnail($db, $row);
     } else {
         $mime = $row['mime_type'];
-        $bytes = pg_unescape_bytea($row['content']);
+        try {
+            $bytes = mediaStorageRead('images', $row['sha256']);
+        } catch (RuntimeException $error) {
+            error_log($error->getMessage());
+            respond(500, ['error' => 'Could not load image']);
+        }
+        if (strlen($bytes) !== (int) $row['size_bytes']) {
+            respond(500, ['error' => 'Stored image size does not match metadata']);
+        }
         header("Content-Disposition: inline; filename*=UTF-8''" . rawurlencode($row['original_name']));
     }
     header('Content-Type: ' . $mime);
@@ -550,9 +592,8 @@ function handleGetMediaThumbnails(): never
 
     $db = connectMediaDb();
     $result = @pg_query_params($db,
-        'SELECT i.id, b.id AS blob_id, b.mime_type, b.width, b.height,
-                b.thumbnail_mime_type, b.thumbnail_content,
-                CASE WHEN b.thumbnail_content IS NULL THEN b.content ELSE NULL END AS content
+        'SELECT i.id, b.id AS blob_id, b.sha256, b.mime_type, b.width, b.height,
+                b.thumbnail_mime_type
          FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
          WHERE i.id = ANY($1::bigint[])
            AND (i.owner_auth_user_id = $2 OR i.shared = TRUE)',
@@ -569,9 +610,8 @@ function handleGetMediaThumbnails(): never
         foreach ($ids as $id) {
             if (isset($found[$id]) || !imageUsedByReadableOwnerApp($id, $user)) continue;
             $ownerImage = @pg_query_params($db,
-                'SELECT i.id, b.id AS blob_id, b.mime_type, b.width, b.height,
-                        b.thumbnail_mime_type, b.thumbnail_content,
-                        CASE WHEN b.thumbnail_content IS NULL THEN b.content ELSE NULL END AS content
+                'SELECT i.id, b.id AS blob_id, b.sha256, b.mime_type, b.width, b.height,
+                        b.thumbnail_mime_type
                  FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
                  WHERE i.id = $1 AND i.owner_auth_user_id = $2',
                 [$id, $user['service_owner_id']]);
@@ -602,7 +642,7 @@ function handleRenameImage(int $imageId): never
            RETURNING id, blob_id, original_name, shared, group_id
          )
          SELECT i.id, i.original_name, i.shared, i.group_id, b.mime_type, b.width, b.height,
-                octet_length(b.content) AS size_bytes
+                b.size_bytes AS size_bytes
          FROM renamed i JOIN public.image_blob b ON b.id = i.blob_id',
         [$name, $imageId, $user['id'], $user['role'] === 'admin' ? 'true' : 'false']);
     if ($result === false) respond(500, ['error' => 'Failed to rename image']);

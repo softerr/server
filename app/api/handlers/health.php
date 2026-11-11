@@ -34,13 +34,19 @@ function checkMediaReadiness(): void
     if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) {
         respond(503, ['status' => 'unavailable', 'error' => 'Image thumbnail support is not ready']);
     }
+    foreach (['images', 'thumbnails', 'audio'] as $kind) {
+        $directory = MEDIA_STORAGE_ROOT . '/' . $kind;
+        if (!is_dir($directory) || !is_readable($directory) || !is_writable($directory)) {
+            respond(503, ['status' => 'unavailable', 'error' => 'Media file storage is not ready']);
+        }
+    }
     [$mediaDb, $mediaError] = openMediaDb();
     if ($mediaDb === false) {
         respond(503, ['status' => 'unavailable', 'error' => $mediaError]);
     }
     $mediaSchema = @pg_query($mediaDb, 'SELECT i.id, i.blob_id, i.owner_auth_user_id, i.uploaded_by_auth_user_id, i.group_id,
-            i.shared, i.original_name, b.sha256, b.mime_type, b.content,
-            b.thumbnail_content, b.thumbnail_mime_type
+            i.shared, i.original_name, b.sha256, b.mime_type, b.size_bytes,
+            b.thumbnail_mime_type
         FROM public.image i, public.image_blob b LIMIT 0');
     if ($mediaSchema === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media database schema is not ready']);
@@ -56,7 +62,7 @@ function checkMediaReadiness(): void
     if (@pg_query($mediaDb, 'SELECT id, quiz_id, image_ids FROM public.quiz_import_recovery LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media database schema is not ready']);
     }
-    if (@pg_query($mediaDb, 'SELECT id, owner_auth_user_id, original_name, mime_type, size_bytes, sha256, content FROM public.audio_file LIMIT 0') === false) {
+    if (@pg_query($mediaDb, 'SELECT id, owner_auth_user_id, original_name, mime_type, size_bytes, sha256 FROM public.audio_file LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media audio schema is not ready']);
     }
 }

@@ -19,6 +19,7 @@ PRUNE_SQL_FILE="${REPO_ROOT}/configs/postgresql/prune_user_tokens.sql"
 PRUNE_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.service"
 PRUNE_TIMER_FILE="${REPO_ROOT}/configs/systemd/softerr-prune-user-tokens.timer"
 BACKUP_SCRIPT_FILE="${SCRIPT_DIR}/backup_postgresql.sh"
+MEDIA_ARCHIVE_CHECK_FILE="${SCRIPT_DIR}/lib/verify_media_archive.py"
 BACKUP_SERVICE_FILE="${REPO_ROOT}/configs/systemd/softerr-backup-postgresql.service"
 BACKUP_TIMER_FILE="${REPO_ROOT}/configs/systemd/softerr-backup-postgresql.timer"
 
@@ -29,7 +30,8 @@ fi
 
 for config_file in "${INIT_SQL_FILE}" "${AUTH_SQL_FILE}" "${MEDIA_SQL_FILE}" \
   "${PRUNE_SQL_FILE}" "${PRUNE_SERVICE_FILE}" "${PRUNE_TIMER_FILE}" \
-  "${BACKUP_SCRIPT_FILE}" "${BACKUP_SERVICE_FILE}" "${BACKUP_TIMER_FILE}"; do
+  "${BACKUP_SCRIPT_FILE}" "${MEDIA_ARCHIVE_CHECK_FILE}" \
+  "${BACKUP_SERVICE_FILE}" "${BACKUP_TIMER_FILE}"; do
   if [[ ! -f "${config_file}" ]]; then
     echo "Required PostgreSQL setup file not found: ${config_file}"
     exit 1
@@ -75,6 +77,12 @@ sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${AUTH_SQL_FILE}"
 echo "Applying shared media database schema: ${MEDIA_SQL_FILE}"
 sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d media < "${MEDIA_SQL_FILE}"
 
+echo "Preparing private media file storage..."
+install -d -m 755 /var/lib/softerr
+install -d -o postgres -g www-data -m 2770 /var/lib/softerr/media \
+  /var/lib/softerr/media/images /var/lib/softerr/media/thumbnails \
+  /var/lib/softerr/media/audio
+
 for app in "${WEB_APPS[@]}"; do
   database="${APP_DATABASES[$app]}"
   [[ -z "${database}" ]] && continue
@@ -111,12 +119,13 @@ echo "Preparing backup directory and existing archives..."
 install -d -o postgres -g www-data -m 2750 /var/backups/softerr
 chmod 2750 /var/backups/softerr
 install -m 755 "${BACKUP_SCRIPT_FILE}" /usr/local/lib/softerr/backup_postgresql.sh
+install -m 644 "${MEDIA_ARCHIVE_CHECK_FILE}" /usr/local/lib/softerr/verify_media_archive.py
 install -m 644 "${BACKUP_SERVICE_FILE}" /etc/systemd/system/softerr-backup-postgresql.service
 install -m 644 "${BACKUP_TIMER_FILE}" /etc/systemd/system/softerr-backup-postgresql.timer
 systemctl daemon-reload
 complete_mega_backup_set_exists() {
   local listing name stamp database key cutoff
-  local -a databases=(auth media) stamps=()
+  local -a databases=(auth media media-files) stamps=()
   local -A counts=()
   for database in "${WEB_APPS[@]}"; do
     [[ -z "${APP_DATABASES[$database]}" ]] || databases+=("${APP_DATABASES[$database]}")
@@ -125,7 +134,9 @@ complete_mega_backup_set_exists() {
     mega-ls -l /softerr-backups 2>/dev/null)" || return 1
   cutoff="$(date -u -d '2 days ago' +%Y%m%dT%H%M%SZ)"
   while IFS= read -r name; do
-    if [[ "${name}" =~ ^([a-z][a-z0-9_]*)-([0-9]{8}T[0-9]{6}Z)\.[A-Za-z0-9]{8}\.dump$ ]]; then
+    if [[ "${name}" =~ ^([a-z][a-z0-9_]*|media-files)-([0-9]{8}T[0-9]{6}Z)\.[A-Za-z0-9]{8}\.(dump|tar)$ ]]; then
+      [[ "${BASH_REMATCH[1]}" == media-files && "${BASH_REMATCH[3]}" == tar \
+        || "${BASH_REMATCH[1]}" != media-files && "${BASH_REMATCH[3]}" == dump ]] || continue
       key="${BASH_REMATCH[2]},${BASH_REMATCH[1]}"
       counts["${key}"]=$(( ${counts[${key}]:-0} + 1 ))
       stamps+=("${BASH_REMATCH[2]}")
@@ -142,7 +153,16 @@ complete_mega_backup_set_exists() {
   return 1
 }
 
-if systemctl is-enabled --quiet softerr-backup-postgresql.timer \
+legacy_media_columns="$(sudo -u postgres psql -X -Atqc "SELECT EXISTS (
+  SELECT 1 FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'image_blob' AND column_name = 'content'
+) OR EXISTS (
+  SELECT 1 FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'audio_file' AND column_name = 'content'
+)" -d media)"
+if [[ "${legacy_media_columns}" == t ]]; then
+  echo 'Legacy media bytes will move to private files during API deployment; the verified media file backup runs afterward.'
+elif systemctl is-enabled --quiet softerr-backup-postgresql.timer \
   && [[ "$(systemctl show --value -p Result softerr-backup-postgresql.service)" == success ]] \
   && complete_mega_backup_set_exists; then
   echo "A complete recent MEGA backup set exists; the daily timer will make the next backup."

@@ -253,7 +253,7 @@ test_auth_login_session_lifecycle() {
             $names[] = $entry["name"];
           }
           sort($names);
-          exit($names === ["auth.dump", "mdb.dump", "media.dump", "musico.dump", "quiz.dump"] ? 0 : 1);
+          exit($names === ["auth.dump", "mdb.dump", "media-files.tar", "media.dump", "musico.dump", "quiz.dump"] ? 0 : 1);
         ' "${backup_zip}"; then
           rm -f "${backup_zip}" "${cookie_file}"
           fail_test "admin backup download was incomplete: HTTP ${backup_status}"

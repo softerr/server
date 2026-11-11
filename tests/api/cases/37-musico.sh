@@ -87,7 +87,9 @@ test_musico_shared_track_playlists() {
 
   if [[ "$(test_psql musico "SELECT media_audio_id FROM public.track WHERE id = ${track_id}")" != "${media_audio_id}" \
     || "$(test_psql musico "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'track' AND column_name IN ('content', 'original_name', 'mime_type', 'size_bytes', 'content_sha256')")" != 0 \
-    || "$(test_psql media "SELECT sha256 FROM public.audio_file WHERE id = ${media_audio_id} AND octet_length(content) = size_bytes")" != "${content_hash}" ]]; then
+    || "$(test_psql media "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'audio_file' AND column_name = 'content'")" != 0 \
+    || "$(test_psql media "SELECT sha256 FROM public.audio_file WHERE id = ${media_audio_id} AND size_bytes = $(wc -c < "${audio_file}")")" != "${content_hash}" ]] \
+    || ! sudo -n cmp -s "${audio_file}" "/var/lib/softerr/media/audio/${content_hash:0:2}/${content_hash}"; then
     rm -f "${cookie_file}" "${audio_file}"
     fail_test 'Musico track did not reference audio bytes in Media'
     return 1

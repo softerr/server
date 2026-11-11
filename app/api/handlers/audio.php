@@ -46,17 +46,29 @@ function saveMediaAudioFile($db, int $ownerId, string $name, string $mime, strin
     if ($existing === false) respond(500, ['error' => 'Could not check audio file']);
     $row = pg_fetch_assoc($existing);
     if ($row !== false) {
+        try {
+            mediaStorageWrite('audio', $sha256, $bytes);
+        } catch (RuntimeException $error) {
+            error_log($error->getMessage());
+            respond(500, ['error' => 'Could not save audio file']);
+        }
         if (@pg_query($db, 'COMMIT') === false) respond(500, ['error' => 'Could not save audio file']);
         return $row;
     }
     if (mediaAudioUsage($db, $ownerId) + strlen($bytes) > MEDIA_AUDIO_USER_MAX_BYTES) {
         respond(413, ['error' => 'Your audio files are limited to 6 GiB']);
     }
+    try {
+        mediaStorageWrite('audio', $sha256, $bytes);
+    } catch (RuntimeException $error) {
+        error_log($error->getMessage());
+        respond(500, ['error' => 'Could not save audio file']);
+    }
     $saved = @pg_query_params($db,
-        'INSERT INTO public.audio_file (owner_auth_user_id, original_name, mime_type, size_bytes, sha256, content)
-         VALUES ($1, $2, $3, $4, $5, decode($6, \'base64\'))
+        'INSERT INTO public.audio_file (owner_auth_user_id, original_name, mime_type, size_bytes, sha256)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id, original_name, mime_type, size_bytes, sha256, created',
-        [$ownerId, $name, $mime, strlen($bytes), $sha256, base64_encode($bytes)]);
+        [$ownerId, $name, $mime, strlen($bytes), $sha256]);
     if ($saved === false || ($row = pg_fetch_assoc($saved)) === false
         || @pg_query($db, 'COMMIT') === false) respond(500, ['error' => 'Could not save audio file']);
     return $row;
@@ -127,12 +139,16 @@ function handleUploadMediaAudio(): never
 function streamMediaAudio($db, int $audioId, int $ownerId): never
 {
     $result = @pg_query_params($db,
-        'SELECT mime_type, size_bytes FROM public.audio_file WHERE id = $1 AND owner_auth_user_id = $2',
+        'SELECT mime_type, size_bytes, sha256 FROM public.audio_file WHERE id = $1 AND owner_auth_user_id = $2',
         [$audioId, $ownerId]);
     if ($result === false) respond(500, ['error' => 'Could not load audio file']);
     $file = pg_fetch_assoc($result);
     if ($file === false) respond(404, ['error' => 'Audio file not found']);
     $size = (int) $file['size_bytes'];
+    $path = mediaStoragePath('audio', $file['sha256']);
+    if (!is_file($path) || filesize($path) !== $size) {
+        respond(500, ['error' => 'Stored audio file is unavailable']);
+    }
     $start = 0;
     $end = $size - 1;
     if (isset($_SERVER['HTTP_RANGE'])) {
@@ -156,18 +172,22 @@ function streamMediaAudio($db, int $audioId, int $ownerId): never
         header("Content-Range: bytes {$start}-{$end}/{$size}");
     }
     $length = $end - $start + 1;
-    $data = @pg_query_params($db,
-        'SELECT encode(substring(content FROM $2 FOR $3), \'base64\')
-         FROM public.audio_file WHERE id = $1 AND owner_auth_user_id = $4',
-        [$audioId, $start + 1, $length, $ownerId]);
-    if ($data === false || ($encoded = pg_fetch_result($data, 0, 0)) === false
-        || ($bytes = base64_decode($encoded, true)) === false) respond(500, ['error' => 'Could not stream audio file']);
+    $stream = @fopen($path, 'rb');
+    if ($stream === false || fseek($stream, $start) !== 0) {
+        respond(500, ['error' => 'Could not stream audio file']);
+    }
     header('Content-Type: ' . $file['mime_type']);
-    header('Content-Length: ' . strlen($bytes));
+    header('Content-Length: ' . $length);
     header('Accept-Ranges: bytes');
     header('Cache-Control: private, no-store');
     header('X-Content-Type-Options: nosniff');
-    echo $bytes;
+    while ($length > 0 && !feof($stream)) {
+        $chunk = fread($stream, min(65536, $length));
+        if ($chunk === false || $chunk === '') break;
+        echo $chunk;
+        $length -= strlen($chunk);
+    }
+    fclose($stream);
     exit;
 }
 

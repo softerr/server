@@ -24,6 +24,11 @@ function backupDatabases(): array
     return $databases;
 }
 
+function backupArtifacts(): array
+{
+    return [...array_fill_keys(backupDatabases(), 'dump'), 'media-files' => 'tar'];
+}
+
 function authorizeBackupDownload(): void
 {
     header('Cache-Control: private, no-store');
@@ -69,24 +74,25 @@ function backupMegaCommand(array $command): string
 
 function availableBackupSets(): array
 {
-    $backupDatabases = backupDatabases();
-    $databasePattern = implode('|', array_map(static fn (string $name): string => preg_quote($name, '/'), $backupDatabases));
+    $artifacts = backupArtifacts();
+    $artifactPattern = implode('|', array_map(static fn (string $name): string => preg_quote($name, '/'), array_keys($artifacts)));
     $listing = backupMegaCommand(['mega-ls', '-l', BACKUP_MEGA_DIRECTORY]);
     $candidates = [];
     foreach (preg_split('/\r?\n/', $listing) as $line) {
         $fields = preg_split('/\s+/', trim($line));
         if (count($fields) < 5 || !ctype_digit($fields[2])) continue;
         $name = end($fields);
-        if (!preg_match('/^(' . $databasePattern . ')-(\d{8}T\d{6}Z)\.[A-Za-z0-9]{8}\.dump$/D', $name, $match)) continue;
+        if (!preg_match('/^(' . $artifactPattern . ')-(\d{8}T\d{6}Z)\.[A-Za-z0-9]{8}\.(dump|tar)$/D', $name, $match)
+            || $artifacts[$match[1]] !== $match[3]) continue;
         $candidates[$match[2]][$match[1]][] = ['name' => $name, 'size' => (int) $fields[2]];
     }
     krsort($candidates, SORT_STRING);
     $sets = [];
     foreach ($candidates as $stamp => $databases) {
         $files = [];
-        foreach ($backupDatabases as $database) {
-            if (count($databases[$database] ?? []) !== 1) continue 2;
-            $files[$database] = $databases[$database][0];
+        foreach ($artifacts as $artifact => $_) {
+            if (count($databases[$artifact] ?? []) !== 1) continue 2;
+            $files[$artifact] = $databases[$artifact][0];
         }
         $sets[$stamp] = $files;
     }
@@ -136,9 +142,9 @@ function handleDownloadBackup(string $stamp): never
     if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
         respond(500, ['error' => 'Could not prepare backup download']);
     }
-    foreach (backupDatabases() as $database) {
-        $name = $database . '.dump';
-        if (!$zip->addFile($directory . '/' . $files[$database]['name'], $name)
+    foreach (backupArtifacts() as $artifact => $extension) {
+        $name = $artifact . '.' . $extension;
+        if (!$zip->addFile($directory . '/' . $files[$artifact]['name'], $name)
             || !$zip->setCompressionName($name, ZipArchive::CM_STORE)) {
             $zip->close();
             respond(500, ['error' => 'Could not prepare backup download']);

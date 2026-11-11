@@ -2147,8 +2147,8 @@ paths:
     get:
       tags: [Administration]
       operationId: listBackups
-      summary: List complete, restore-checked database backup sets
-      description: Requires a current admin session. Each set contains auth, media, quiz, musico, and mdb archives from one backup run, newest first. Archives are stored on MEGA and downloaded to the server temporarily for ZIP creation. Responses are not cached.
+      summary: List complete, verified backup sets
+      description: Requires a current admin session. Each set contains auth, media, quiz, musico, and mdb database dumps plus a media-files TAR from one backup run, newest first. Archives are stored on MEGA and downloaded to the server temporarily for ZIP creation. Responses are not cached.
       security:
         - sessionCookie: []
       responses:
@@ -2185,8 +2185,8 @@ paths:
     get:
       tags: [Administration]
       operationId: downloadBackup
-      summary: Download all three database archives in one ZIP
-      description: Requires a current admin session. The ZIP contains auth.dump, quiz.dump, and media.dump. Responses are not cached.
+      summary: Download a complete backup set in one ZIP
+      description: Requires a current admin session. The ZIP contains all database dumps and media-files.tar. Restore the media database and media files together. Responses are not cached.
       security:
         - sessionCookie: []
       responses:

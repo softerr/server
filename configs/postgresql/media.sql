@@ -4,11 +4,34 @@ CREATE TABLE IF NOT EXISTS public.image_blob (
     mime_type VARCHAR(16) NOT NULL CHECK (mime_type IN ('image/png', 'image/jpeg', 'image/webp')),
     width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 4096),
     height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 4096),
-    content BYTEA NOT NULL CONSTRAINT image_blob_content_size_check
-        CHECK (octet_length(content) BETWEEN 1 AND 6291456),
-    thumbnail_content BYTEA,
+    size_bytes INTEGER NOT NULL CONSTRAINT image_blob_size_bytes_check
+        CHECK (size_bytes BETWEEN 1 AND 6291456),
     thumbnail_mime_type VARCHAR(16)
 );
+
+-- A committed database still has BYTEA columns until deploy_api.sh copies
+-- them to private media storage and the new API release is verified.
+ALTER TABLE public.image_blob ADD COLUMN IF NOT EXISTS size_bytes INTEGER;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'image_blob'
+                 AND column_name = 'content') THEN
+        UPDATE public.image_blob SET size_bytes = octet_length(content)
+        WHERE size_bytes IS NULL;
+        ALTER TABLE public.image_blob ALTER COLUMN content DROP NOT NULL;
+        ALTER TABLE public.image_blob ALTER COLUMN thumbnail_content DROP NOT NULL;
+    END IF;
+END $$;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'public.image_blob'::regclass
+                     AND conname = 'image_blob_size_bytes_check') THEN
+        ALTER TABLE public.image_blob ADD CONSTRAINT image_blob_size_bytes_check
+            CHECK (size_bytes BETWEEN 1 AND 6291456);
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.media_group (
     id BIGSERIAL PRIMARY KEY,
@@ -68,13 +91,19 @@ CREATE TABLE IF NOT EXISTS public.audio_file (
         ('audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/flac', 'audio/mp4')),
     size_bytes INTEGER NOT NULL CHECK (size_bytes BETWEEN 1 AND 25165824),
     sha256 CHAR(64) NOT NULL,
-    content BYTEA NOT NULL,
     created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT audio_file_content_size_check CHECK (octet_length(content) = size_bytes),
     UNIQUE (owner_auth_user_id, sha256)
 );
 CREATE INDEX IF NOT EXISTS audio_file_owner_id_idx
     ON public.audio_file (owner_auth_user_id, id DESC);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'audio_file'
+                 AND column_name = 'content') THEN
+        ALTER TABLE public.audio_file ALTER COLUMN content DROP NOT NULL;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.quiz_import_recovery (
     id CHAR(32) PRIMARY KEY,
@@ -90,7 +119,7 @@ GRANT CONNECT ON DATABASE media TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.image_blob TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.audio_file TO auth_api;
-GRANT UPDATE (thumbnail_content, thumbnail_mime_type) ON TABLE public.image_blob TO auth_api;
+GRANT UPDATE (thumbnail_mime_type) ON TABLE public.image_blob TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.image TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.api_token_image_access TO auth_api;
 GRANT UPDATE (owner_auth_user_id, shared, group_id, original_name) ON TABLE public.image TO auth_api;

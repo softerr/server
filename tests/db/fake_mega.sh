@@ -15,7 +15,7 @@ case "${0##*/}" in
   mega-rm) rm -f -- "$store/${2##*/}" ;;
   mega-ls)
     [[ -d "$store" ]] || exit 1
-    for archive in "$store"/*.dump; do
+    for archive in "$store"/*.dump "$store"/*.tar; do
       [[ -f "$archive" ]] || continue
       printf '%s %s %s %s %s\n' '----' 1 "$(stat -c %s "$archive")" '2026-01-01' "${archive##*/}"
     done
