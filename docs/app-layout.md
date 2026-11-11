@@ -11,4 +11,6 @@ An app's frontend is in `app/<id>/`. Server files belong in `app/<id>/server/`:
 
 `scripts/deploy_api.sh` assembles a release from the shared `app/api/` code and the registered app server modules. It installs app PHP files under `/var/www/api/apps/<id>/`, while keeping SQL and Nginx configuration out of the web release. The shared API entry points in `app/api/` route requests to those modules.
 
+Musico's `server/handlers.php` and MDB's `server/databases.php` load their smaller PHP modules. Shared account and transaction helpers live in `common.php`; validation and route handlers live with the data they manage (tracks, playlists, columns, cells, rows, and ordering). The API entry points continue to include the loader files.
+
 To add an app, add a registry row, its frontend and server module, and an API entry point if it exposes an API. Run `bash tests/deploy/app_registry.sh` to check registration and route generation.
