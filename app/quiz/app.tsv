@@ -1,0 +1,2 @@
+# title|web route|web target|database|API readiness route|schema readiness SQL|backup restore SQL
+Quiz|/quiz/|/var/www/quiz|quiz|/api/quiz/quizzes|SELECT 1 FROM public.quiz q, public."user" u LIMIT 0|SELECT q.id, q.user_id, q.name, q.created, u.auth_user_id FROM public.quiz q, public."user" u LIMIT 0

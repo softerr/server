@@ -41,7 +41,7 @@ function handleDeleteMdbItem(array $user, int $databaseId, int $itemId, string $
         'rows' => 'public.database_row',
         default => respond(404, ['error' => 'Not found']),
     };
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     // Deleting a row clears references in other databases, so it must
     // exclude their writes until the cleanup has committed.
     mdbBeginWrite($db, $user, $databaseId, [], $kind === 'rows');

@@ -28,25 +28,11 @@ function tokenReferencedOwnerImage(int $imageId, array $user, string $app): bool
         && tokenOwnerResourceIds($user, $app) === [])) return false;
     $all = tokenOwnerAccess($user, $app) !== null ? 't' : 'f';
     $ids = '{' . implode(',', tokenOwnerResourceIds($user, $app)) . '}';
-    if ($app === 'musico') {
-        $result = @pg_query_params(connectMusicoDb(),
-            'SELECT 1 FROM public.track t JOIN public."user" u ON u.id = t.user_id
-             WHERE u.auth_user_id = $1 AND t.art_image_id = $2
-               AND ($3::boolean OR EXISTS (SELECT 1 FROM public.playlist_track pt
-                   WHERE pt.track_id = t.id AND pt.playlist_id = ANY($4::bigint[]))) LIMIT 1',
-            [$ownerId, $imageId, $all, $ids]);
-    } elseif ($app === 'mdb') {
-        $result = @pg_query_params(connectMdbDb(),
-            'SELECT 1 FROM public.database_cell v
-             JOIN public.database_column c ON c.id = v.column_id AND c.database_id = v.database_id
-             JOIN public.user_database d ON d.id = v.database_id
-             JOIN public."user" u ON u.id = d.user_id
-             WHERE u.auth_user_id = $1 AND c.type = \'image\' AND v.value = $2::text
-               AND ($3::boolean OR d.id = ANY($4::bigint[])) LIMIT 1',
-            [$ownerId, $imageId, $all, $ids]);
-    } else {
-        return false;
-    }
+    $definition = TOKEN_APPS[$app] ?? null;
+    $query = $definition['owner_image_reference_sql'] ?? null;
+    if (!is_string($query)) return false;
+    $result = @pg_query_params(connectAppDb($definition['database']), $query,
+        [$ownerId, $imageId, $all, $ids]);
     if ($result === false) respond(500, ['error' => 'Failed to check app image']);
     return pg_num_rows($result) > 0;
 }

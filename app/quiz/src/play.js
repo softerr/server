@@ -1,7 +1,7 @@
 import { moveDownIcon, moveUpIcon } from './icons.js'
 import { submitAttempt } from './submit-attempt.js'
 import { showMissingImageWhenUnavailable } from './missing-image.js'
-import { mediaImageUrl } from '../../shared/media-client.js'
+import { mediaImageUrl } from '@softerr/shared/media-client.js'
 
 const templateNames = {
   multiple_choice: 'Multiple choice', one_choice: 'One choice', number: 'Number',

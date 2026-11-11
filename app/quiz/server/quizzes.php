@@ -23,7 +23,7 @@ function publicQuiz(array $quiz): array
 function handleListQuizzes(): never
 {
     $user = currentSessionUser();
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     $result = @pg_query_params(
         $db,
         'SELECT q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.randomize_answers, q.question_limit, q.time_limit_seconds, q.created,
@@ -54,7 +54,7 @@ function handleExploreQuizzes(): never
         || filter_var($before, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false)) {
         respond(400, ['error' => 'Invalid before cursor']);
     }
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     $result = @pg_query_params($db,
         'SELECT q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.is_public,
             q.allow_go_back, q.randomize_questions, q.randomize_answers, q.question_limit, q.time_limit_seconds, q.created,
@@ -76,7 +76,7 @@ function handleGetQuiz(int $quizId): never
 {
     $user = currentSessionUser();
     $grantOwnerId = quizGrantOwnerId($user, $quizId);
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     $result = @pg_query_params(
         $db,
         'SELECT q.id, q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.randomize_answers, q.question_limit, q.time_limit_seconds, q.created,
@@ -240,7 +240,7 @@ function handleCreateQuiz(): never
 {
     $user = currentSessionUser();
     [$name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, , $timeLimit, , $allowGoBack, $isPublic, $randomizeAnswers] = readQuizFields(readJsonBody());
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     $error = 'Failed to create quiz';
     $localUserId = beginQuizCreation($db, $user, $error);
     $quiz = insertQuizRow($db, $localUserId, $name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $timeLimit, $allowGoBack, $isPublic, $randomizeAnswers, $error);
@@ -310,14 +310,14 @@ function readZipQuizImport(): ?array
             || isset($expected[$image['file']]) || !isset($names[$image['file']])) {
             respond(400, ['error' => 'Invalid quiz image in ZIP']);
         }
-        $imageName = validQuizImageName($image['name']);
+        $imageName = validMediaImageName($image['name']);
         if ($image['file'] !== "images/{$image['id']}/{$imageName}") {
             respond(400, ['error' => 'Invalid quiz image in ZIP']);
         }
         $expected[$image['file']] = true;
         $bytes = $zip->getFromName($image['file'], MEDIA_IMAGE_MAX_BYTES + 1);
         if ($bytes === false) respond(400, ['error' => 'Invalid quiz image in ZIP']);
-        validQuizImage($bytes);
+        validMediaImage($bytes);
         unset($image['file']);
         $image['data'] = base64_encode($bytes);
     }
@@ -373,12 +373,12 @@ function handleImportQuiz(): never
             || !is_string($image['data'] ?? null)) {
             respond(400, ['error' => 'Invalid quiz image']);
         }
-        $imageName = validQuizImageName($image['name']);
+        $imageName = validMediaImageName($image['name']);
         $bytes = base64_decode($image['data'], true);
         if ($bytes === false) respond(400, ['error' => 'Invalid quiz image']);
         $totalImageBytes += strlen($bytes);
         if ($totalImageBytes > QUIZ_IMPORT_MAX_BYTES) respond(413, ['error' => 'Quiz images are too large']);
-        [$mime, $width, $height] = validQuizImage($bytes);
+        [$mime, $width, $height] = validMediaImage($bytes);
         $decodedImages[$image['id']] = [$imageName, $bytes, $mime, $width, $height,
             validatedMediaSource($image['source'] ?? null)];
     }
@@ -394,7 +394,7 @@ function handleImportQuiz(): never
         respond(400, ['error' => 'Quiz images do not match question references']);
     }
 
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     $error = 'Failed to import quiz';
     $localUserId = beginQuizCreation($db, $user, $error);
     $mediaDb = connectMediaDb();
@@ -483,7 +483,7 @@ function handleExportQuizZip(int $quizId): never
     if (!class_exists(ZipArchive::class)) respond(500, ['error' => 'ZIP support is unavailable']);
     $user = currentSessionUser();
     $grantOwnerId = quizGrantOwnerId($user, $quizId);
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     $owner = @pg_query_params($db,
         'SELECT q.name, q.description, q.play_style, q.show_correct_answers, q.is_public, q.allow_go_back, q.randomize_questions, q.randomize_answers, q.question_limit, q.time_limit_seconds, q.user_id FROM public.quiz q
          JOIN public."user" u ON u.id = q.user_id
@@ -575,7 +575,7 @@ function handleUpdateQuiz(int $quizId): never
     $grantOwnerId = quizGrantOwnerId($user, $quizId, true);
     [$name, $description, $playStyle, $showCorrectAnswers, $randomize, $questionLimit, $limitProvided, $timeLimit, $timeLimitProvided, $allowGoBack, $isPublic, $randomizeAnswers] = readQuizFields(readJsonBody(), true);
 
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     $result = @pg_query_params(
         $db,
         'UPDATE public.quiz q SET name = $1,
@@ -613,7 +613,7 @@ function handleUpdateQuiz(int $quizId): never
 function handleDeleteQuiz(int $quizId): never
 {
     $user = currentSessionUser();
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     $result = @pg_query_params(
         $db,
         'DELETE FROM public.quiz q USING public."user" u

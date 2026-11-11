@@ -6,7 +6,7 @@ function mdbSuggestionOwner(array $user, int $databaseId): void
     if (($user['account_kind'] ?? 'human') !== 'human') {
         respond(403, ['error' => 'Browser session required to review suggestions']);
     }
-    mdbOwnedDatabase(connectMdbDb(), (int) $user['id'], $databaseId);
+    mdbOwnedDatabase(connectAppDb('mdb'), (int) $user['id'], $databaseId);
 }
 
 function mdbSuggestionCell($db, int $databaseId, int $rowId, int $columnId): ?array
@@ -138,7 +138,7 @@ function handleCreateMdbSuggestion(array $requestUser, int $databaseId): never
                 $requestId) !== 1))) {
         respond(400, ['error' => 'Invalid suggestion']);
     }
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     $ownerId = (int) $requestUser['service_owner_id'];
     mdbBeginWrite($db, ['id' => $ownerId], $databaseId);
     $hash = hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));
@@ -302,7 +302,7 @@ function handleCreateMdbSuggestion(array $requestUser, int $databaseId): never
 function handleListMdbSuggestions(array $user, int $databaseId): never
 {
     mdbSuggestionOwner($user, $databaseId);
-    $result = @pg_query_params(connectMdbDb(),
+    $result = @pg_query_params(connectAppDb('mdb'),
         'SELECT s.id, s.title, s.proposer_name, s.status, s.created, s.reviewed_at,
                 ((SELECT COUNT(*) FROM public.cell_suggestion_change c
                   WHERE c.suggestion_id = s.id)
@@ -323,7 +323,7 @@ function handleListMdbSuggestions(array $user, int $databaseId): never
 function handleGetMdbSuggestion(array $user, int $databaseId, int $suggestionId): never
 {
     mdbSuggestionOwner($user, $databaseId);
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     $result = @pg_query_params($db,
         'SELECT s.id, s.title, s.proposer_name, s.status, s.created, s.reviewed_at,
                 ((SELECT COUNT(*) FROM public.cell_suggestion_change c
@@ -397,7 +397,7 @@ function handleReviewMdbSuggestion(array $user, int $databaseId, int $suggestion
     string $decision): never
 {
     mdbSuggestionOwner($user, $databaseId);
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     // Accepted suggestions may delete rows and must exclude concurrent
     // writes to referencing databases until their references are checked.
     mdbBeginWrite($db, $user, $databaseId, [], $decision === 'accepted');

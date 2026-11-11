@@ -27,6 +27,7 @@ export function createCsvController({ page, endpoint, requestJson, responseError
       }
       const link = document.createElement('a')
       link.href = `${endpoint}/export.csv?${params}`
+      // eslint-disable-next-line no-control-regex
       link.download = `${database.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'database'}.csv`
       document.body.append(link)
       link.click()

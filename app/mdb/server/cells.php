@@ -113,7 +113,7 @@ function handleSaveMdbCell(array $user, int $databaseId, int $rowId, int $column
     if (!is_array($payload) || !array_key_exists('value', $payload)) {
         respond(400, ['error' => 'Cell value is required']);
     }
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     mdbBeginWrite($db, $user, $databaseId);
     $members = @pg_query_params($db,
         'SELECT c.type, c.options, c.relation_database_id

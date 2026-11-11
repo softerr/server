@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { bindMediaCardSelection } from '../../app/home/src/media-selection.js'
+import { bindMediaCardSelection } from '../src/media-selection.js'
 
 function setup() {
   const selected = new Set()

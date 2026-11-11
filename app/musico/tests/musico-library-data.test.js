@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { importLibrary } from '../../app/musico/src/library-data.js'
+import { importLibrary } from '../src/library-data.js'
 
 test('Musico import updates matching songs and does not add a playlist song twice', async () => {
   const song = {

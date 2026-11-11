@@ -1,6 +1,6 @@
-import { editIcon, deleteIcon, imageIcon, missingMediaIcon } from '../../shared/icons.js'
-import { mediaThumbnailUrl } from '../../shared/media-client.js'
-import { showMissingImageWhenUnavailable } from '../../shared/missing-image.js'
+import { editIcon, deleteIcon, imageIcon, missingMediaIcon } from '@softerr/shared/icons.js'
+import { mediaThumbnailUrl } from '@softerr/shared/media-client.js'
+import { showMissingImageWhenUnavailable } from '@softerr/shared/missing-image.js'
 import { parsePastedDate } from './date-parse.js'
 
 const calendarIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">

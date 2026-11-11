@@ -47,15 +47,6 @@ function connectDb()
     return $conn;
 }
 
-function connectQuizDb()
-{
-    [$conn, $error] = openQuizDb();
-    if ($conn === false) {
-        respond(500, ['error' => $error]);
-    }
-    return $conn;
-}
-
 function connectMediaDb()
 {
     [$conn, $error] = openMediaDb();
@@ -65,19 +56,16 @@ function connectMediaDb()
     return $conn;
 }
 
-function connectMusicoDb()
+function connectAppDb(string $name)
 {
-    [$conn, $error] = openMusicoDb();
+    if (!preg_match('/^[a-z][a-z0-9_]*$/D', $name)) {
+        throw new InvalidArgumentException('Invalid app database name');
+    }
+    [$conn, $error] = openDb(3, $name);
     if ($conn === false) {
         respond(500, ['error' => $error]);
     }
     return $conn;
 }
 
-function connectMdbDb()
-{
-    [$conn, $error] = openMdbDb();
-    if ($conn === false) respond(500, ['error' => $error]);
-    return $conn;
-}
 

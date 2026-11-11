@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 return static function (): void {
-    [$quizDb, $quizError] = openQuizDb();
+    [$quizDb, $quizError] = openDb(3, 'quiz');
     if ($quizDb === false) {
         respond(503, ['status' => 'unavailable', 'error' => $quizError]);
     }
@@ -24,6 +24,13 @@ return static function (): void {
     }
     if (@pg_query($quizDb, 'SELECT id, quiz_id FROM public.quiz_import_receipt LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Quiz database schema is not ready']);
+    }
+    [$mediaDb, $mediaError] = openMediaDb();
+    if ($mediaDb === false) {
+        respond(503, ['status' => 'unavailable', 'error' => $mediaError]);
+    }
+    if (@pg_query($mediaDb, 'SELECT id, quiz_id, image_ids FROM public.quiz_import_recovery LIMIT 0') === false) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Quiz media schema is not ready']);
     }
 
 };

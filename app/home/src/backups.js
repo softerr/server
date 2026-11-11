@@ -1,4 +1,4 @@
-import { formatBytes } from '../../shared/format.js'
+import { formatBytes } from '@softerr/shared/format.js'
 
 const downloadIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3"/></svg>'
 

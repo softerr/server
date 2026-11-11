@@ -202,7 +202,7 @@ function openFirstAttemptQuestion($db, array &$attempt): void
 function handleStartQuizAttempt(int $quizId): never
 {
     $user = currentSessionUser();
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     requireServiceQuizVisibility($db, $quizId, $user);
     if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to start quiz']);
     if (@pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
@@ -281,7 +281,7 @@ function handleStartQuizAttempt(int $quizId): never
 function handleListQuizAttempts(int $quizId): never
 {
     $user = currentSessionUser();
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     requireServiceQuizVisibility($db, $quizId, $user);
     $access = quizPlayerAccess($db, $quizId, (int) $user['id'], false, true);
     $playerId = $access['player_id'];
@@ -341,7 +341,7 @@ function ownedQuizAttempt($db, int $quizId, int $attemptId, array $user, bool $l
 function handleGetQuizAttempt(int $quizId, int $attemptId): never
 {
     $user = currentSessionUser();
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     $attempt = ownedQuizAttempt($db, $quizId, $attemptId, $user);
     if ($attempt['completed'] === null && (int) $attempt['furthest_position'] === 0) {
         if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to load attempt']);
@@ -363,7 +363,7 @@ function handleSaveQuestionTime(int $quizId, int $attemptId, int $questionId): n
         respond(400, ['error' => 'Invalid time spent']);
     }
     $user = currentSessionUser();
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     ownedQuizAttempt($db, $quizId, $attemptId, $user);
     $result = @pg_query_params($db,
         'UPDATE public.quiz_attempt_question s SET time_spent_ms = GREATEST(s.time_spent_ms, $3::bigint)
@@ -379,7 +379,7 @@ function handleSaveQuestionTime(int $quizId, int $attemptId, int $questionId): n
 function handleStartAttemptQuestion(int $quizId, int $attemptId, int $questionId): never
 {
     $user = currentSessionUser();
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to start question']);
     $attempt = expireQuizAttempt($db, ownedQuizAttempt($db, $quizId, $attemptId, $user, true));
     if ($attempt['completed'] !== null) respond(409, ['error' => 'Attempt is complete']);
@@ -420,7 +420,7 @@ function handleSaveQuizAnswer(int $quizId, int $attemptId, int $questionId): nev
     }
     $json = json_encode((object) $answer, JSON_THROW_ON_ERROR);
     $user = currentSessionUser();
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to save answer']);
     $attempt = ownedQuizAttempt($db, $quizId, $attemptId, $user, true);
     $attempt = expireQuizAttempt($db, $attempt);
@@ -460,7 +460,7 @@ function handleSaveQuizAnswer(int $quizId, int $attemptId, int $questionId): nev
 function handleRevealQuizAnswer(int $quizId, int $attemptId, int $questionId): never
 {
     $user = currentSessionUser();
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to reveal answer']);
     $attempt = expireQuizAttempt($db, ownedQuizAttempt($db, $quizId, $attemptId, $user, true));
     if ($attempt['completed'] !== null) respond(409, ['error' => 'Attempt is complete']);
@@ -497,7 +497,7 @@ function handleNextQuizQuestion(int $quizId, int $attemptId): never
     $after = $payload['after'] ?? null;
     if (!is_int($after) || $after < 1) respond(400, ['error' => 'Current question is required']);
     $user = currentSessionUser();
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to load next question']);
     $attempt = ownedQuizAttempt($db, $quizId, $attemptId, $user, true);
     $attempt = expireQuizAttempt($db, $attempt);
@@ -551,7 +551,7 @@ function handleNextQuizQuestion(int $quizId, int $attemptId): never
 function handleCompleteQuizAttempt(int $quizId, int $attemptId): never
 {
     $user = currentSessionUser();
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     if (@pg_query($db, 'BEGIN') === false) respond(500, ['error' => 'Failed to finish quiz']);
     $attempt = ownedQuizAttempt($db, $quizId, $attemptId, $user, true);
     if ($attempt['completed'] === null) {

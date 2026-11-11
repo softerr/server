@@ -72,15 +72,6 @@ CREATE TABLE IF NOT EXISTS public.audio_file (
 );
 CREATE INDEX IF NOT EXISTS audio_file_owner_id_idx
     ON public.audio_file (owner_auth_user_id, id DESC);
-CREATE TABLE IF NOT EXISTS public.quiz_import_recovery (
-    id CHAR(32) PRIMARY KEY,
-    owner_auth_user_id BIGINT NOT NULL,
-    quiz_id BIGINT NOT NULL,
-    image_ids JSONB NOT NULL CHECK (jsonb_typeof(image_ids) = 'array'),
-    created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX IF NOT EXISTS quiz_import_recovery_created_idx
-    ON public.quiz_import_recovery (created);
 
 GRANT CONNECT ON DATABASE media TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
@@ -92,7 +83,6 @@ GRANT SELECT, INSERT, DELETE ON TABLE public.api_token_image_access TO auth_api;
 GRANT UPDATE (owner_auth_user_id, shared, group_id, original_name) ON TABLE public.image TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.media_group TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.image_source TO auth_api;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.quiz_import_recovery TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.image_blob_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.audio_file_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.image_id_seq TO auth_api;

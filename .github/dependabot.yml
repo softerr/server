@@ -19,3 +19,13 @@ updates:
     directory: /app/musico
     schedule:
       interval: weekly
+
+  - package-ecosystem: npm
+    directory: /app/mdb
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: /app/shared
+    schedule:
+      interval: weekly

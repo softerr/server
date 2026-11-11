@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 function handleListMdbDatabases(array $user): never
 {
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     $result = @pg_query_params($db,
         'SELECT d.id, d.name, d.created FROM public.user_database d
          JOIN public."user" u ON u.id = d.user_id
@@ -23,7 +23,7 @@ function handleCreateMdbDatabase(array $user): never
     $payload = readJsonBody();
     $name = mdbName($payload['name'] ?? null);
 
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     if (@pg_query($db, 'BEGIN') === false
         || @pg_query_params($db, 'SELECT pg_advisory_xact_lock_shared($1::bigint)',
             [$user['id']]) === false) {
@@ -54,7 +54,7 @@ function handleCreateMdbDatabase(array $user): never
 
 function handleGetMdbDatabase(array $user, int $databaseId): never
 {
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     $database = mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
     $paged = isset($_GET['limit']);
     if (!$paged && isset($_GET['after'])) respond(400, ['error' => 'Invalid row cursor']);

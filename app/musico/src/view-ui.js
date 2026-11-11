@@ -1,8 +1,8 @@
 import { createPlayer, playIcon } from './player.js'
-import { deleteIcon, removeIcon, missingMediaIcon } from '../../shared/icons.js'
-import { showMissingImageWhenUnavailable } from '../../shared/missing-image.js'
-import { formatBytes } from '../../shared/format.js'
-import { mediaThumbnailUrl } from '../../shared/media-client.js'
+import { deleteIcon, removeIcon, missingMediaIcon } from '@softerr/shared/icons.js'
+import { showMissingImageWhenUnavailable } from '@softerr/shared/missing-image.js'
+import { formatBytes } from '@softerr/shared/format.js'
+import { mediaThumbnailUrl } from '@softerr/shared/media-client.js'
 import { loadJson } from './api.js'
 
 let player

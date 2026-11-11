@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { formatBytes } from '../../app/shared/format.js'
-import { uploadMediaImage } from '../../app/shared/media-client.js'
-import { createMediaThumbnailBatcher } from '../../app/shared/media-thumbnails.js'
+import { formatBytes } from '../format.js'
+import { uploadMediaImage } from '../media-client.js'
+import { createMediaThumbnailBatcher } from '../media-thumbnails.js'
 
 test('byte formatting keeps app display conventions', () => {
   assert.equal(formatBytes(1536), '1.5 KiB')

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createMediaThumbnailLoader } from '../../app/home/src/media-thumbnails.js'
+import { createMediaThumbnailLoader } from '../src/media-thumbnails.js'
 
 test('visible Media thumbnails load in batches and reuse loaded data', async () => {
   const originalObserver = globalThis.IntersectionObserver

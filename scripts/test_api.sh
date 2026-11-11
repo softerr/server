@@ -4,6 +4,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/lib/app_registry.sh"
+load_app_registry "${REPO_ROOT}"
 TEST_ROOT="${REPO_ROOT}/tests/api"
 CASES_DIR="${TEST_ROOT}/cases"
 
@@ -31,7 +33,10 @@ fi
 require_command curl
 require_command jq
 require_command php
-php "${TEST_ROOT}/attempt_presentation.php"
+for app_test in "${REPO_ROOT}"/app/*/tests/*.php; do
+  [[ -f "${app_test}" ]] || continue
+  php "${app_test}"
+done
 php "${TEST_ROOT}/backup_zip_stream.php"
 
 echo "API test base URL: ${API_TEST_BASE_URL}"
@@ -63,19 +68,20 @@ require_command psql
 auth_cleanup_access="$(test_psql "${API_TEST_DB_NAME}" \
   "SELECT has_table_privilege(current_user, 'public.\"user\"', 'SELECT')
     AND has_table_privilege(current_user, 'public.\"user\"', 'DELETE');")" || auth_cleanup_access=''
-quiz_cleanup_access="$(test_psql quiz \
-  "SELECT has_table_privilege(current_user, 'public.\"user\"', 'DELETE');")" || quiz_cleanup_access=''
 media_cleanup_access="$(test_psql media \
   "SELECT has_table_privilege(current_user, 'public.image', 'DELETE')
     AND has_table_privilege(current_user, 'public.audio_file', 'DELETE')
     AND has_table_privilege(current_user, 'public.media_group', 'DELETE');")" || media_cleanup_access=''
-musico_cleanup_access="$(test_psql musico \
-  "SELECT has_table_privilege(current_user, 'public.\"user\"', 'DELETE');")" || musico_cleanup_access=''
-mdb_cleanup_access="$(test_psql mdb \
-  "SELECT has_table_privilege(current_user, 'public.\"user\"', 'DELETE');")" || mdb_cleanup_access=''
-if [[ "${auth_cleanup_access}" != t || "${quiz_cleanup_access}" != t || "${media_cleanup_access}" != t \
-  || "${musico_cleanup_access}" != t || "${mdb_cleanup_access}" != t ]]; then
-  echo 'API tests need auth, quiz, media, Musico, and MDB cleanup access.' >&2
+app_cleanup_access=t
+for app in "${WEB_APPS[@]}"; do
+  [[ -n "${APP_DATABASES[$app]}" ]] || continue
+  access="$(test_psql "${APP_DATABASES[$app]}" \
+    "SELECT has_table_privilege(current_user, 'public.\"user\"', 'DELETE');")" || access=''
+  [[ "${access}" == t ]] || app_cleanup_access=f
+done
+if [[ "${auth_cleanup_access}" != t || "${media_cleanup_access}" != t \
+  || "${app_cleanup_access}" != t ]]; then
+  echo 'API tests need auth, media, and app cleanup access.' >&2
   exit 1
 fi
 
@@ -102,15 +108,34 @@ cleanup_test_users() {
     echo 'Unexpected API test user IDs; cleanup stopped.' >&2
     return 1
   fi
-  test_psql quiz "DELETE FROM public.quiz_import_receipt WHERE owner_auth_user_id IN (${ids});
-    DELETE FROM public.\"user\" WHERE auth_user_id IN (${ids});" >/dev/null || return 1
-  test_psql musico "DELETE FROM public.\"user\" WHERE auth_user_id IN (${ids});" >/dev/null || return 1
-  test_psql mdb "DELETE FROM public.\"user\" WHERE auth_user_id IN (${ids});" >/dev/null || return 1
+  local app hook
+  for app in "${WEB_APPS[@]}"; do
+    [[ -n "${APP_DATABASES[$app]}" ]] || continue
+    hook="${REPO_ROOT}/${APP_SOURCES[$app]}/tests/api/cleanup.sh"
+    if [[ -f "${hook}" ]]; then
+      unset -f cleanup_app_test_users
+      # shellcheck source=/dev/null
+      source "${hook}"
+      declare -F cleanup_app_test_users >/dev/null || return 1
+      cleanup_app_test_users "${ids}" || return 1
+    else
+      test_psql "${APP_DATABASES[$app]}" \
+        "DELETE FROM public.\"user\" WHERE auth_user_id IN (${ids});" >/dev/null || return 1
+    fi
+  done
+  for app in "${WEB_APPS[@]}"; do
+    hook="${REPO_ROOT}/${APP_SOURCES[$app]}/tests/api/cleanup_media.sh"
+    [[ -f "${hook}" ]] || continue
+    unset -f cleanup_app_test_media
+    # shellcheck source=/dev/null
+    source "${hook}"
+    declare -F cleanup_app_test_media >/dev/null || return 1
+    cleanup_app_test_media "${ids}" || return 1
+  done
   test_psql media "DELETE FROM public.api_token_image_access WHERE service_auth_user_id IN (${ids});
     DELETE FROM public.image WHERE owner_auth_user_id IN (${ids})
     OR (shared = TRUE AND left(original_name, length('${auth_prefix}')) = '${auth_prefix}');
     DELETE FROM public.audio_file WHERE owner_auth_user_id IN (${ids});
-    DELETE FROM public.quiz_import_recovery WHERE owner_auth_user_id IN (${ids});
     DELETE FROM public.media_group
     WHERE left(name, length('${auth_prefix}')) = '${auth_prefix}';
     DELETE FROM public.image_blob b WHERE NOT EXISTS
@@ -137,14 +162,29 @@ trap finish_test_run EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-mapfile -t case_files < <(find "${CASES_DIR}" -maxdepth 1 -type f -name '*.sh' -printf '%f\n' | sort)
+mapfile -t case_files < <(
+  {
+    find "${CASES_DIR}" -maxdepth 1 -type f -name '*.sh' -printf '%f\t%p\n'
+    for app_cases in "${REPO_ROOT}"/app/*/tests/api; do
+      [[ -d "${app_cases}" ]] || continue
+      find "${app_cases}" -maxdepth 1 -type f -name '[0-9][0-9]-*.sh' -printf '%f\t%p\n'
+    done
+  } | LC_ALL=C sort -t $'\t' -k1,1 | cut -f2-
+)
 if [[ -n "${API_TEST_CASE_FILE:-}" ]]; then
-  if [[ ! "${API_TEST_CASE_FILE}" =~ ^[0-9][0-9]-[a-z0-9-]+\.sh$ \
-      || ! -f "${CASES_DIR}/${API_TEST_CASE_FILE}" ]]; then
+  if [[ ! "${API_TEST_CASE_FILE}" =~ ^[0-9][0-9]-[a-z0-9-]+\.sh$ ]]; then
     echo "Unknown API test case file: ${API_TEST_CASE_FILE}" >&2
     exit 1
   fi
-  case_files=("${API_TEST_CASE_FILE}")
+  selected_case=''
+  for case_file in "${case_files[@]}"; do
+    if [[ "${case_file##*/}" == "${API_TEST_CASE_FILE}" ]]; then
+      [[ -z "${selected_case}" ]] || { echo "Duplicate API test case file: ${API_TEST_CASE_FILE}" >&2; exit 1; }
+      selected_case="${case_file}"
+    fi
+  done
+  [[ -n "${selected_case}" ]] || { echo "Unknown API test case file: ${API_TEST_CASE_FILE}" >&2; exit 1; }
+  case_files=("${selected_case}")
 fi
 if [[ "${#case_files[@]}" -eq 0 ]]; then
   echo "No API test case files found in ${CASES_DIR}"
@@ -152,7 +192,7 @@ if [[ "${#case_files[@]}" -eq 0 ]]; then
 fi
 
 for case_file in "${case_files[@]}"; do
-  source "${CASES_DIR}/${case_file}"
+  source "${case_file}"
 done
 
 if [[ "${#TEST_CASES[@]}" -eq 0 ]]; then

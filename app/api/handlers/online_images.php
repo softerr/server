@@ -128,7 +128,7 @@ function handleImportOnlineImage(): never
     if (!is_array($page) || !is_array($info) || ($page['pageid'] ?? null) !== $pageId) {
         respond(404, ['error' => 'Commons image not found']);
     }
-    $name = validQuizImageName((string) preg_replace('/^File:/', '', $page['title'] ?? ''));
+    $name = validMediaImageName((string) preg_replace('/^File:/', '', $page['title'] ?? ''));
     $sourcePage = commonsHttpsUrl($info['descriptionurl'] ?? null, 'commons.wikimedia.org');
     $downloadUrl = commonsHttpsUrl($info['url'] ?? null, 'upload.wikimedia.org');
     if ($sourcePage === null || $downloadUrl === null) {
@@ -148,7 +148,7 @@ function handleImportOnlineImage(): never
     [$ok, $bytes, $tooLarge] = commonsFetch($downloadUrl, MEDIA_IMAGE_MAX_BYTES);
     if ($tooLarge) respond(413, ['error' => 'Image must be at most 6 MiB']);
     if (!$ok) respond(503, ['error' => 'Could not download Commons image']);
-    [$mime, $width, $height] = validQuizImage($bytes);
+    [$mime, $width, $height] = validMediaImage($bytes);
     $db = connectMediaDb();
     if (@pg_query($db, 'BEGIN') === false
         || @pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {

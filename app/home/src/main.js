@@ -1,10 +1,10 @@
 import './style.css'
-import { startAuthApp } from '../../shared/auth-app.js'
+import { startAuthApp } from '@softerr/shared/auth-app.js'
 import { renderMedia } from './media.js'
 import { renderBackups } from './backups.js'
 import { renderTokens } from './tokens.js'
-import { createPageNotice } from '../../shared/page-notice.js'
-import { deleteIcon } from '../../shared/icons.js'
+import { createPageNotice } from '@softerr/shared/page-notice.js'
+import { deleteIcon } from '@softerr/shared/icons.js'
 
 function renderUsers(app, { currentUser, requestJson, responseError, setStatus }) {
   app.querySelector('#page').innerHTML = `

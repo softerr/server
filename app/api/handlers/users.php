@@ -189,71 +189,37 @@ function handleDeleteUser(int $targetId): never
 
     // The account is now blocked. A failure below leaves it visible to admins
     // so the same DELETE can safely retry the remaining cleanup.
-    $quizDb = connectQuizDb();
-    if (@pg_query($quizDb, 'BEGIN') === false) {
-        respond(500, ['error' => 'Failed to delete quiz data']);
-    }
-    $quizLock = true;
-    foreach ($accountIds as $accountId) {
-        if (@pg_query_params($quizDb, 'SELECT pg_advisory_xact_lock($1)', [$accountId]) === false) {
-            $quizLock = false;
-            break;
+    foreach (glob(__DIR__ . '/../apps/*/delete_user.php') ?: [] as $hookFile) {
+        $app = basename(dirname($hookFile));
+        if (preg_match('/^[a-z][a-z0-9_]*$/D', $app) !== 1) {
+            respond(500, ['error' => 'Invalid app cleanup hook']);
         }
-    }
-    $quizReceipts = !$quizLock ? false : @pg_query_params($quizDb,
-        'DELETE FROM public.quiz_import_receipt WHERE owner_auth_user_id = ANY($1::bigint[])',
-        [$accountIdArray]);
-    $quizDelete = $quizReceipts === false ? false : @pg_query_params(
-        $quizDb,
-        'DELETE FROM public."user" WHERE auth_user_id = ANY($1::bigint[])',
-        [$accountIdArray]
-    );
-    if ($quizDelete === false) {
-        @pg_query($quizDb, 'ROLLBACK');
-        respond(500, ['error' => 'Failed to delete quiz data']);
-    }
-    if (@pg_query($quizDb, 'COMMIT') === false) {
-        respond(500, ['error' => 'Failed to delete quiz data']);
-    }
-
-    $musicoDb = connectMusicoDb();
-    if (@pg_query($musicoDb, 'BEGIN') === false) {
-        respond(500, ['error' => 'Failed to delete Musico data']);
-    }
-    foreach ($accountIds as $accountId) {
-        if (@pg_query_params($musicoDb, 'SELECT pg_advisory_xact_lock($1)', [$accountId]) === false) {
-            @pg_query($musicoDb, 'ROLLBACK');
-            respond(500, ['error' => 'Failed to delete Musico data']);
+        $beforeDelete = require $hookFile;
+        if (!is_array($beforeDelete) || !array_is_list($beforeDelete)) {
+            respond(500, ['error' => 'Invalid app cleanup hook']);
         }
-    }
-    $musicoDelete = @pg_query_params($musicoDb,
-        'DELETE FROM public."user" WHERE auth_user_id = ANY($1::bigint[])', [$accountIdArray]);
-    if ($musicoDelete === false) {
-        @pg_query($musicoDb, 'ROLLBACK');
-        respond(500, ['error' => 'Failed to delete Musico data']);
-    }
-    if (@pg_query($musicoDb, 'COMMIT') === false) {
-        respond(500, ['error' => 'Failed to delete Musico data']);
-    }
-
-    $mdbDb = connectMdbDb();
-    if (@pg_query($mdbDb, 'BEGIN') === false) {
-        respond(500, ['error' => 'Failed to delete MDB data']);
-    }
-    foreach ($accountIds as $accountId) {
-        if (@pg_query_params($mdbDb, 'SELECT pg_advisory_xact_lock($1)', [$accountId]) === false) {
-            @pg_query($mdbDb, 'ROLLBACK');
-            respond(500, ['error' => 'Failed to delete MDB data']);
+        $appDb = connectAppDb($app);
+        $error = 'Failed to delete ' . $app . ' data';
+        if (@pg_query($appDb, 'BEGIN') === false) respond(500, ['error' => $error]);
+        foreach ($accountIds as $accountId) {
+            if (@pg_query_params($appDb, 'SELECT pg_advisory_xact_lock($1)', [$accountId]) === false) {
+                @pg_query($appDb, 'ROLLBACK');
+                respond(500, ['error' => $error]);
+            }
         }
-    }
-    $mdbDelete = @pg_query_params($mdbDb,
-        'DELETE FROM public."user" WHERE auth_user_id = ANY($1::bigint[])', [$accountIdArray]);
-    if ($mdbDelete === false) {
-        @pg_query($mdbDb, 'ROLLBACK');
-        respond(500, ['error' => 'Failed to delete MDB data']);
-    }
-    if (@pg_query($mdbDb, 'COMMIT') === false) {
-        respond(500, ['error' => 'Failed to delete MDB data']);
+        foreach ($beforeDelete as $query) {
+            if (!is_string($query) || @pg_query_params($appDb, $query, [$accountIdArray]) === false) {
+                @pg_query($appDb, 'ROLLBACK');
+                respond(500, ['error' => $error]);
+            }
+        }
+        if (@pg_query_params($appDb,
+            'DELETE FROM public."user" WHERE auth_user_id = ANY($1::bigint[])',
+            [$accountIdArray]) === false) {
+            @pg_query($appDb, 'ROLLBACK');
+            respond(500, ['error' => $error]);
+        }
+        if (@pg_query($appDb, 'COMMIT') === false) respond(500, ['error' => $error]);
     }
 
     $mediaDb = connectMediaDb();
@@ -265,10 +231,17 @@ function handleDeleteUser(int $targetId): never
             respond(500, ['error' => 'Failed to delete user images']);
         }
     }
-    $mediaRecoveries = @pg_query_params($mediaDb,
-        'DELETE FROM public.quiz_import_recovery WHERE owner_auth_user_id = ANY($1::bigint[])',
-        [$accountIdArray]);
-    if ($mediaRecoveries === false) respond(500, ['error' => 'Failed to clean up import recovery']);
+    foreach (glob(__DIR__ . '/../apps/*/delete_media_user.php') ?: [] as $hookFile) {
+        $queries = require $hookFile;
+        if (!is_array($queries) || !array_is_list($queries)) {
+            respond(500, ['error' => 'Invalid app media cleanup hook']);
+        }
+        foreach ($queries as $query) {
+            if (!is_string($query) || @pg_query_params($mediaDb, $query, [$accountIdArray]) === false) {
+                respond(500, ['error' => 'Failed to clean up app media']);
+            }
+        }
+    }
     $mediaDelete = @pg_query_params($mediaDb,
         'DELETE FROM public.image WHERE owner_auth_user_id = ANY($1::bigint[])', [$accountIdArray]);
     if ($mediaDelete === false) {

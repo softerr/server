@@ -221,7 +221,7 @@ function handleListQuestions(int $quizId): never
 {
     $user = currentSessionUser();
     $grantOwnerId = quizGrantOwnerId($user, $quizId);
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     $owner = @pg_query_params(
         $db,
         'SELECT q.id FROM public.quiz q JOIN public."user" u ON u.id = q.user_id
@@ -255,7 +255,7 @@ function handleCreateQuestion(int $quizId): never
     $user = currentSessionUser();
     $grantOwnerId = quizGrantOwnerId($user, $quizId, true);
     [$template, $prompt, $config, $timeLimit] = readQuestionFields(readJsonBody(QUESTION_BODY_MAX_BYTES));
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     if (@pg_query($db, 'BEGIN') === false) {
         respond(500, ['error' => 'Failed to create question']);
     }
@@ -323,7 +323,7 @@ function handleReorderQuestions(int $quizId): never
         respond(400, ['error' => 'Invalid question order']);
     }
 
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     if (@pg_query($db, 'BEGIN') === false) {
         respond(500, ['error' => 'Failed to reorder questions']);
     }
@@ -379,7 +379,7 @@ function handleUpdateQuestion(int $quizId, int $questionId): never
     $user = currentSessionUser();
     $grantOwnerId = quizGrantOwnerId($user, $quizId, true);
     [$template, $prompt, $config, $timeLimit, $timeLimitProvided] = readQuestionFields(readJsonBody(QUESTION_BODY_MAX_BYTES));
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     if (@pg_query($db, 'BEGIN') === false
         || @pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
         respond(500, ['error' => 'Failed to update question']);
@@ -411,7 +411,7 @@ function handleDeleteQuestion(int $quizId, int $questionId): never
 {
     $user = currentSessionUser();
     $grantOwnerId = quizGrantOwnerId($user, $quizId, true);
-    $db = connectQuizDb();
+    $db = connectAppDb('quiz');
     $result = @pg_query_params(
         $db,
         'DELETE FROM public.question t USING public.quiz q, public."user" u

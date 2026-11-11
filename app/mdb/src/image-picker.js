@@ -1,6 +1,6 @@
-import { imageIcon, noImageIcon, uploadImageIcon } from '../../shared/icons.js'
-import { listMediaImages, uploadMediaImage } from '../../shared/media-client.js'
-import { createMediaThumbnailBatcher } from '../../shared/media-thumbnails.js'
+import { imageIcon, noImageIcon, uploadImageIcon } from '@softerr/shared/icons.js'
+import { listMediaImages, uploadMediaImage } from '@softerr/shared/media-client.js'
+import { createMediaThumbnailBatcher } from '@softerr/shared/media-thumbnails.js'
 
 export function createImagePicker({ page, requestJson, responseError, setStatus, notice, saveCell }) {
   const imageDialog = page.querySelector('#mdb-image-dialog')

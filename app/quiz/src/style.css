@@ -1,4 +1,4 @@
-@import '../../shared/style.css';
+@import '@softerr/shared/style.css';
 
 .library-page {
   width: min(100%, 960px);

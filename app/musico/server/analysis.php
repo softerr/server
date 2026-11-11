@@ -72,7 +72,7 @@ function handleSaveMusicoTrackAnalysis(array $authUser, int $id): never
         'average_db' => musicoAnalysisDecimal($body, 'average_db', -200, 20),
         'dynamic_range_db' => musicoAnalysisDecimal($body, 'dynamic_range_db', 0, 220),
     ];
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     assertMusicoVersion($db, $authUser, 'track', $id, $expected);
     $assignments = [];

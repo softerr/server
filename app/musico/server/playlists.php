@@ -12,7 +12,7 @@ function publicMusicoPlaylist(array $row): array
 
 function handleListMusicoPlaylists(array $authUser): never
 {
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     $result = @pg_query_params($db,
         'SELECT p.id, p.name, p.created, p.version,
             (SELECT COUNT(*) FROM public.playlist_track pt WHERE pt.playlist_id = p.id) AS track_count
@@ -33,7 +33,7 @@ function handleCreateMusicoPlaylist(array $authUser): never
     $body = readJsonBody();
     $name = musicoText($body['name'] ?? null, 100, 'playlist name');
     $requestId = musicoUploadRequestId();
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     $userId = ensureMusicoUserId($db, $authUser);
     if ($requestId !== null) {
@@ -72,7 +72,7 @@ function handleCreateMusicoPlaylist(array $authUser): never
 
 function handleGetMusicoPlaylist(array $authUser, int $id): never
 {
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     $result = @pg_query_params($db,
         'SELECT p.id, p.name, p.created, p.version,
             (SELECT COUNT(*) FROM public.playlist_track pt WHERE pt.playlist_id = p.id) AS track_count
@@ -99,7 +99,7 @@ function handleRenameMusicoPlaylist(array $authUser, int $id): never
     $expected = requiredMusicoVersion();
     $body = readJsonBody();
     $name = musicoText($body['name'] ?? null, 100, 'playlist name');
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     assertMusicoVersion($db, $authUser, 'playlist', $id, $expected);
     $updated = @pg_query_params($db,
@@ -120,7 +120,7 @@ function handleRenameMusicoPlaylist(array $authUser, int $id): never
 function handleDeleteMusicoPlaylist(array $authUser, int $id): never
 {
     $expected = requiredMusicoVersion();
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     assertMusicoVersion($db, $authUser, 'playlist', $id, $expected);
     $deleted = @pg_query_params($db,
@@ -146,7 +146,7 @@ function handleAddMusicoPlaylistTrack(array $authUser, int $playlistId): never
         && !musicoOwnerTrackGranted($authUser, (int) $trackId, false)) {
         respond(403, ['error' => 'Song is outside this token\'s playlists']);
     }
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     assertMusicoVersion($db, $authUser, 'playlist', $playlistId, $expected);
     $saved = @pg_query_params($db,
@@ -197,7 +197,7 @@ function handleReplaceMusicoPlaylistTracks(array $authUser, int $playlistId): ne
             }
         }
     }
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     assertMusicoVersion($db, $authUser, 'playlist', $playlistId, $expected);
     $ids = '{' . implode(',', $trackIds) . '}';
@@ -234,7 +234,7 @@ function handleReplaceMusicoPlaylistTracks(array $authUser, int $playlistId): ne
 function handleRemoveMusicoPlaylistTrack(array $authUser, int $playlistId, int $trackId): never
 {
     $expected = requiredMusicoVersion();
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     assertMusicoVersion($db, $authUser, 'playlist', $playlistId, $expected);
     $deleted = @pg_query_params($db,

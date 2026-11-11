@@ -101,6 +101,10 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${database}') \gexe
 SQL
   echo "Applying ${app} schema: ${APP_SCHEMAS[$app]}"
   sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d "${database}" < "${REPO_ROOT}/${APP_SCHEMAS[$app]}"
+  app_media_schema="${REPO_ROOT}/${APP_SOURCES[$app]}/server/media.sql"
+  if [[ -f "${app_media_schema}" ]]; then
+    sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d media < "${app_media_schema}"
+  fi
 done
 
 echo "Pruning expired verification tokens..."
@@ -123,7 +127,7 @@ fi
 echo "Installing verified database backup timer..."
 echo "Installing backup script and database registry..."
 install -d -m 755 /usr/local/lib/softerr
-install -m 644 "${REPO_ROOT}/configs/apps.tsv" /etc/softerr/apps.tsv
+install_app_registry /etc/softerr/apps.tsv
 install -m 644 "${SCRIPT_DIR}/lib/app_registry.sh" /usr/local/lib/softerr/app_registry.sh
 echo "Preparing backup directory and existing archives..."
 install -d -o postgres -g www-data -m 2750 /var/backups/softerr

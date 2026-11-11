@@ -43,7 +43,7 @@ function handleUploadMusicoTrack(array $authUser): never
     $requestHash = hash('sha256', json_encode([$contentSha256, $name, $title, $artist,
         $album, $genre, $year, $trackNumber], JSON_THROW_ON_ERROR));
 
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     $userId = ensureMusicoUserId($db, $authUser);
     if ($requestId !== null) {
@@ -110,7 +110,7 @@ function handleUploadMusicoTrack(array $authUser): never
 function handleDeleteMusicoTrack(array $authUser, int $id): never
 {
     $expected = requiredMusicoVersion();
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     assertMusicoVersion($db, $authUser, 'track', $id, $expected);
     $memberships = @pg_query_params($db,
@@ -144,7 +144,7 @@ function handleCreateMusicoTrackFromMedia(array $authUser): never
     $body = readJsonBody();
     $audioId = $body['media_audio_id'] ?? null;
     if (!is_int($audioId) || $audioId < 1) respond(400, ['error' => 'Invalid media audio ID']);
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     $userId = ensureMusicoUserId($db, $authUser);
     $media = connectMediaDb();
@@ -209,7 +209,7 @@ function handleUpdateMusicoTrack(array $authUser, int $id): never
     $trackNumber = musicoOptionalNumber($body['track_number'] ?? null, 1, 999, 'track number');
     $rating = musicoOptionalNumber($body['rating'] ?? null, 0, 10, 'rating');
     $artImageId = musicoOptionalNumber($body['art_image_id'] ?? null, 1, PHP_INT_MAX, 'art image ID');
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     assertMusicoVersion($db, $authUser, 'track', $id, $expected);
     $mediaDb = null;

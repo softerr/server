@@ -1,7 +1,7 @@
 import { formatImageDetails, mediaImageIcon } from './media-format.js'
 import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
-import { mediaImageUrl, uploadMediaImage } from '../../shared/media-client.js'
-import { editIcon as renameIcon, deleteIcon } from '../../shared/icons.js'
+import { mediaImageUrl, uploadMediaImage } from '@softerr/shared/media-client.js'
+import { editIcon as renameIcon, deleteIcon } from '@softerr/shared/icons.js'
 
 const imageUrl = mediaImageUrl
 const folderIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'

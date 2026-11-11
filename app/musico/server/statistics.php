@@ -10,7 +10,7 @@ function handleRecordMusicoListen(array $authUser, int $id): never
     if (!is_bool($started) || !is_int($milliseconds) || $milliseconds < 0 || $milliseconds > 60000
         || (!$started && $milliseconds === 0)) respond(400, ['error' => 'Invalid listening activity']);
     $requestHash = hash('sha256', json_encode(['listen', $id, $started, $milliseconds], JSON_THROW_ON_ERROR));
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     $userId = ensureMusicoUserId($db, $authUser);
     $prior = replayMusicoStatisticRequest($db, $userId, $requestId, $requestHash);
@@ -48,7 +48,7 @@ function handleRestoreMusicoTrackStats(array $authUser, int $id): never
     }
     $requestHash = hash('sha256', json_encode(['restore', $id, $expected, $plays, $milliseconds],
         JSON_THROW_ON_ERROR));
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     $userId = ensureMusicoUserId($db, $authUser);
     $prior = replayMusicoStatisticRequest($db, $userId, $requestId, $requestHash);

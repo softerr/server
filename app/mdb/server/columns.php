@@ -76,7 +76,7 @@ function handleAddMdbColumn(array $user, int $databaseId): never
     $payload = readJsonBody(65536);
     $name = mdbName($payload['name'] ?? null);
     [$type, $options, $relationId, $displayId] = mdbColumnSettings($payload ?? []);
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     mdbBeginWrite($db, $user, $databaseId);
     mdbRequireRelatedDatabase($db, $user, $relationId, $displayId);
     $result = @pg_query_params($db,
@@ -97,7 +97,7 @@ function handleUpdateMdbColumn(array $user, int $databaseId, int $columnId): nev
 {
     $payload = readJsonBody(65536);
     $name = mdbName($payload['name'] ?? null);
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     mdbBeginWrite($db, $user, $databaseId);
     $current = @pg_query_params($db,
         'SELECT id, name, position, width, type, options, relation_database_id, relation_display_column_id FROM public.database_column
@@ -193,7 +193,7 @@ function handleResizeMdbColumn(array $user, int $databaseId, int $columnId): nev
     if (!is_int($width) || $width < 96 || $width > 1200) {
         respond(400, ['error' => 'Column width must be between 96 and 1200 pixels']);
     }
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     mdbBeginWrite($db, $user, $databaseId);
     $updated = @pg_query_params($db,
         'UPDATE public.database_column SET width = $3

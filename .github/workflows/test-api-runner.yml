@@ -23,7 +23,8 @@ on:
     paths:
       - "app/api/**"
       - "app/*/server/**"
-      - "configs/apps.tsv"
+      - "app/*/tests/**"
+      - "app/*/app.tsv"
       - "docs/openapi.yaml"
       - "tests/api/**"
       - "scripts/test_api.sh"
@@ -48,7 +49,8 @@ on:
     paths:
       - "app/api/**"
       - "app/*/server/**"
-      - "configs/apps.tsv"
+      - "app/*/tests/**"
+      - "app/*/app.tsv"
       - "docs/openapi.yaml"
       - "tests/api/**"
       - "scripts/test_api.sh"

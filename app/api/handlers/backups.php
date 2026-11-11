@@ -28,8 +28,8 @@ function backupDatabases(): array
     foreach ($lines as $line) {
         if (str_starts_with($line, '#')) continue;
         $fields = explode('|', $line);
-        if (count($fields) !== 10) respond(503, ['error' => 'Backup configuration is invalid']);
-        $database = $fields[5];
+        if (count($fields) !== 8) respond(503, ['error' => 'Backup configuration is invalid']);
+        $database = $fields[4];
         if ($database === '') continue;
         if (!preg_match('/^[a-z][a-z0-9_]*$/D', $database) || in_array($database, $databases, true)) {
             respond(503, ['error' => 'Backup configuration is invalid']);

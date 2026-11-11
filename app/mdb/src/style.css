@@ -1,4 +1,4 @@
-@import '../../shared/style.css';
+@import '@softerr/shared/style.css';
 
 .mdb-page {
   width: min(100%, 1100px);

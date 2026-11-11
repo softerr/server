@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 if (PHP_SAPI !== 'cli') exit(1);
 
-require_once __DIR__ . '/../lib/backup_lock.php';
+require_once __DIR__ . '/../../lib/backup_lock.php';
 try {
     if (!acquireBackupCaptureReadLock()) {
         fwrite(STDERR, "Backup capture in progress; import recovery will retry later.\n");
@@ -14,11 +14,11 @@ try {
     exit(1);
 }
 
-require_once __DIR__ . '/../lib/db.php';
-require_once __DIR__ . '/../handlers/images.php';
-require_once __DIR__ . '/../apps/quiz/import_recovery.php';
+require_once __DIR__ . '/../../lib/db.php';
+require_once __DIR__ . '/../../handlers/images.php';
+require_once __DIR__ . '/import_recovery.php';
 
-[$quizDb] = openQuizDb(5);
+[$quizDb] = openDb(5, 'quiz');
 [$mediaDb] = openMediaDb(5);
 if ($quizDb === false || $mediaDb === false) {
     fwrite(STDERR, "Quiz import recovery could not connect to PostgreSQL.\n");

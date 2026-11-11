@@ -1,30 +1,32 @@
 <?php
 declare(strict_types=1);
 
-// This is the allowlist for API-token access. Deployment registration alone never grants access.
-const TOKEN_APPS = [
-    'quiz' => [
-        'name' => 'Quiz', 'resource' => 'quizzes', 'read' => 'Read quizzes',
-        'write' => 'Edit quizzes and attempts', 'database' => 'connectQuizDb',
-        'resources_sql' => 'SELECT q.id, q.name FROM public.quiz q JOIN public."user" u ON u.id = q.user_id WHERE u.auth_user_id = $1 ORDER BY q.id DESC',
-        'owner_sql' => 'SELECT u.auth_user_id FROM public.quiz q JOIN public."user" u ON u.id = q.user_id WHERE q.id = $1',
-        'owner_image_upload' => false,
-    ],
-    'musico' => [
-        'name' => 'Musico', 'resource' => 'playlists', 'read' => 'Read Musico',
-        'write' => 'Edit Musico', 'database' => 'connectMusicoDb',
-        'resources_sql' => 'SELECT p.id, p.name FROM public.playlist p JOIN public."user" u ON u.id = p.user_id WHERE u.auth_user_id = $1 ORDER BY p.id DESC',
-        'owner_sql' => 'SELECT u.auth_user_id FROM public.playlist p JOIN public."user" u ON u.id = p.user_id WHERE p.id = $1',
-        'owner_image_upload' => true,
-    ],
-    'mdb' => [
-        'name' => 'MDB', 'resource' => 'databases', 'read' => 'Read MDB',
-        'write' => 'Edit MDB', 'database' => 'connectMdbDb',
-        'resources_sql' => 'SELECT d.id, d.name FROM public.user_database d JOIN public."user" u ON u.id = d.user_id WHERE u.auth_user_id = $1 ORDER BY d.id DESC',
-        'owner_sql' => 'SELECT u.auth_user_id FROM public.user_database d JOIN public."user" u ON u.id = d.user_id WHERE d.id = $1',
-        'owner_image_upload' => true,
-    ],
-];
+// An installed app grants token scopes only when it includes a token definition.
+function loadTokenApps(): array
+{
+    $definitions = [];
+    foreach (glob(__DIR__ . '/../apps/*/token.php') ?: [] as $file) {
+        $app = basename(dirname($file));
+        $definition = require $file;
+        if (!preg_match('/^[a-z][a-z0-9_]*$/D', $app) || !is_array($definition)
+            || ($definition['database'] ?? null) !== $app
+            || !is_string($definition['name'] ?? null)
+            || !is_string($definition['resource'] ?? null)
+            || !is_string($definition['read'] ?? null)
+            || !is_string($definition['write'] ?? null)
+            || !is_string($definition['resources_sql'] ?? null)
+            || !is_string($definition['owner_sql'] ?? null)
+            || !is_bool($definition['owner_image_upload'] ?? null)
+            || (isset($definition['owner_image_reference_sql'])
+                && !is_string($definition['owner_image_reference_sql']))) {
+            throw new LogicException("Invalid token definition for {$app}");
+        }
+        $definitions[$app] = $definition;
+    }
+    return $definitions;
+}
+
+define('TOKEN_APPS', loadTokenApps());
 
 function tokenScopes(): array
 {
@@ -46,8 +48,7 @@ function emptyTokenAccess(): array
 function tokenAccessResources(string $app, int $ownerId): array
 {
     $definition = TOKEN_APPS[$app] ?? throw new LogicException('Unknown token app');
-    $connect = $definition['database'];
-    $result = @pg_query_params($connect(), $definition['resources_sql'], [$ownerId]);
+    $result = @pg_query_params(connectAppDb($definition['database']), $definition['resources_sql'], [$ownerId]);
     if ($result === false) respond(500, ['error' => 'Failed to load token resources']);
     $items = [];
     while (($row = pg_fetch_assoc($result)) !== false) {
@@ -59,8 +60,7 @@ function tokenAccessResources(string $app, int $ownerId): array
 function tokenResourceOwner(string $app, int $resourceId): ?int
 {
     $definition = TOKEN_APPS[$app] ?? throw new LogicException('Unknown token app');
-    $connect = $definition['database'];
-    $result = @pg_query_params($connect(), $definition['owner_sql'], [$resourceId]);
+    $result = @pg_query_params(connectAppDb($definition['database']), $definition['owner_sql'], [$resourceId]);
     if ($result === false) respond(500, ['error' => 'Failed to check token resource']);
     $row = pg_fetch_assoc($result);
     return $row === false ? null : (int) $row['auth_user_id'];

@@ -1,4 +1,4 @@
-import { createPageNotice } from '../../shared/page-notice.js'
+import { createPageNotice } from '@softerr/shared/page-notice.js'
 
 const databaseIcon = `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
   <ellipse cx="24" cy="10" rx="17" ry="6" />

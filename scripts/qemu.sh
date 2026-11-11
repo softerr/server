@@ -329,19 +329,9 @@ provision_includes_app() {
 build_app_dist() {
   local app="$1"
   echo "Building ${APP_SOURCES[$app]} from current source..."
-  if ! command -v npm >/dev/null 2>&1; then
-    echo "npm is required to build ${app} before VM deployment."
-    exit 1
-  fi
-  (
-    cd "${REPO_ROOT}/${APP_SOURCES[$app]}"
-    if [[ -f package-lock.json ]]; then
-      npm ci
-    else
-      npm install
-    fi
-    npm run build
-  )
+  local hook="${REPO_ROOT}/${APP_SOURCES[$app]}/build.sh"
+  [[ -f "${hook}" ]] || { echo "Missing ${app} build hook" >&2; exit 1; }
+  bash "${hook}"
 }
 
 check_app_routes() {
@@ -377,14 +367,11 @@ sync_repo_to_vm() {
     fi
   fi
 
-  local -a app_excludes=()
-  local app
-  for app in "${WEB_APPS[@]}"; do app_excludes+=(--exclude="${APP_SOURCES[$app]}/node_modules"); done
   rsync -az --delete \
     "${secret_filters[@]}" \
     --exclude=".git" \
     --exclude=".qemu" \
-    "${app_excludes[@]}" \
+    --filter=':- .syncignore' \
     -e "${rsync_ssh}" \
     "${REPO_ROOT}/" "${SSH_TARGET}:${REMOTE_APP_DIR}/"
 }

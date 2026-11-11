@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createPreviewQuestionSequence } from '../../app/quiz/src/question-sequence.js'
+import { createPreviewQuestionSequence } from '../src/question-sequence.js'
 
 const questions = [{ id: 1 }, { id: 2 }, { id: 3 }]
 const asked = (sequence, count) => Array.from({ length: count }, () => sequence.next().id)

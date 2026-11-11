@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 function handleAddMdbRow(array $user, int $databaseId): never
 {
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     mdbBeginWrite($db, $user, $databaseId);
     $result = @pg_query_params($db,
         'INSERT INTO public.database_row (database_id, position)
@@ -26,7 +26,7 @@ function handleAddMdbRows(array $user, int $databaseId): never
         || ($columnId !== null && (!is_int($columnId) || $columnId < 1))) {
         respond(400, ['error' => 'Provide 1 to 100 row values and a valid column']);
     }
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     mdbBeginWrite($db, $user, $databaseId);
     $column = null;
     if ($columnId !== null) {
@@ -81,7 +81,7 @@ function handleAddMdbRows(array $user, int $databaseId): never
 
 function handleGetMdbRowUsage(array $user, int $databaseId, int $rowId): never
 {
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
     $row = @pg_query_params($db,
         'SELECT 1 FROM public.database_row WHERE database_id = $1 AND id = $2',

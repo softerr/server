@@ -97,7 +97,7 @@ function handleListMediaAudio(): never
     if ($result === false) respond(500, ['error' => 'Could not load audio files']);
     $items = [];
     while (($row = pg_fetch_assoc($result)) !== false) $items[] = publicMediaAudio($row);
-    $musico = connectMusicoDb();
+    $musico = connectAppDb('musico');
     $used = @pg_query_params($musico,
         'SELECT t.media_audio_id, t.id FROM public.track t
          JOIN public."user" u ON u.id = t.user_id
@@ -201,7 +201,7 @@ function handleDeleteMediaAudio(int $id): never
 {
     $user = musicoAudioAccessUser(currentSessionUser(), $id, true);
     // The same per-account lock serializes deletion with Musico track creation.
-    $musico = connectMusicoDb();
+    $musico = connectAppDb('musico');
     if (@pg_query($musico, 'BEGIN') === false
         || @pg_query_params($musico, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
         respond(500, ['error' => 'Could not check audio references']);

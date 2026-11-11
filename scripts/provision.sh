@@ -68,10 +68,14 @@ SELECT 'CREATE DATABASE ${database}'
 WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${database}') \gexec
 SQL
   sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d "${database}" < "${REPO_ROOT}/${schema}"
+  local media_schema="${REPO_ROOT}/${APP_SOURCES[$app]}/server/media.sql"
+  if [[ -f "${media_schema}" ]]; then
+    sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d media < "${media_schema}"
+  fi
   unlock_schema_setup
   SCHEMA_APPLIED["${app}"]=1
   if [[ -f /etc/systemd/system/softerr-backup-postgresql.service ]]; then
-    install -m 644 "${REPO_ROOT}/configs/apps.tsv" /etc/softerr/apps.tsv
+    install_app_registry /etc/softerr/apps.tsv
     install -m 644 "${SCRIPT_DIR}/lib/app_registry.sh" /usr/local/lib/softerr/app_registry.sh
     install -m 755 "${SCRIPT_DIR}/backup_postgresql.sh" /usr/local/lib/softerr/backup_postgresql.sh
     echo "Updated backup registry for ${database}; the daily timer will include it."

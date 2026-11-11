@@ -1,5 +1,5 @@
 import { editIcon, deleteIcon, attemptsIcon } from './icons.js'
-import { createPageNotice } from '../../shared/page-notice.js'
+import { createPageNotice } from '@softerr/shared/page-notice.js'
 
 const quizActionIcons = { attempts: attemptsIcon, edit: editIcon, delete: deleteIcon }
 

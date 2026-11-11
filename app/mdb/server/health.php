@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 return static function (): void {
-    [$db, $error] = openMdbDb();
+    [$db, $error] = openDb(3, 'mdb');
     if ($db === false) respond(503, ['status' => 'unavailable', 'error' => $error]);
     if (@pg_query($db,
         'SELECT u.id, u.auth_user_id, d.id, d.user_id, d.name, d.created,

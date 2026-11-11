@@ -152,7 +152,7 @@ function mdbRowsWithValues($db, int $databaseId, array $ids, array $positions,
 function handleQueryMdbDatabase(array $user, int $databaseId): never
 {
     [$limit, $offset, $query, $sortId, $direction] = mdbTableQuery();
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     $database = mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
     $columnsResult = @pg_query_params($db,
         'SELECT id, name, position, width, type, options, relation_database_id,
@@ -175,7 +175,7 @@ function handleQueryMdbDatabase(array $user, int $databaseId): never
 
 function handleMdbChoices(array $user, int $databaseId): never
 {
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
     $displayId = filter_var($_GET['display_column_id'] ?? '0', FILTER_VALIDATE_INT,
         ['options' => ['min_range' => 0]]);
@@ -263,7 +263,7 @@ function handleMdbChoices(array $user, int $databaseId): never
 function handleExportMdbCsv(array $user, int $databaseId): never
 {
     [, , $query, $sortId, $direction] = mdbTableQuery();
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     if (@pg_query($db, 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY') === false) {
         respond(500, ['error' => 'Failed to start CSV export']);
     }

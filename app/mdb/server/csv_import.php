@@ -183,7 +183,7 @@ function mdbCsvColumnPlans($db, int $databaseId, array $headers, array $rows): a
 function handlePreviewMdbCsv(array $user, int $databaseId): never
 {
     [$headers, $rows] = mdbCsvRead();
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
     $plans = mdbCsvColumnPlans($db, $databaseId, $headers, $rows);
     respond(200, ['row_count' => count($rows), 'columns' => array_map(
@@ -411,7 +411,7 @@ function handleImportMdbCsv(array $user, int $databaseId): never
     if (!is_array($types)) respond(400, ['error' => 'Invalid column types']);
     $relations = json_decode((string) ($_POST['relations'] ?? '{}'), true);
     if (!is_array($relations)) respond(400, ['error' => 'Invalid relation settings']);
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
     $plans = mdbCsvColumnPlans($db, $databaseId, $headers, $rows);
     $affected = mdbCsvAffectedDatabases($databaseId, $plans, $types, $relations);

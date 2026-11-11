@@ -3,13 +3,14 @@
 set -euo pipefail
 
 if [[ "${EUID}" -ne 0 ]]; then
-  echo "Run this script as root (for example: sudo bash scripts/deploy_home.sh)." >&2
+  echo "Run this script as root (for example: sudo bash app/home/deploy.sh)." >&2
   exit 1
 fi
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PREBUILT_DIST_DIR="${HOME_DIST_DIR:-${REMOTE_DIR:-/tmp/workflow-artifacts}/app/home/dist}"
-TARGET_DIR="${HOME_TARGET_DIR:-/var/www/home}"
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="${REPO_ROOT}/scripts"
+PREBUILT_DIST_DIR="${APP_DEPLOY_SOURCE:-${HOME_DIST_DIR:-${REMOTE_DIR:-/tmp/workflow-artifacts}/app/home/dist}}"
+TARGET_DIR="${APP_DEPLOY_TARGET:-${HOME_TARGET_DIR:-/var/www/home}}"
 WEB_USER="${WEB_USER:-www-data}"
 WEB_GROUP="${WEB_GROUP:-www-data}"
 
@@ -39,6 +40,6 @@ ln -s /var/www/acme/.well-known "${release_source}/.well-known"
 
 echo "Deploying home to: ${TARGET_DIR}"
 atomic_deploy_dir "${release_source}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}" \
-  verify_local_app_route / file "${TARGET_DIR}/index.html"
+  verify_local_app_route "${APP_DEPLOY_ROUTE:-/}" file "${TARGET_DIR}/index.html"
 
 echo "Home deployed successfully."

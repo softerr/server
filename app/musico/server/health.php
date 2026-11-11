@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 return static function (): void {
-    [$musicoDb, $musicoError] = openMusicoDb();
+    [$musicoDb, $musicoError] = openDb(3, 'musico');
     if ($musicoDb === false) {
         respond(503, ['status' => 'unavailable', 'error' => $musicoError]);
     }

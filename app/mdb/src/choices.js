@@ -1,5 +1,5 @@
 import { optionPlaceholder } from './option-placeholder.js'
-import { editIcon, removeIcon } from '../../shared/icons.js'
+import { editIcon, removeIcon } from '@softerr/shared/icons.js'
 import { parsePastedDate } from './date-parse.js'
 
 export function createChoiceController({ page, endpoint, requestJson, postJson, responseError,

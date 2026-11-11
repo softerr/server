@@ -24,7 +24,7 @@ function handleReorderMdbItems(array $user, int $databaseId, string $kind): neve
         || count($ids) > 200 || $ids === [] || $start > PHP_INT_MAX - count($ids))) {
         respond(400, ['error' => 'Invalid row page order']);
     }
-    $db = connectMdbDb();
+    $db = connectAppDb('mdb');
     mdbBeginWrite($db, $user, $databaseId);
     $existing = @pg_query_params($db,
         "SELECT id, position FROM {$table} WHERE database_id = $1"

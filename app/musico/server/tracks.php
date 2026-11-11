@@ -55,7 +55,7 @@ function publicMusicoTracks($result, int|array $authUserId): array
 
 function handleListMusicoTracks(array $authUser): never
 {
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     $result = @pg_query_params($db,
         'SELECT t.id, t.title, t.artist, t.media_audio_id,
                 t.version, t.stats_version,
@@ -103,7 +103,7 @@ function handleSaveMusicoTrackOrder(array $authUser): never
         }
         $seen[$id] = true;
     }
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     $userId = ensureMusicoUserId($db, $authUser);
     $array = '{' . implode(',', $ids) . '}';
@@ -129,7 +129,7 @@ function handleSaveMusicoTrackOrder(array $authUser): never
 
 function handleGetMusicoTrack(array $authUser, int $id): never
 {
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     $result = @pg_query_params($db,
         'SELECT t.id, t.title, t.artist, t.media_audio_id,
                 t.version, t.stats_version,
@@ -147,7 +147,7 @@ function handleGetMusicoTrack(array $authUser, int $id): never
 
 function handleStreamMusicoTrack(array $authUser, int $id): never
 {
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     $result = @pg_query_params($db,
         'SELECT t.media_audio_id FROM public.track t
          JOIN public."user" u ON u.id = t.user_id

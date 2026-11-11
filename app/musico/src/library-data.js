@@ -1,5 +1,5 @@
 import { versionHeader, loadJson } from './api.js'
-import { downloadBlob } from '../../shared/download.js'
+import { downloadBlob } from '@softerr/shared/download.js'
 
 function key(track) {
   return `${track.original_name}\u0000${track.size_bytes}`

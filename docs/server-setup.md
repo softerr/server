@@ -41,7 +41,7 @@ In GitHub, run **Actions → Set Up Server → Run workflow**. It builds home, q
 
 The workflow fails at the step that needs attention. Rerunning it reapplies the database schema, Nginx configuration, and apps without deleting user accounts; expired verification tokens are pruned. It reuses a valid certificate with an active renewal timer. Once it succeeds, the site is available over HTTPS at the host in `SERVER_HOST`.
 
-PostgreSQL setup uses `configs/postgresql/init.sql` for the API role and shared databases, then applies the auth and media schemas and each app schema from `configs/apps.tsv`, including MDB's app-local users and databases.
+PostgreSQL setup uses `configs/postgresql/init.sql` for the API role and shared databases, then applies the auth and media schemas and each app schema discovered through `app/*/app.tsv`, including MDB's app-local users and databases.
 
 To make the first admin, sign up and verify that account, then run the SQL command in [Server maintenance](server-maintenance.md). New accounts require approval in the home Users page after email verification. Verification queues an email for each active admin.
 

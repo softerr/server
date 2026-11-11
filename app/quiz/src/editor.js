@@ -1,7 +1,7 @@
 import { mountQuestionEditor } from './questions.js'
 import { openQuizPreview } from './preview.js'
-import { listMediaImages, mediaImageUrl } from '../../shared/media-client.js'
-import { downloadBlob } from '../../shared/download.js'
+import { listMediaImages, mediaImageUrl } from '@softerr/shared/media-client.js'
+import { downloadBlob } from '@softerr/shared/download.js'
 
 export function renderQuizEditor(app, { currentUser, requestJson, responseError, setStatus }) {
   const quizId = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('quiz')

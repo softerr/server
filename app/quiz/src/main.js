@@ -1,5 +1,5 @@
 import './style.css'
-import { startAuthApp } from '../../shared/auth-app.js'
+import { startAuthApp } from '@softerr/shared/auth-app.js'
 import { renderLibrary } from './library.js'
 import { renderExplore } from './explore.js'
 import { renderQuizEditor } from './editor.js'

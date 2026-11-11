@@ -1,4 +1,4 @@
-import { mediaImageUrl, mediaThumbnailUrl } from '../../shared/media-client.js'
+import { mediaImageUrl, mediaThumbnailUrl } from '@softerr/shared/media-client.js'
 
 const modes = ['Shuffle', 'Loop', 'Order', 'Single', 'Repeat']
 const icon = (paths, viewBox = '0 0 24 24', strokeWidth = 1.8) => `<svg viewBox="${viewBox}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`

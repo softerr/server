@@ -93,7 +93,12 @@ done
 systemctl is-active --quiet nginx
 systemctl is-active --quiet postgresql
 systemctl is-active --quiet softerr-send-email.timer
-systemctl is-active --quiet softerr-recover-quiz-imports.timer
+for app in "${WEB_APPS[@]}"; do
+  for timer in "${REPO_ROOT}/${APP_SOURCES[$app]}/server/systemd/"*.timer; do
+    [[ -f "${timer}" ]] || continue
+    systemctl is-active --quiet "${timer##*/}"
+  done
+done
 systemctl is-active --quiet softerr-prune-user-tokens.timer
 systemctl is-active --quiet softerr-backup-postgresql.timer
 

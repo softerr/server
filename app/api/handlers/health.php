@@ -59,9 +59,6 @@ function checkMediaReadiness(): void
          FROM public.api_token_image_access LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media token image grants are not ready']);
     }
-    if (@pg_query($mediaDb, 'SELECT id, quiz_id, image_ids FROM public.quiz_import_recovery LIMIT 0') === false) {
-        respond(503, ['status' => 'unavailable', 'error' => 'Media database schema is not ready']);
-    }
     if (@pg_query($mediaDb, 'SELECT id, owner_auth_user_id, original_name, mime_type, size_bytes, sha256 FROM public.audio_file LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media audio schema is not ready']);
     }

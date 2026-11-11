@@ -12,7 +12,7 @@ function handleMusicoChanges(array $authUser): never
     $after = $_GET['after'] ?? null;
     if ($after === null) {
         if (isset($_GET['limit'])) respond(400, ['error' => 'limit requires an after cursor']);
-        $db = connectMusicoDb();
+        $db = connectAppDb('musico');
         if (@pg_query($db, 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY') === false) {
             respond(500, ['error' => 'Could not load Musico snapshot']);
         }
@@ -66,7 +66,7 @@ function handleMusicoChanges(array $authUser): never
     if ($cursorId === null || $cursorId === false || $limit === false) {
         respond(400, ['error' => 'Invalid change cursor or limit']);
     }
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     $userId = musicoCurrentId($db, $authUser);
     if ($userId === null && $cursorId !== 0) {
         respond(409, ['error' => 'Change cursor is no longer valid', 'reset_required' => true]);

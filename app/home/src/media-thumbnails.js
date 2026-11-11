@@ -1,4 +1,4 @@
-import { createMediaThumbnailBatcher } from '../../shared/media-thumbnails.js'
+import { createMediaThumbnailBatcher } from '@softerr/shared/media-thumbnails.js'
 
 const CACHE_SIZE = 160
 

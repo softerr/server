@@ -102,7 +102,7 @@ function recordMusicoChange($db, array $authUser, string $resource, int $resourc
 
 function handleMusicoMe(array $authUser): never
 {
-    $db = connectMusicoDb();
+    $db = connectAppDb('musico');
     beginMusicoMutation($db, $authUser);
     $id = ensureMusicoUserId($db, $authUser);
     finishMusicoMutation($db);

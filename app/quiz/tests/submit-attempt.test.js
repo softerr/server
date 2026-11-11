@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { submitAttempt } from '../../app/quiz/src/submit-attempt.js'
+import { submitAttempt } from '../src/submit-attempt.js'
 
 test('a failed time update still completes after the answer is saved', async () => {
   const calls = []

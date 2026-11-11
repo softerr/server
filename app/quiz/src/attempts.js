@@ -1,6 +1,6 @@
 import { buildQuestion } from './play.js'
 import { showMissingImageWhenUnavailable } from './missing-image.js'
-import { mediaImageUrl } from '../../shared/media-client.js'
+import { mediaImageUrl } from '@softerr/shared/media-client.js'
 
 function element(tag, className = '', text) {
   const node = document.createElement(tag)

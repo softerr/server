@@ -9,6 +9,7 @@ requireBackupCaptureReadLock();
 require_once __DIR__ . '/lib/url.php';
 require_once __DIR__ . '/lib/session.php';
 require_once __DIR__ . '/handlers/images.php';
+require_once __DIR__ . '/apps/quiz/images.php';
 require_once __DIR__ . '/apps/quiz/import_recovery.php';
 require_once __DIR__ . '/apps/quiz/quizzes.php';
 require_once __DIR__ . '/apps/quiz/questions.php';

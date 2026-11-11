@@ -1,4 +1,4 @@
-import { mediaImageUrl } from '../../shared/media-client.js'
+import { mediaImageUrl } from '@softerr/shared/media-client.js'
 
 export function createMediaDeletion(page, { requestJson, responseError, notify }) {
   const dialog = document.createElement('dialog')

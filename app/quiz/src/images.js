@@ -1,7 +1,7 @@
 import { imageIcon, noImageIcon, removeIcon, uploadImageIcon } from './icons.js'
-import { listMediaImages, mediaImageUrl, mediaThumbnailUrl, uploadMediaImage } from '../../shared/media-client.js'
-import { createMediaThumbnailBatcher } from '../../shared/media-thumbnails.js'
-import { updateImageUsage } from '../../shared/image-usage.js'
+import { listMediaImages, mediaImageUrl, mediaThumbnailUrl, uploadMediaImage } from '@softerr/shared/media-client.js'
+import { createMediaThumbnailBatcher } from '@softerr/shared/media-thumbnails.js'
+import { updateImageUsage } from '@softerr/shared/image-usage.js'
 
 const imageUrl = mediaImageUrl
 const thumbnailUrl = mediaThumbnailUrl

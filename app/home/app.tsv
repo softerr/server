@@ -1,0 +1,2 @@
+# title|web route|web target|database|API readiness route|schema readiness SQL|backup restore SQL
+Home|/|/var/www/home||||

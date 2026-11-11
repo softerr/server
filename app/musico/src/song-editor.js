@@ -1,11 +1,12 @@
 import { mountArtworkPicker } from './artwork.js'
-import { MAX_IMAGE_BYTES } from '../../shared/media-limits.js'
-import { mediaThumbnailUrl, uploadMediaImage } from '../../shared/media-client.js'
+import { MAX_IMAGE_BYTES } from '@softerr/shared/media-limits.js'
+import { mediaThumbnailUrl, uploadMediaImage } from '@softerr/shared/media-client.js'
 import { versionHeader } from './api.js'
 
 function albumArtworkName(match, mimeType) {
   const parts = [match.artistName, match.collectionName || match.trackName]
     .map((value) => String(value || '').trim()).filter(Boolean)
+  // eslint-disable-next-line no-control-regex, no-useless-escape
   const base = parts.join(' - ').replace(/[\/\\\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim()
   const fallback = `Artwork ${match.collectionId || match.trackId}`
   let name = ''

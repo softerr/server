@@ -1,10 +1,10 @@
 import { drawAudioAnalysis, drawSpectrogram } from './audio-analysis.js'
 import { estimateTempoAndKey } from './music-theory.js'
 import { mountSongEditor } from './song-editor.js'
-import { editIcon } from '../../shared/icons.js'
-import { createPageNotice } from '../../shared/page-notice.js'
+import { editIcon } from '@softerr/shared/icons.js'
+import { createPageNotice } from '@softerr/shared/page-notice.js'
 import { versionHeader } from './api.js'
-import { mediaThumbnailUrl } from '../../shared/media-client.js'
+import { mediaThumbnailUrl } from '@softerr/shared/media-client.js'
 
 const downloadIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg>'
 const copyIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>'

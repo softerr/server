@@ -40,23 +40,8 @@ function openDb(int $connectTimeoutSeconds = 3, ?string $databaseName = null): a
     return [$conn, null];
 }
 
-function openQuizDb(): array
-{
-    return openDb(3, 'quiz');
-}
-
 function openMediaDb(): array
 {
     return openDb(3, 'media');
-}
-
-function openMusicoDb(): array
-{
-    return openDb(3, 'musico');
-}
-
-function openMdbDb(): array
-{
-    return openDb(3, 'mdb');
 }
 

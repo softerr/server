@@ -1,5 +1,5 @@
-import { musicPlayer, status, button, iconButton, renderTrackRow, songDetailsUrl, ready } from './view-ui.js'
-import { editIcon, deleteIcon } from '../../shared/icons.js'
+import { musicPlayer, status, iconButton, renderTrackRow, songDetailsUrl, ready } from './view-ui.js'
+import { editIcon, deleteIcon } from '@softerr/shared/icons.js'
 import { loadJson, versionHeader } from './api.js'
 
 export function renderPlaylists(app, { requestJson, responseError }) {

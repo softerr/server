@@ -1,4 +1,4 @@
-import { removeIcon } from '../../shared/icons.js'
+import { removeIcon } from '@softerr/shared/icons.js'
 import { optionPlaceholder } from './option-placeholder.js'
 
 export function createColumnDialog({ page, endpoint, databaseId, requestJson, postJson,

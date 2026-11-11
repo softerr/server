@@ -5,55 +5,11 @@ const MEDIA_IMAGE_MAX_BYTES = 6291456;
 const MEDIA_PERSONAL_MAX_BYTES = 67108864;
 const MEDIA_PERSONAL_MAX_COUNT = 1024;
 const MEDIA_THUMBNAIL_MAX_SIDE = 320;
-const QUIZ_IMPORT_MAX_BYTES = 50331648;
-const QUIZ_IMPORT_MAX_IMAGES = 4096;
 const QUIZ_IMAGE_REFERENCE_PATH = '$.** ? (@.image_id == $id || @.answer_image_id == $id || @.keyword_image_id == $id || @.definition_image_id == $id || @.name_image_id == $id)';
 const QUIZ_VISIBLE_IMAGE_REFERENCE_PATH = '$.** ? (@.image_id == $id || @.keyword_image_id == $id || @.definition_image_id == $id || @.name_image_id == $id)';
 const QUIZ_ANSWER_IMAGE_REFERENCE_PATH = '$.** ? (@.answer_image_id == $id)';
 
-function imageIdsFromConfig(array $config): array
-{
-    $ids = [];
-    foreach ($config as $key => $value) {
-        if (is_string($key) && ($key === 'image_id' || str_ends_with($key, '_image_id'))) {
-            $ids[] = $value;
-        } elseif (is_array($value)) {
-            array_push($ids, ...imageIdsFromConfig($value));
-        }
-    }
-    return array_values(array_unique($ids));
-}
-
-function verifyQuestionImages($quizDb, array $user, string $config): void
-{
-    $ids = imageIdsFromConfig(json_decode($config, true, 512, JSON_THROW_ON_ERROR));
-    if (!$ids) return;
-    sort($ids, SORT_NUMERIC);
-    foreach ($ids as $id) {
-        if (@pg_query_params($quizDb, 'SELECT pg_advisory_xact_lock($1::bigint)', [-$id]) === false) {
-            respond(500, ['error' => 'Failed to check images']);
-        }
-    }
-    $db = connectMediaDb();
-    $result = @pg_query_params($db,
-        'SELECT id, owner_auth_user_id, shared FROM public.image
-         WHERE id = ANY($1::bigint[])',
-        ['{' . implode(',', $ids) . '}']);
-    if ($result === false) respond(500, ['error' => 'Failed to check images']);
-    if (pg_num_rows($result) !== count($ids)) {
-        respond(400, ['error' => 'Choose images from your image library']);
-    }
-    while (($row = pg_fetch_assoc($result)) !== false) {
-        if ($row['shared'] === 't' || (int) $row['owner_auth_user_id'] === (int) $user['id']) continue;
-        if (($user['service_owner_id'] ?? null) === null
-            || (int) $row['owner_auth_user_id'] !== (int) $user['service_owner_id']
-            || !imageUsedByReadableOwnerQuiz((int) $row['id'], $user)) {
-            respond(400, ['error' => 'Choose images from your image library']);
-        }
-    }
-}
-
-function validQuizImage(string $bytes): array
+function validMediaImage(string $bytes): array
 {
     if ($bytes === '' || strlen($bytes) > MEDIA_IMAGE_MAX_BYTES) {
         respond(413, ['error' => 'Image must be at most 6 MiB']);
@@ -68,7 +24,7 @@ function validQuizImage(string $bytes): array
     return [$mime, $info[0], $info[1]];
 }
 
-function validQuizImageName(string $name): string
+function validMediaImageName(string $name): string
 {
     if ($name === '' || strlen($name) > 255 || trim($name) === ''
         || preg_match('//u', $name) !== 1
@@ -327,10 +283,10 @@ function readMediaUpload(): array
     if (!is_string($rawName) || preg_match('/%(?![0-9A-Fa-f]{2})/', $rawName)) {
         respond(400, ['error' => 'X-Image-Name must be a URL-encoded filename']);
     }
-    $name = validQuizImageName(rawurldecode($rawName));
+    $name = validMediaImageName(rawurldecode($rawName));
     $bytes = file_get_contents('php://input', false, null, 0, MEDIA_IMAGE_MAX_BYTES + 1);
     if ($bytes === false) respond(400, ['error' => 'Could not read image']);
-    [$mime, $width, $height] = validQuizImage($bytes);
+    [$mime, $width, $height] = validMediaImage($bytes);
     return [$name, $bytes, $mime, $width, $height];
 }
 
@@ -441,7 +397,7 @@ function handlePublishImage(int $imageId): never
 
 function imageUsedByAccessibleQuiz(int $imageId, array $user): bool
 {
-    $quizDb = connectQuizDb();
+    $quizDb = connectAppDb('quiz');
     $result = @pg_query_params($quizDb,
         'SELECT EXISTS (
             SELECT 1 FROM public.quiz_attempt_question s
@@ -471,7 +427,7 @@ function imageUsedByReadableOwnerQuiz(int $imageId, array $user): bool
 {
     $ownerAuthUserId = $user['service_owner_id'] ?? null;
     if ($ownerAuthUserId === null) return false;
-    $quizDb = connectQuizDb();
+    $quizDb = connectAppDb('quiz');
     $result = @pg_query_params($quizDb,
         'SELECT DISTINCT quiz.id FROM public.question question
             JOIN public.quiz quiz ON quiz.id = question.quiz_id
@@ -489,9 +445,12 @@ function imageUsedByReadableOwnerQuiz(int $imageId, array $user): bool
 
 function imageUsedByReadableOwnerApp(int $imageId, array $user): bool
 {
-    return tokenUploadedOwnerImage($imageId, $user)
-        || tokenReferencedOwnerImage($imageId, $user, 'musico')
-        || tokenReferencedOwnerImage($imageId, $user, 'mdb');
+    if (tokenUploadedOwnerImage($imageId, $user)) return true;
+    foreach (TOKEN_APPS as $app => $definition) {
+        if (isset($definition['owner_image_reference_sql'])
+            && tokenReferencedOwnerImage($imageId, $user, $app)) return true;
+    }
+    return false;
 }
 
 function storedMediaThumbnail($db, array $row): array
@@ -633,7 +592,7 @@ function handleRenameImage(int $imageId): never
     if (!is_array($payload) || !is_string($payload['name'] ?? null)) {
         respond(400, ['error' => 'Image name is required']);
     }
-    $name = validQuizImageName($payload['name']);
+    $name = validMediaImageName($payload['name']);
     $db = connectMediaDb();
     $result = @pg_query_params($db,
         'WITH renamed AS (
@@ -790,9 +749,9 @@ function handleImageUsage(): never
     $ids = requestedMediaImageIds();
     $db = connectMediaDb();
     $rows = authorizedMediaImageRows($db, $user, $ids);
-    $quizDb = connectQuizDb();
-    $musicoDb = connectMusicoDb();
-    $mdbDb = connectMdbDb();
+    $quizDb = connectAppDb('quiz');
+    $musicoDb = connectAppDb('musico');
+    $mdbDb = connectAppDb('mdb');
     $images = [];
     foreach ($ids as $id) {
         $row = $rows[$id];
@@ -826,7 +785,7 @@ function handleDeleteImage(int $imageId): never
     if ($shared && $user['role'] !== 'admin') respond(403, ['error' => 'Admin access required']);
     // Question writes take an image lock before checking image access. A
     // personal image also uses its owner's lock for existing import flows.
-    $quizDb = connectQuizDb();
+    $quizDb = connectAppDb('quiz');
     if (@pg_query($quizDb, 'BEGIN') === false
         || @pg_query_params($quizDb, 'SELECT pg_advisory_xact_lock($1::bigint)', [$shared ? -$imageId : $user['id']]) === false) {
         respond(500, ['error' => 'Failed to delete image']);
@@ -849,7 +808,7 @@ function handleDeleteImage(int $imageId): never
          QUIZ_IMAGE_REFERENCE_PATH,
          $imageId, $shared ? 't' : 'f']);
     if ($used === false) respond(500, ['error' => 'Failed to delete image']);
-    $musicoDb = connectMusicoDb();
+    $musicoDb = connectAppDb('musico');
     if (@pg_query($musicoDb, 'BEGIN') === false
         || (!$shared && @pg_query_params($musicoDb, 'SELECT pg_advisory_xact_lock($1::bigint)', [$user['id']]) === false)
         || @pg_query_params($musicoDb, 'SELECT pg_advisory_xact_lock($1::bigint)', [-$imageId]) === false) {
@@ -860,7 +819,7 @@ function handleDeleteImage(int $imageId): never
           WHERE t.art_image_id = $1 AND ($2::boolean OR u.auth_user_id = $3)) AS used',
         [$imageId, $shared ? 't' : 'f', $user['id']]);
     if ($musicoUsed === false) respond(500, ['error' => 'Failed to delete image']);
-    $mdbDb = connectMdbDb();
+    $mdbDb = connectAppDb('mdb');
     if (@pg_query($mdbDb, 'BEGIN') === false
         || (!$shared && @pg_query_params($mdbDb, 'SELECT pg_advisory_xact_lock($1::bigint)', [$user['id']]) === false)
         || @pg_query_params($mdbDb, 'SELECT pg_advisory_xact_lock($1::bigint)', [-$imageId]) === false) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { estimateBpm, estimateKey } from '../../app/musico/src/music-theory.js'
+import { estimateBpm, estimateKey } from '../src/music-theory.js'
 
 function musicalBuffer({ bpm, chords, seconds = 20 }) {
   const sampleRate = 11025

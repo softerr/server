@@ -10,6 +10,7 @@ fi
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/app_registry.sh"
+source "${SCRIPT_DIR}/lib/app_services.sh"
 load_app_registry "${REPO_ROOT}"
 REPO_API_DIR="${SCRIPT_DIR}/../app/api"
 REMOTE_API_DIR="${REMOTE_DIR:-/tmp/workflow-artifacts}/app/api"
@@ -34,14 +35,6 @@ for entrypoint in index auth media; do
     exit 1
   fi
 done
-for app in "${WEB_APPS[@]}"; do
-  [[ -z "${APP_HEALTH_ROUTES[$app]}" ]] && continue
-  if [[ ! -f "${SOURCE_DIR}/${app}.php" ]]; then
-    echo "Missing API entry file: ${SOURCE_DIR}/${app}.php" >&2
-    exit 1
-  fi
-done
-
 api_release="$(mktemp -d "${TMPDIR:-/tmp}/softerr-api-source.XXXXXXXX")"
 cleanup_api_deploy() {
   local result=$?
@@ -51,6 +44,16 @@ cleanup_api_deploy() {
 }
 trap cleanup_api_deploy EXIT
 cp -a -- "${SOURCE_DIR}/." "${api_release}/"
+# An artifact upload can retain files from an older app. Rebuild the app-facing
+# part of the release solely from the current manifests.
+rm -rf -- "${api_release}/apps"
+for entrypoint_file in "${api_release}/"*.php; do
+  [[ -f "${entrypoint_file}" ]] || continue
+  case "${entrypoint_file##*/}" in
+    index.php|auth.php|media.php|mail.php) ;;
+    *) rm -f -- "${entrypoint_file}" ;;
+  esac
+done
 for app in "${WEB_APPS[@]}"; do
   [[ -z "${APP_HEALTH_ROUTES[$app]}" ]] && continue
   module_source="${REPO_ROOT}/${APP_SOURCES[$app]}/server"
@@ -62,9 +65,21 @@ for app in "${WEB_APPS[@]}"; do
     echo "Missing ${app} API readiness check: ${module_source}/health.php" >&2
     exit 1
   fi
+  if [[ ! -f "${module_source}/entrypoint.php" ]]; then
+    echo "Missing ${app} API entry point: ${module_source}/entrypoint.php" >&2
+    exit 1
+  fi
+  if [[ -n "${APP_DATABASES[$app]}" && ! -f "${module_source}/delete_user.php" ]]; then
+    echo "Missing ${app} account cleanup hook: ${module_source}/delete_user.php" >&2
+    exit 1
+  fi
   install -d "${api_release}/apps/${app}"
   cp -a -- "${module_source}/." "${api_release}/apps/${app}/"
-  rm -f -- "${api_release}/apps/${app}/schema.sql" "${api_release}/apps/${app}/nginx.conf"
+  cp -a -- "${module_source}/entrypoint.php" "${api_release}/${app}.php"
+  rm -f -- "${api_release}/apps/${app}/schema.sql" "${api_release}/apps/${app}/media.sql" \
+    "${api_release}/apps/${app}/nginx.conf" \
+    "${api_release}/apps/${app}/entrypoint.php"
+  rm -rf -- "${api_release}/apps/${app}/systemd"
 done
 
 TARGET_DIR="${API_TARGET_DIR:-/var/www/api}"
@@ -89,6 +104,7 @@ for app in "${WEB_APPS[@]}"; do
   [[ -z "${APP_HEALTH_ROUTES[$app]}" ]] && continue
   if [[ ! -d "${TARGET_DIR}/apps/${app}" ]] \
     || ! diff -qr -- "${api_release}/apps/${app}" "${TARGET_DIR}/apps/${app}" >/dev/null \
+    || ! cmp -s -- "${api_release}/${app}.php" "${TARGET_DIR}/${app}.php" \
     || ! cmp -s -- "${api_release}/lib/db.php" "${TARGET_DIR}/lib/db.php" \
     || ! cmp -s -- "${api_release}/lib/http.php" "${TARGET_DIR}/lib/http.php"; then
     verify_app_health+=("${app}")
@@ -108,19 +124,6 @@ if ! "php${php_version}" -m | grep -Fxiq gd; then
   apt-get update
   apt-get install -y "php${php_version}-gd"
 fi
-
-RECOVERY_SERVICE_FILE="${SCRIPT_DIR}/../configs/systemd/softerr-recover-quiz-imports.service"
-RECOVERY_TIMER_FILE="${SCRIPT_DIR}/../configs/systemd/softerr-recover-quiz-imports.timer"
-for file in "${RECOVERY_SERVICE_FILE}" "${RECOVERY_TIMER_FILE}" /etc/softerr/email-worker.env; do
-  if [[ ! -f "${file}" ]]; then
-    echo "Quiz import recovery requirement is missing: ${file}" >&2
-    exit 1
-  fi
-done
-install -m 644 "${RECOVERY_SERVICE_FILE}" /etc/systemd/system/softerr-recover-quiz-imports.service
-install -m 644 "${RECOVERY_TIMER_FILE}" /etc/systemd/system/softerr-recover-quiz-imports.timer
-systemctl daemon-reload
-systemctl enable --now softerr-recover-quiz-imports.timer
 
 echo "Deploying API from: ${SOURCE_DIR}"
 restart_api_fpm() {
@@ -149,12 +152,16 @@ install -d -o postgres -g www-data -m 2770 /var/lib/softerr/media \
   /var/lib/softerr/media/audio
 install -m 755 "${SCRIPT_DIR}/backup_postgresql.sh" \
   /usr/local/lib/softerr/backup_postgresql.sh
+install -m 644 "${SCRIPT_DIR}/lib/app_registry.sh" \
+  /usr/local/lib/softerr/app_registry.sh
 install -m 644 "${SCRIPT_DIR}/lib/verify_media_archive.py" \
   /usr/local/lib/softerr/verify_media_archive.py
 if ! atomic_deploy_dir "${api_release}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}" verify_api_release; then
   restart_api_fpm || true
   exit 1
 fi
+install_app_registry /etc/softerr/apps.tsv
+install_app_services "${REPO_ROOT}"
 echo "API deployed successfully."
 echo "Source: ${SOURCE_DIR}"
 echo "Target: ${TARGET_DIR}"

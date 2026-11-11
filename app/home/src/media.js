@@ -1,14 +1,14 @@
-import { mediaImageUrl, uploadMediaImage } from '../../shared/media-client.js'
+import { mediaImageUrl, uploadMediaImage } from '@softerr/shared/media-client.js'
 const imageUrl = mediaImageUrl
 import { renderSharedMedia } from './shared-media.js'
 import { createMediaThumbnailLoader } from './media-thumbnails.js'
 import { formatImageDetails, mediaImageIcon } from './media-format.js'
 import { bindMediaCardSelection, updateMediaCardSelection } from './media-selection.js'
-import { createPageNotice } from '../../shared/page-notice.js'
+import { createPageNotice } from '@softerr/shared/page-notice.js'
 import { createMediaDeletion } from './media-delete.js'
 import { renderAudioMedia } from './audio-media.js'
-import { updateImageUsage } from '../../shared/image-usage.js'
-import { editIcon as renameIcon } from '../../shared/icons.js'
+import { updateImageUsage } from '@softerr/shared/image-usage.js'
+import { editIcon as renameIcon } from '@softerr/shared/icons.js'
 
 const viewOptions = [
   ['list', 'List', '<rect x="3" y="4" width="4" height="4"/><path d="M10 6h11"/><rect x="3" y="10" width="4" height="4"/><path d="M10 12h11"/><rect x="3" y="16" width="4" height="4"/><path d="M10 18h11"/>'],
@@ -142,7 +142,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
   page.querySelector('.media-tabs').addEventListener('keydown', (event) => {
     const current = tabs.indexOf(document.activeElement)
     if (current < 0) return
-    let next = current
+    let next
     if (event.key === 'ArrowRight') next = (current + 1) % tabs.length
     else if (event.key === 'ArrowLeft') next = (current + tabs.length - 1) % tabs.length
     else if (event.key === 'Home') next = 0

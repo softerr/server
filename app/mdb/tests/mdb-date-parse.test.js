@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { parsePastedDate } from '../../app/mdb/src/date-parse.js'
+import { parsePastedDate } from '../src/date-parse.js'
 
 test('MDB parses pasted ISO and named dates without shifting the calendar day', () => {
   assert.equal(parsePastedDate('2026-11-07'), '2026-11-07')

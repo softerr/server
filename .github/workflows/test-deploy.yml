@@ -4,11 +4,12 @@ on:
   pull_request:
     paths:
       - "app/**"
-      - "configs/apps.tsv"
+      - "app/*/app.tsv"
       - "configs/nginx/**"
       - "configs/postgresql/**"
       - "configs/systemd/**"
       - "scripts/ci/**"
+      - "scripts/lint.sh"
       - "scripts/deploy_*.sh"
       - "scripts/lib/**"
       - "scripts/provision.sh"
@@ -22,7 +23,11 @@ on:
       - "scripts/setup_postgresql.sh"
       - "scripts/backup_postgresql.sh"
       - "tests/deploy/**"
-      - "tests/frontend/**"
+      - "tests/api/**"
+      - "tests/db/**"
+      - "scripts/test_api.sh"
+      - "scripts/test_openapi.sh"
+      - "scripts/test_openapi_authenticated.sh"
       - ".github/workflows/deploy-apps.yml"
       - ".github/workflows/setup-nginx.yml"
       - ".github/workflows/setup-server.yml"
@@ -33,11 +38,12 @@ on:
       - main
     paths:
       - "app/**"
-      - "configs/apps.tsv"
+      - "app/*/app.tsv"
       - "configs/nginx/**"
       - "configs/postgresql/**"
       - "configs/systemd/**"
       - "scripts/ci/**"
+      - "scripts/lint.sh"
       - "scripts/deploy_*.sh"
       - "scripts/lib/**"
       - "scripts/provision.sh"
@@ -51,7 +57,11 @@ on:
       - "scripts/setup_postgresql.sh"
       - "scripts/backup_postgresql.sh"
       - "tests/deploy/**"
-      - "tests/frontend/**"
+      - "tests/api/**"
+      - "tests/db/**"
+      - "scripts/test_api.sh"
+      - "scripts/test_openapi.sh"
+      - "scripts/test_openapi_authenticated.sh"
       - ".github/workflows/deploy-apps.yml"
       - ".github/workflows/setup-nginx.yml"
       - ".github/workflows/setup-server.yml"
@@ -59,6 +69,22 @@ on:
       - ".github/workflows/test-deploy.yml"
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install PHP and ShellCheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-cli shellcheck
+
+      - name: Check PHP and shell
+        run: bash scripts/lint.sh
+
   test-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -66,9 +92,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-
-      - name: Check shell syntax
-        run: bash -n scripts/*.sh scripts/ci/*.sh scripts/lib/*.sh tests/deploy/*.sh
 
       - name: Check app registry and modules
         run: bash tests/deploy/app_registry.sh
@@ -88,19 +111,11 @@ jobs:
       - name: Check running VM disk recreation guard
         run: bash tests/deploy/qemu_recreation.sh
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: |
-            app/*/package-lock.json
-
       - name: Build web apps
         run: bash scripts/ci/build_web_apps.sh all
 
-      - name: Test frontend behavior
-        run: node --test tests/frontend/*.test.js
+      - name: Check app frontends
+        run: bash scripts/ci/check_apps.sh
 
       - name: Install Nginx for config validation
         run: |

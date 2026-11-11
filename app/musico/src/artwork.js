@@ -1,5 +1,5 @@
-import { listMediaImages, uploadMediaImage } from '../../shared/media-client.js'
-import { createMediaThumbnailBatcher } from '../../shared/media-thumbnails.js'
+import { listMediaImages, uploadMediaImage } from '@softerr/shared/media-client.js'
+import { createMediaThumbnailBatcher } from '@softerr/shared/media-thumbnails.js'
 
 export function mountArtworkPicker(page, { requestJson, responseError }) {
   const dialog = document.createElement('dialog')
