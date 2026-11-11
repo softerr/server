@@ -398,7 +398,9 @@ function handleReviewMdbSuggestion(array $user, int $databaseId, int $suggestion
 {
     mdbSuggestionOwner($user, $databaseId);
     $db = connectMdbDb();
-    mdbBeginWrite($db, $user, $databaseId);
+    // Accepted suggestions may delete rows and must exclude concurrent
+    // writes to referencing databases until their references are checked.
+    mdbBeginWrite($db, $user, $databaseId, [], $decision === 'accepted');
     $result = @pg_query_params($db,
         'SELECT status FROM public.cell_suggestion WHERE id = $1 AND database_id = $2 FOR UPDATE',
         [$suggestionId, $databaseId]);

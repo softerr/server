@@ -347,6 +347,63 @@ function mdbCsvInsertCells($db, int $databaseId, array $cells): void
     if ($result === false) respond(500, ['error' => 'Failed to import CSV cells']);
 }
 
+function mdbCsvAffectedDatabases(int $databaseId, array $plans, array $types, array $relations): array
+{
+    $ids = [$databaseId];
+    foreach ($plans as $plan) {
+        $existing = $plan['existing'];
+        $type = $existing['type'] ?? ($types[$plan['name']] ?? $plan['inferred_type']);
+        if (!in_array($type, ['relation', 'multi_relation'], true)) continue;
+        $settings = $relations[$plan['name']] ?? null;
+        $target = $existing === null
+            ? (is_array($settings) ? ($settings['database_id'] ?? null) : null)
+            : $existing['relation_database_id'];
+        $target = filter_var($target, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($target !== false) $ids[] = (int) $target;
+    }
+    return array_values(array_unique($ids));
+}
+
+function mdbCsvRequireUnchangedColumns($db, int $databaseId, array $plans): void
+{
+    foreach ($plans as $plan) {
+        $result = @pg_query_params($db,
+            'SELECT id, name, type, options, relation_database_id, relation_display_column_id
+             FROM public.database_column
+             WHERE database_id = $1 AND lower(name) = lower($2)',
+            [$databaseId, $plan['name']]);
+        if ($result === false) respond(500, ['error' => 'Failed to check CSV columns']);
+        $current = pg_fetch_assoc($result) ?: null;
+        if ($current !== $plan['existing']) {
+            @pg_query($db, 'ROLLBACK');
+            respond(409, ['error' => 'Database columns changed; retry the import']);
+        }
+    }
+}
+
+function mdbCsvRequireLockTargets($db, array $user, int $databaseId, array $affected): void
+{
+    $targets = array_values(array_diff($affected, [$databaseId]));
+    if ($targets === []) return;
+    if (($user['api_token_id'] ?? null) !== null
+        && (int) $user['id'] === (int) $user['service_owner_id']) {
+        foreach ($targets as $target) {
+            if (tokenOwnerAccess($user, 'mdb', $target, true) === null) {
+                respond(403, ['error' => 'Related database is not editable by this token']);
+            }
+        }
+    }
+    $owned = @pg_query_params($db,
+        'SELECT COUNT(*) FROM public.user_database d
+         JOIN public."user" u ON u.id = d.user_id
+         WHERE d.id = ANY($1::bigint[]) AND u.auth_user_id = $2',
+        ['{' . implode(',', $targets) . '}', $user['id']]);
+    if ($owned === false) respond(500, ['error' => 'Failed to check related databases']);
+    if ((int) pg_fetch_result($owned, 0, 0) !== count($targets)) {
+        respond(400, ['error' => 'Related database not found']);
+    }
+}
+
 function handleImportMdbCsv(array $user, int $databaseId): never
 {
     [$headers, $rows] = mdbCsvRead();
@@ -355,8 +412,12 @@ function handleImportMdbCsv(array $user, int $databaseId): never
     $relations = json_decode((string) ($_POST['relations'] ?? '{}'), true);
     if (!is_array($relations)) respond(400, ['error' => 'Invalid relation settings']);
     $db = connectMdbDb();
-    mdbBeginWrite($db, $user, $databaseId);
+    mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
     $plans = mdbCsvColumnPlans($db, $databaseId, $headers, $rows);
+    $affected = mdbCsvAffectedDatabases($databaseId, $plans, $types, $relations);
+    mdbCsvRequireLockTargets($db, $user, $databaseId, $affected);
+    mdbBeginWrite($db, $user, $databaseId, $affected);
+    mdbCsvRequireUnchangedColumns($db, $databaseId, $plans);
     $positionResult = @pg_query_params($db,
         'SELECT COALESCE(MAX(position), 0) FROM public.database_column WHERE database_id = $1', [$databaseId]);
     if ($positionResult === false) respond(500, ['error' => 'Failed to import CSV columns']);

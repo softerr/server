@@ -207,12 +207,36 @@ function mdbOwnedDatabase($db, int $authUserId, int $databaseId): array
     return $row;
 }
 
-function mdbBeginWrite($db, array $user, int $databaseId): void
+// Use the shared owner lock to coordinate with account and image deletion,
+// which take the exclusive owner lock. Database locks serialize edits only
+// where their data can overlap. The two-key advisory namespace is separate
+// from the existing bigint owner and image locks.
+function mdbLockDatabases($db, array $databaseIds): void
+{
+    $databaseIds = array_values(array_unique(array_map('intval', $databaseIds)));
+    sort($databaseIds, SORT_NUMERIC);
+    foreach ($databaseIds as $id) {
+        if ($id < 1) respond(500, ['error' => 'Failed to edit database']);
+        $high = intdiv($id, 4294967296);
+        $low = $id % 4294967296;
+        if ($low >= 2147483648) $low -= 4294967296;
+        if (@pg_query_params($db, 'SELECT pg_advisory_xact_lock($1::integer, $2::integer)',
+            [$high, $low]) === false) {
+            respond(500, ['error' => 'Failed to edit database']);
+        }
+    }
+}
+
+function mdbBeginWrite($db, array $user, int $databaseId,
+    array $additionalDatabaseIds = [], bool $exclusiveOwner = false): void
 {
     if (@pg_query($db, 'BEGIN') === false
-        || @pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
+        || @pg_query_params($db, $exclusiveOwner
+            ? 'SELECT pg_advisory_xact_lock($1::bigint)'
+            : 'SELECT pg_advisory_xact_lock_shared($1::bigint)', [$user['id']]) === false) {
         respond(500, ['error' => 'Failed to edit database']);
     }
+    mdbLockDatabases($db, [$databaseId, ...$additionalDatabaseIds]);
     $active = @pg_query_params(connectDb(),
         'SELECT 1 FROM public."user" WHERE id = $1
          AND verified = TRUE AND approved_at IS NOT NULL AND deleting = FALSE', [$user['id']]);
@@ -245,7 +269,8 @@ function handleCreateMdbDatabase(array $user): never
 
     $db = connectMdbDb();
     if (@pg_query($db, 'BEGIN') === false
-        || @pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$user['id']]) === false) {
+        || @pg_query_params($db, 'SELECT pg_advisory_xact_lock_shared($1::bigint)',
+            [$user['id']]) === false) {
         respond(500, ['error' => 'Failed to create database']);
     }
     $active = @pg_query_params(connectDb(),
@@ -732,7 +757,9 @@ function handleDeleteMdbItem(array $user, int $databaseId, int $itemId, string $
         default => respond(404, ['error' => 'Not found']),
     };
     $db = connectMdbDb();
-    mdbBeginWrite($db, $user, $databaseId);
+    // Deleting a row clears references in other databases, so it must
+    // exclude their writes until the cleanup has committed.
+    mdbBeginWrite($db, $user, $databaseId, [], $kind === 'rows');
     if ($kind === 'rows' && ($user['api_token_id'] ?? null) !== null
         && (int) $user['id'] === (int) $user['service_owner_id']) {
         $references = @pg_query_params($db,

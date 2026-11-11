@@ -903,3 +903,50 @@ test_mdb_image_column() (
 )
 
 register_test_case test_mdb_image_column
+
+test_mdb_write_lock_scope() (
+  if [[ -z "${TEST_EMAIL}" ]]; then
+    skip_test 'login fixture unavailable; skipping MDB lock test'
+    return 200
+  fi
+  local cookie_file response owner_id first_id second_id holder_pid='' acquired=false attempt
+  cookie_file="$(mktemp)"
+  trap 'rm -f -- "${cookie_file}"; [[ -z "${holder_pid}" ]] || wait "${holder_pid}" 2>/dev/null || true' EXIT
+  response="$(curl -sS -c "${cookie_file}" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --arg email "${TEST_EMAIL}" '{email:$email,password:"test_password_123"}')" \
+    -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/auth/login")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    || { fail_test "MDB lock fixture login failed: ${response}"; return 1; }
+  owner_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  for name in 'Lock source' 'Lock independent'; do
+    response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
+      --data "$(jq -nc --arg name "${name}" '{name:$name}')" -w $'\n%{http_code}' \
+      "${API_TEST_BASE_URL%/}/api/mdb/databases")"
+    [[ "${response##*$'\n'}" == 201 ]] \
+      || { fail_test "MDB lock fixture creation failed: ${response}"; return 1; }
+    if [[ -z "${first_id:-}" ]]; then first_id="$(jq -r '.id' <<<"${response%$'\n'*}")"
+    else second_id="$(jq -r '.id' <<<"${response%$'\n'*}")"; fi
+  done
+  test_psql mdb "BEGIN;
+    SELECT pg_advisory_xact_lock_shared(${owner_id}::bigint);
+    SELECT pg_advisory_xact_lock(0, ${first_id}::integer);
+    SELECT pg_sleep(7); ROLLBACK;" >/dev/null &
+  holder_pid=$!
+  for ((attempt = 0; attempt < 50; attempt++)); do
+    if [[ "$(test_psql mdb "SELECT pg_try_advisory_xact_lock(0, ${first_id}::integer)")" == f ]]; then
+      acquired=true
+      break
+    fi
+    sleep 0.1
+  done
+  [[ "${acquired}" == true ]] || { fail_test 'MDB test lock was not acquired'; return 1; }
+  response="$(curl -sS --max-time 3 -b "${cookie_file}" -X POST \
+    -H 'Content-Type: application/json' --data '{}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${second_id}/rows")" \
+    || { fail_test 'MDB edit of an independent database waited for the other database lock'; return 1; }
+  [[ "${response##*$'\n'}" == 201 ]] \
+    && [[ "$(test_psql mdb "SELECT pg_try_advisory_xact_lock(0, ${first_id}::integer)")" == f ]] \
+    || { fail_test "MDB edit of an independent database was blocked: ${response}"; return 1; }
+)
+
+register_test_case test_mdb_write_lock_scope
