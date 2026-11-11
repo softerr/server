@@ -369,7 +369,7 @@
   margin-bottom: 20px;
 }
 
-.mdb-editor-heading-main { display: flex; flex: 1; align-items: center; gap: 16px; min-width: 0; }
+.mdb-editor-heading-main { display: flex; flex: 1 1 250px; align-items: center; gap: 16px; min-width: 0; }
 .mdb-editor-heading .section-title {
   margin: 0;
   min-width: 0;
@@ -378,7 +378,7 @@
   overflow-wrap: anywhere;
 }
 
-.mdb-editor-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; max-width: 100%; }
+.mdb-editor-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; max-width: 100%; }
 .mdb-editor-search {
   position: relative;
   display: flex;
@@ -451,6 +451,27 @@
   border-radius: 4px;
   background: var(--panel);
 }
+
+.mdb-header-pager { display: flex; align-items: center; flex: none; gap: 12px; margin-left: 8px; color: var(--text-grey); font-size: 13px; }
+.mdb-table-pager { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
+.mdb-table-pager[hidden] { display: none; }
+.mdb-page-summary { min-width: 92px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.mdb-page-arrows { display: flex; flex: none; overflow: hidden; border: 1px solid var(--border); border-radius: 4px; }
+.mdb-page-arrows[hidden] { display: none; }
+.mdb-page-arrow { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; background: var(--field); color: var(--text-h); cursor: pointer; }
+.mdb-page-arrow + .mdb-page-arrow { border-left: 1px solid var(--border); }
+.mdb-page-arrow svg { width: 18px; height: 18px; }
+.mdb-page-arrow.is-next svg { transform: rotate(180deg); }
+.mdb-page-arrow:hover:not(:disabled) { background: #2b2b2b; }
+.mdb-page-arrow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.mdb-page-arrow:disabled { color: var(--text-grey); opacity: .45; cursor: default; }
+.mdb-page-size { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.mdb-page-size select { min-height: 32px; padding: 5px 34px 5px 9px; border: 1px solid var(--border); border-radius: 4px; appearance: none; background: var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23757575' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 6 5 5 5-5'/%3E%3C/svg%3E") no-repeat right 10px center; color: var(--text-h); font: inherit; cursor: pointer; }
+.mdb-page-size select:focus-visible { border-color: var(--accent); outline: 1px solid var(--accent); }
+.mdb-page-size select option { background: var(--panel); color: var(--text-h); }
+.mdb-related-pages { padding-top: 4px; color: var(--text-grey); font-size: 13px; }
+#mdb-related-search { width: 100%; min-height: 38px; box-sizing: border-box; padding: 7px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--field); color: var(--text-h); font: inherit; }
+#mdb-related-search[hidden] { display: none; }
 
 .mdb-data-table {
   --mdb-row-height: 38px;
@@ -718,4 +739,5 @@
   .mdb-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
   .mdb-editor-actions { width: 100%; }
   .mdb-editor-search { flex: 1; width: auto; }
+  .mdb-header-pager { margin-left: auto; }
 }

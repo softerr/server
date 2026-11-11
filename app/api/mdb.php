@@ -8,6 +8,7 @@ require_once __DIR__ . '/lib/http.php';
 require_once __DIR__ . '/lib/url.php';
 require_once __DIR__ . '/lib/session.php';
 require_once __DIR__ . '/apps/mdb/databases.php';
+require_once __DIR__ . '/apps/mdb/query.php';
 require_once __DIR__ . '/apps/mdb/csv_import.php';
 require_once __DIR__ . '/apps/mdb/suggestions.php';
 
@@ -29,7 +30,21 @@ if ($path === '/databases') {
 if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)$#D', $path, $match)) {
     $id = filter_var($match[1], FILTER_VALIDATE_INT);
     if ($id === false) respond(404, ['error' => 'Not found']);
-    if ($method === 'GET') handleGetMdbDatabase($authUser, $id);
+    if ($method === 'GET') {
+        if (isset($_GET['offset']) || isset($_GET['q']) || isset($_GET['sort_column_id'])) {
+            handleQueryMdbDatabase($authUser, $id);
+        }
+        handleGetMdbDatabase($authUser, $id);
+    }
+    respond(405, ['error' => 'Method not allowed']);
+}
+if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)/(choices|export\.csv)$#D', $path, $match)) {
+    $id = filter_var($match[1], FILTER_VALIDATE_INT);
+    if ($id === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'GET') {
+        if ($match[2] === 'choices') handleMdbChoices($authUser, $id);
+        handleExportMdbCsv($authUser, $id);
+    }
     respond(405, ['error' => 'Method not allowed']);
 }
 if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)/suggestions$#D', $path, $match)) {

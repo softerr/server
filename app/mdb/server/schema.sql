@@ -55,6 +55,48 @@ CREATE TABLE IF NOT EXISTS public.database_cell (
 CREATE INDEX IF NOT EXISTS database_cell_column_idx
     ON public.database_cell (database_id, column_id);
 
+CREATE OR REPLACE FUNCTION public.mdb_plain_cell_label(cell_type text, stored text)
+RETURNS text LANGUAGE sql STABLE AS $$
+    SELECT CASE
+        WHEN cell_type = 'checkbox' THEN CASE WHEN stored = 'true' THEN 'Yes' ELSE 'No' END
+        WHEN cell_type IN ('multi_select', 'multi_relation') AND stored IS NOT NULL THEN
+            (SELECT string_agg(item.value, ', ' ORDER BY item.position)
+             FROM jsonb_array_elements_text(stored::jsonb) WITH ORDINALITY AS item(value, position))
+        ELSE stored
+    END
+$$;
+
+CREATE OR REPLACE FUNCTION public.mdb_row_label(target_database BIGINT, target_row BIGINT, display_column BIGINT)
+RETURNS text LANGUAGE sql STABLE AS $$
+    SELECT CASE WHEN display_column IS NOT NULL THEN
+        COALESCE((SELECT public.mdb_plain_cell_label(c.type, v.value)
+                  FROM public.database_column c
+                  LEFT JOIN public.database_cell v ON v.column_id = c.id AND v.row_id = r.id
+                  WHERE c.database_id = r.database_id AND c.id = display_column), '—')
+        ELSE 'Row ' || r.position || COALESCE((
+            SELECT ': ' || public.mdb_plain_cell_label(c.type, v.value)
+            FROM public.database_column c JOIN public.database_cell v
+              ON v.column_id = c.id AND v.row_id = r.id
+            WHERE c.database_id = r.database_id AND v.value <> ''
+            ORDER BY (c.type = 'text') DESC, c.position LIMIT 1), '')
+        END
+    FROM public.database_row r WHERE r.database_id = target_database AND r.id = target_row
+$$;
+
+CREATE OR REPLACE FUNCTION public.mdb_visible_cell_label(
+    cell_type text, stored text, related_database BIGINT, display_column BIGINT)
+RETURNS text LANGUAGE sql STABLE AS $$
+    SELECT CASE
+        WHEN cell_type = 'relation' AND stored IS NOT NULL THEN
+            COALESCE(public.mdb_row_label(related_database, stored::bigint, display_column), 'Missing row ' || stored)
+        WHEN cell_type = 'multi_relation' AND stored IS NOT NULL THEN
+            (SELECT string_agg(COALESCE(public.mdb_row_label(related_database, item.value::bigint,
+                display_column), 'Missing row ' || item.value), ', ' ORDER BY item.position)
+             FROM jsonb_array_elements_text(stored::jsonb) WITH ORDINALITY AS item(value, position))
+        ELSE public.mdb_plain_cell_label(cell_type, stored)
+    END
+$$;
+
 CREATE TABLE IF NOT EXISTS public.cell_suggestion (
     id BIGSERIAL PRIMARY KEY,
     database_id BIGINT NOT NULL REFERENCES public.user_database(id) ON DELETE CASCADE,
@@ -109,6 +151,9 @@ GRANT SELECT, INSERT, DELETE ON TABLE public.database_column, public.database_ro
 GRANT UPDATE (name, position, width, type, options, relation_database_id, relation_display_column_id) ON TABLE public.database_column TO auth_api;
 GRANT UPDATE (position) ON TABLE public.database_row TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.database_cell TO auth_api;
+GRANT EXECUTE ON FUNCTION public.mdb_plain_cell_label(text, text) TO auth_api;
+GRANT EXECUTE ON FUNCTION public.mdb_row_label(bigint, bigint, bigint) TO auth_api;
+GRANT EXECUTE ON FUNCTION public.mdb_visible_cell_label(text, text, bigint, bigint) TO auth_api;
 GRANT SELECT, INSERT, UPDATE (status, reviewed_at) ON TABLE public.cell_suggestion TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.cell_suggestion_change TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.row_delete_suggestion TO auth_api;

@@ -90,6 +90,24 @@ test_mdb_database_library() (
     "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/rows/${row_id}/cells/${column_id}")"
   [[ "${response##*$'\n'}" == 200 ]] \
     || { fail_test "MDB could not save a cell: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}?limit=1&offset=0&q=entry&sort_column_id=${column_id}&direction=desc")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson id "${row_id}" \
+      '.total_rows == 1 and .next_offset == null and .rows[0].id == $id' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB filtered page was incorrect: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/choices?limit=1&offset=0&display_column_id=${column_id}&q=First")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson id "${row_id}" \
+      '.total_rows == 1 and .choices[0].id == $id and .choices[0].label == "First entry"' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB related choices were incorrect: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/export.csv?q=entry")"
+  [[ "${response##*$'\n'}" == 200 && "${response}" == *"First entry"* ]] \
+    || { fail_test "MDB CSV export was incorrect: ${response}"; return 1; }
   response="$(curl -sS -b "${cookie_file}" -H 'Content-Type: application/json' \
     --data '{"name":"Notes"}' -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/columns")"
@@ -188,6 +206,17 @@ test_mdb_database_library() (
       || { fail_test "MDB could not save ${type} cell: ${response}"; return 1; }
   done
   response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}?limit=1&offset=0&q=A1&sort_column_id=${typed_ids[relation]}")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson id "${row_id}" '.total_rows == 1 and .rows[0].id == $id' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB relation search was incorrect: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${other_id}/choices?ids=${related_row_id}&display_column_id=${related_code_column_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e '.choices[0].label == "A1"' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB relation label lookup was incorrect: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}")"
   [[ "${response##*$'\n'}" == 200 ]] \
     && jq -e --arg n "${typed_ids[number]}" --arg d "${typed_ids[date]}" \
@@ -223,6 +252,13 @@ test_mdb_database_library() (
       '.rows[0].values[$r] == $target and .rows[0].values[$mr] == [$target, $second]' \
       <<<"${response%$'\n'*}" >/dev/null \
     || { fail_test "MDB display change altered related rows: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}?limit=50&offset=0&q=First%20name%2C")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson first "${row_id}" \
+      '.total_rows == 1 and .rows[0].id == $first' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB search did not match combined relation labels: ${response}"; return 1; }
   response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
     --data "{\"name\":\"Related\",\"relation_display_column_id\":${column_id}}" \
     -w $'\n%{http_code}' \
@@ -306,6 +342,43 @@ test_mdb_database_library() (
     "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/rows/${second_row_id}/cells/${column_id}")"
   [[ "${response##*$'\n'}" == 200 ]] \
     || { fail_test "MDB could not save the second row: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}?limit=50&offset=0&q=no")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson second "${second_row_id}" \
+      '.total_rows == 1 and .rows[0].id == $second' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB search did not include an unchecked checkbox: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}?limit=1&offset=0")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson first "${row_id}" \
+      '.total_rows == 2 and .next_offset == 1 and .rows[0].id == $first' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB first offset page was incorrect: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}?limit=1&offset=1")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson second "${second_row_id}" \
+      '.total_rows == 2 and .next_offset == null and .rows[0].id == $second' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB second offset page was incorrect: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}?limit=all&offset=0&q=entry&sort_column_id=${column_id}&direction=desc")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e --argjson first "${row_id}" --argjson second "${second_row_id}" \
+      '.total_rows == 2 and .next_offset == null and [.rows[].id] == [$second, $first]' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB all-rows view was incorrect: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}?limit=all&offset=1")"
+  [[ "${response##*$'\n'}" == 400 ]] \
+    || { fail_test "MDB accepted an offset with all rows: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PUT -H 'Content-Type: application/json' \
+    --data "{\"ids\":[${second_row_id}],\"start_position\":2}" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}/rows/order")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    || { fail_test "MDB could not reorder a row page: ${response}"; return 1; }
   response="$(curl -sS -b "${cookie_file}" -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}?limit=1")"
   [[ "${response##*$'\n'}" == 200 ]] \

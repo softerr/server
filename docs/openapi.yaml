@@ -173,16 +173,35 @@ paths:
       tags: [MDB]
       operationId: getMdbDatabase
       summary: Open a database table
-      description: Omit limit for the complete table. With limit, rows are returned in position order; pass next_after as after to fetch the next page. Columns and database metadata are included on each page.
+      description: Use limit and offset for a filtered, sorted page. Omit offset, q, and sort_column_id to use the older position cursor; omit limit as well for the complete table.
       parameters:
         - name: limit
           in: query
-          schema: {type: integer, minimum: 1, maximum: 200}
-          description: Maximum number of rows to return. Required when using after.
+          schema:
+            oneOf:
+              - {type: integer, minimum: 1, maximum: 200}
+              - {type: string, const: all}
+          description: Maximum rows in an offset page, or all for every matching row. All requires offset 0. Required when using after.
         - name: after
           in: query
           schema: {type: string, pattern: '^[0-9]+$'}
           description: Row position cursor from the previous page's next_after value.
+        - name: offset
+          in: query
+          schema: {type: integer, minimum: 0}
+          description: Zero-based offset for filtered pages.
+        - name: q
+          in: query
+          schema: {type: string, maxLength: 200}
+          description: Case-insensitive search across displayed cell values. Enables offset paging.
+        - name: sort_column_id
+          in: query
+          schema: {type: integer, format: int64, minimum: 1}
+          description: Column to sort by. Enables offset paging.
+        - name: direction
+          in: query
+          schema: {type: string, enum: [asc, desc]}
+          description: Sort direction, default asc.
       security:
         - sessionCookie: []
         - apiBearer: []
@@ -206,9 +225,90 @@ paths:
                     type: [string, 'null']
                     pattern: '^[0-9]+$'
                     description: Cursor for the next page; present only when limit is supplied.
+                  total_rows:
+                    type: integer
+                    minimum: 0
+                    description: Number of matching rows; present in offset-paged responses.
+                  next_offset:
+                    type: [integer, 'null']
+                    minimum: 0
+                    description: Next page offset; present in offset-paged responses.
         '400': {description: Invalid row page or cursor.}
         '401': {description: No active session.}
         '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
+        '404': {description: Database not found in this account.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/choices:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    get:
+      tags: [MDB]
+      operationId: listMdbRelatedRows
+      summary: Find rows for a relation cell
+      parameters:
+        - {name: display_column_id, in: query, schema: {type: integer, format: int64, minimum: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+        - {name: q, in: query, schema: {type: string, maxLength: 200}}
+        - {name: ids, in: query, schema: {type: string}, description: Comma-separated row IDs to resolve instead of searching.}
+      security:
+        - sessionCookie: []
+        - apiBearer: []
+      responses:
+        '200':
+          description: Paged row labels, or labels for the requested IDs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [choices, next_offset]
+                properties:
+                  choices:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, label]
+                      properties:
+                        id: {type: integer, format: int64, minimum: 1}
+                        label: {type: string}
+                  total_rows: {type: integer, minimum: 0}
+                  next_offset: {type: [integer, 'null'], minimum: 0}
+        '400': {description: Invalid query.}
+        '401': {description: No active session.}
+        '403': {description: API token lacks permission.}
+        '404': {description: Database not found in this account.}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/export.csv:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    get:
+      tags: [MDB]
+      operationId: exportMdbCsv
+      summary: Export matching rows as CSV
+      parameters:
+        - {name: q, in: query, schema: {type: string, maxLength: 200}}
+        - {name: sort_column_id, in: query, schema: {type: integer, format: int64, minimum: 1}}
+        - {name: direction, in: query, schema: {type: string, enum: [asc, desc]}}
+      security:
+        - sessionCookie: []
+        - apiBearer: []
+      responses:
+        '200':
+          description: UTF-8 CSV with a header row.
+          content:
+            text/csv:
+              schema: {type: string}
+        '400': {description: Invalid query or no columns.}
+        '401': {description: No active session.}
+        '403': {description: API token lacks permission.}
         '404': {description: Database not found in this account.}
         '500': {$ref: '#/components/responses/InternalError'}
 
@@ -4591,6 +4691,7 @@ components:
       type: object
       required: [ids]
       properties:
+        start_position: {type: integer, format: int64, minimum: 1, description: First position of a contiguous row page being reordered. Omit to reorder every item.}
         ids:
           type: array
           uniqueItems: true

@@ -6,8 +6,6 @@ import { listMediaImages, mediaThumbnailUrl, uploadMediaImage } from '../../shar
 import { createMediaThumbnailBatcher } from '../../shared/media-thumbnails.js'
 import { showMissingImageWhenUnavailable } from '../../shared/missing-image.js'
 import { parsePastedDate } from './date-parse.js'
-import { sortRowsByColumn } from './sort-rows.js'
-import { filterRowsByQuery } from './filter-rows.js'
 import { setupMdbSuggestions } from './suggestions.js'
 
 const databaseIcon = `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
@@ -32,6 +30,7 @@ const sortUpIcon = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" s
 const sortDownIcon = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
   <path d="M10 4v12m-5-5 5 5 5-5"/>
 </svg>`
+const pageArrowIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 5-7 7 7 7"/></svg>`
 const importCsvIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
   <path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3"/>
 </svg>`
@@ -162,6 +161,24 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
           <button id="mdb-import-button" class="auth-button auth-button-secondary mdb-editor-tool" type="button" aria-label="Import CSV" title="Import CSV">${importCsvIcon}</button>
           <button id="mdb-export-button" class="auth-button auth-button-secondary mdb-editor-tool" type="button" aria-label="Export CSV" title="Export CSV" disabled>${exportCsvIcon}</button>
           <button id="mdb-suggestions-button" class="auth-button auth-button-secondary mdb-editor-tool" type="button" aria-label="Suggestions" title="Suggestions">${suggestionsIcon}<span class="mdb-suggestions-count" aria-hidden="true" hidden></span></button>
+          <div class="mdb-header-pager">
+            <label class="mdb-page-size">Rows
+              <select id="mdb-page-size" aria-label="Rows per page">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+            <nav class="mdb-table-pager" aria-label="Table pages">
+              <span id="mdb-page-summary" class="mdb-page-summary" aria-live="polite"></span>
+              <div id="mdb-page-arrows" class="mdb-page-arrows">
+                <button id="mdb-page-prev" class="mdb-page-arrow" type="button" aria-label="Previous page" title="Previous page">${pageArrowIcon}</button>
+                <button id="mdb-page-next" class="mdb-page-arrow is-next" type="button" aria-label="Next page" title="Next page">${pageArrowIcon}</button>
+              </div>
+            </nav>
+          </div>
           <input id="mdb-import-file" type="file" accept=".csv,text/csv" hidden />
         </div>
       </header>
@@ -197,7 +214,15 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     <dialog id="mdb-multi-dialog" class="mdb-dialog" aria-labelledby="mdb-multi-title">
       <h2 id="mdb-multi-title">Select options</h2>
       <form id="mdb-multi-form">
+        <input id="mdb-related-search" type="search" aria-label="Search related rows" placeholder="Search related rows" autocomplete="off" hidden />
         <div id="mdb-multi-options" class="mdb-option-list"></div>
+        <nav id="mdb-related-pages" class="mdb-table-pager mdb-related-pages" aria-label="Related row pages" hidden>
+          <span id="mdb-related-summary" class="mdb-page-summary" aria-live="polite"></span>
+          <div class="mdb-page-arrows">
+            <button id="mdb-related-prev" class="mdb-page-arrow" type="button" aria-label="Previous related rows page" title="Previous page">${pageArrowIcon}</button>
+            <button id="mdb-related-next" class="mdb-page-arrow is-next" type="button" aria-label="Next related rows page" title="Next page">${pageArrowIcon}</button>
+          </div>
+        </nav>
         <p id="mdb-multi-status" class="form-status" role="status" aria-live="polite"></p>
         <div class="dialog-actions">
           <button id="mdb-multi-cancel" class="auth-button auth-button-secondary" type="button">Cancel</button>
@@ -247,6 +272,18 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   const status = page.querySelector('#mdb-editor-status')
   const searchInput = page.querySelector('#mdb-row-search')
   const tableArea = page.querySelector('#mdb-table-area')
+  const pageSizeSelect = page.querySelector('#mdb-page-size')
+  const pageSizeStorageKey = 'mdb.rowsPerPage'
+  try {
+    const savedPageSize = window.localStorage.getItem(pageSizeStorageKey)
+    if ([...pageSizeSelect.options].some((option) => option.value === savedPageSize)) {
+      pageSizeSelect.value = savedPageSize
+    }
+  } catch { /* Storage may be unavailable; the default page size still works. */ }
+  const pagePrev = page.querySelector('#mdb-page-prev')
+  const pageNext = page.querySelector('#mdb-page-next')
+  const pageArrows = page.querySelector('#mdb-page-arrows')
+  const pageSummary = page.querySelector('#mdb-page-summary')
   const dialog = page.querySelector('#mdb-column-dialog')
   const columnForm = page.querySelector('#mdb-column-form')
   const columnStatus = page.querySelector('#mdb-column-status')
@@ -257,6 +294,11 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   const multiDialog = page.querySelector('#mdb-multi-dialog')
   const multiForm = page.querySelector('#mdb-multi-form')
   const multiOptions = page.querySelector('#mdb-multi-options')
+  const relatedSearch = page.querySelector('#mdb-related-search')
+  const relatedPages = page.querySelector('#mdb-related-pages')
+  const relatedPrev = page.querySelector('#mdb-related-prev')
+  const relatedNext = page.querySelector('#mdb-related-next')
+  const relatedSummary = page.querySelector('#mdb-related-summary')
   const multiStatus = page.querySelector('#mdb-multi-status')
   const imageDialog = page.querySelector('#mdb-image-dialog')
   const imageSearch = page.querySelector('#mdb-image-search')
@@ -284,13 +326,22 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   let relationRefreshes = new Map()
   let relationChoiceCaches = new Map()
   let refreshGeneration = 0
-  let rowsLoading = false
   let rowsReady = Promise.resolve()
   let activeSort = null
   let searchQuery = ''
+  let pageOffset = 0
+  let pageSize = pageSizeSelect.value === 'all' ? null : Number(pageSizeSelect.value)
+  let pageTotal = 0
+  let loadedRows = 0
+  let allRowsLoading = false
   let currentTable = null
   let displayLoad = 0
   let multiCell = null
+  let relationSelection = new Set()
+  let relationOffset = 0
+  let relationTotal = 0
+  let relationQuery = ''
+  let relationRequest = 0
   let imageCell = null
   let imageChoices = []
   let imageLoadGeneration = 0
@@ -304,15 +355,43 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   let touchDrag = null
   let reordering = false
 
+  let searchTimer = null
   searchInput.addEventListener('input', () => {
     searchQuery = searchInput.value.trim()
-    currentTable?.applyView()
+    pageOffset = 0
+    clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => refresh(), 250)
   })
   function clearSearch() {
     if (searchInput.value === '') return
     searchInput.value = ''
     searchQuery = ''
-    currentTable?.applyView()
+    pageOffset = 0
+    refresh()
+  }
+  pageSizeSelect.addEventListener('change', () => {
+    pageSize = pageSizeSelect.value === 'all' ? null : Number(pageSizeSelect.value)
+    try { window.localStorage.setItem(pageSizeStorageKey, pageSizeSelect.value) } catch { /* Keep this choice for the current page. */ }
+    pageOffset = 0
+    refresh()
+  })
+  pagePrev.addEventListener('click', () => {
+    if (pageSize === null) return
+    pageOffset = Math.max(0, pageOffset - pageSize)
+    refresh()
+  })
+  pageNext.addEventListener('click', () => {
+    if (pageSize === null) return
+    pageOffset += pageSize
+    refresh()
+  })
+  function updatePageControls() {
+    const first = pageTotal === 0 ? 0 : pageOffset + 1
+    const last = Math.min(pageOffset + (pageSize ?? loadedRows), pageTotal)
+    pageSummary.textContent = pageTotal === 0 ? '0 rows' : `${first}–${last} of ${pageTotal}`
+    pageArrows.hidden = pageSize === null || pageTotal <= pageSize
+    pagePrev.disabled = pageSize === null || pageOffset === 0
+    pageNext.disabled = pageSize === null || pageOffset + pageSize >= pageTotal
   }
 
   function clearDropMarkers() {
@@ -320,13 +399,15 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   }
 
   async function saveOrder(kind, oldIds, nextIds, focusId = null) {
-    if (reordering || (kind === 'rows' && (rowsLoading || activeSort !== null || searchQuery !== ''))
+    if (reordering || (kind === 'rows' && (allRowsLoading || activeSort !== null || searchQuery !== ''))
       || oldIds.every((id, index) => id === nextIds[index])) return
     reordering = true
     setStatus(status, `Saving ${kind} order…`)
     try {
       await Promise.all([...pendingWrites])
-      const [response, payload] = await requestJson('PUT', `${endpoint}/${kind}/order`, { ids: nextIds })
+      const [response, payload] = await requestJson('PUT', `${endpoint}/${kind}/order`,
+        kind === 'rows' && pageSize !== null
+          ? { ids: nextIds, start_position: pageOffset + 1 } : { ids: nextIds })
       if (!page.isConnected) return
       if (!response.ok) throw new Error(responseError(response, payload))
       if (await refresh()) {
@@ -375,7 +456,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     const handle = document.createElement('button')
     handle.type = 'button'
     handle.className = 'mdb-drag-handle'
-    handle.disabled = kind === 'rows' && (rowsLoading || activeSort !== null || searchQuery !== '')
+    handle.disabled = kind === 'rows' && (allRowsLoading || activeSort !== null || searchQuery !== '')
     handle.draggable = !handle.disabled
     handle.innerHTML = dragIcon
     handle.dataset.orderKind = kind
@@ -384,7 +465,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     handle.setAttribute('aria-label', `Reorder ${kind === 'columns' ? 'column' : 'row'} ${index + 1}`)
     handle.title = `Drag to reorder, or press Alt + Arrow ${direction}`
     handle.addEventListener('dragstart', (event) => {
-      if (reordering || touchDrag || (kind === 'rows' && (rowsLoading || activeSort !== null || searchQuery !== ''))) { event.preventDefault(); return }
+      if (reordering || touchDrag || (kind === 'rows' && (allRowsLoading || activeSort !== null || searchQuery !== ''))) { event.preventDefault(); return }
       dragState = { kind, id: item.id }
       event.dataTransfer.effectAllowed = 'move'
       event.dataTransfer.setData('text/plain', String(item.id))
@@ -404,7 +485,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       saveOrder(kind, ids, nextIds, item.id)
     })
     handle.addEventListener('pointerdown', (event) => {
-      if (event.pointerType === 'mouse' || reordering || (kind === 'rows' && (rowsLoading || activeSort !== null || searchQuery !== ''))) return
+      if (event.pointerType === 'mouse' || reordering || (kind === 'rows' && (allRowsLoading || activeSort !== null || searchQuery !== ''))) return
       event.preventDefault()
       handle.setPointerCapture(event.pointerId)
       touchDrag = { kind, id: item.id, ids, pointerId: event.pointerId }
@@ -431,13 +512,13 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     element.dataset.reorderKind = kind
     element.dataset.reorderIndex = String(index)
     element.addEventListener('dragover', (event) => {
-      if (dragState?.kind !== kind || reordering || (kind === 'rows' && (rowsLoading || activeSort !== null || searchQuery !== ''))) return
+      if (dragState?.kind !== kind || reordering || (kind === 'rows' && (allRowsLoading || activeSort !== null || searchQuery !== ''))) return
       event.preventDefault()
       event.dataTransfer.dropEffect = 'move'
       markDropTarget(element, kind, event.clientX, event.clientY)
     })
     element.addEventListener('drop', (event) => {
-      if (dragState?.kind !== kind || reordering || (kind === 'rows' && (rowsLoading || activeSort !== null || searchQuery !== ''))) return
+      if (dragState?.kind !== kind || reordering || (kind === 'rows' && (allRowsLoading || activeSort !== null || searchQuery !== ''))) return
       event.preventDefault()
       const movedId = dragState.id
       const after = element.dataset.dropSide === 'after'
@@ -458,7 +539,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         saved(payload.value)
         const row = currentTable?.rows.get(rowId)
         if (row) row.values[columnId] = payload.value
-        if (activeSort?.columnId === columnId || searchQuery !== '') currentTable?.applyView()
+        if (activeSort?.columnId === columnId || searchQuery !== '') refresh()
         setStatus(status, '')
         notice.show('Saved.')
         return true
@@ -520,6 +601,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     }
     multiOptions.append(optionLabel)
     choice.checked = checked
+    return optionLabel
   }
 
   function optionPlaceholder(className, createRow, text = 'Add option') {
@@ -652,13 +734,55 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     return explicit ? shown : `Row ${row.position}: ${shown}`
   }
 
-  function relatedChoices(column, related) {
-    const database = related.get(column.relation_database_id)
-    return database?.rows.map((row) => ({
-      id: row.id,
-      label: rowLabel(row, database.columns, column.relation_display_column_id),
-    })) ?? []
+  async function loadRelationChoices() {
+    const cell = multiCell
+    if (!cell?.isRelation) return
+    const request = ++relationRequest
+    setStatus(multiStatus, '')
+    const params = new URLSearchParams({ limit: '50', offset: String(relationOffset),
+      display_column_id: String(cell.column.relation_display_column_id ?? 0) })
+    if (relationQuery) params.set('q', relationQuery)
+    try {
+      const [response, payload] = await requestJson('GET',
+        `/api/mdb/databases/${cell.column.relation_database_id}/choices?${params}`)
+      if (!multiDialog.open || cell !== multiCell || request !== relationRequest) return
+      if (!response.ok) throw new Error(responseError(response, payload))
+      relationTotal = payload.total_rows
+      multiOptions.querySelectorAll('.mdb-relation-choice').forEach((item) => item.remove())
+      const first = relationTotal === 0 ? 0 : relationOffset + 1
+      relatedSummary.textContent = relationTotal === 0 ? '0 rows'
+        : `${first}–${Math.min(relationOffset + 50, relationTotal)} of ${relationTotal}`
+      relatedPages.querySelector('.mdb-page-arrows').hidden = relationTotal <= 50
+      relatedPrev.disabled = relationOffset === 0
+      relatedNext.disabled = payload.next_offset === null
+      const anchor = multiOptions.querySelector('.mdb-option-draft, .mdb-option-placeholder')
+      for (const item of payload.choices) {
+        cell.choiceLabels.set(item.id, item.label)
+        const option = appendChoiceOption(item.id, item.label, relationSelection.has(item.id), cell.isSingle)
+        option.classList.add('mdb-relation-choice')
+        if (anchor) multiOptions.insertBefore(option, anchor)
+        const input = option.querySelector('input[data-choice]')
+        input.addEventListener('change', () => {
+          if (cell.isSingle) relationSelection.clear()
+          if (input.checked) relationSelection.add(item.id)
+          else relationSelection.delete(item.id)
+        })
+      }
+    } catch (error) {
+      if (multiDialog.open && cell === multiCell && request === relationRequest) {
+        setStatus(multiStatus, error.message || 'Could not load related rows.', true)
+      }
+    }
   }
+  let relationSearchTimer = null
+  relatedSearch.addEventListener('input', () => {
+    relationQuery = relatedSearch.value.trim()
+    relationOffset = 0
+    clearTimeout(relationSearchTimer)
+    relationSearchTimer = setTimeout(loadRelationChoices, 250)
+  })
+  relatedPrev.addEventListener('click', () => { relationOffset -= 50; loadRelationChoices() })
+  relatedNext.addEventListener('click', () => { relationOffset += 50; loadRelationChoices() })
 
   const imagePreviews = new Map()
   const imageBatcher = createMediaThumbnailBatcher({
@@ -908,26 +1032,34 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       refreshChoices()
       button.setAttribute('aria-label', label)
       button.addEventListener('click', () => {
-        const choices = choicesForCell()
+        const choices = isRelation ? [] : choicesForCell()
         multiCell = { button, row, column, isRelation, isSingle, choiceLabels,
           get value() { return savedValue }, set value(next) { savedValue = next; display() } }
         page.querySelector('#mdb-multi-title').textContent = isRelation ? (isSingle ? 'Choose related row' : 'Choose related rows')
           : isSingle ? 'Choose option' : 'Select options'
         multiOptions.replaceChildren()
         setStatus(multiStatus, '')
-        if (isSingle) appendChoiceOption('', isRelation ? 'No row' : 'No option',
+        relatedSearch.hidden = !isRelation
+        relatedPages.hidden = !isRelation
+        relatedSearch.value = ''
+        relationQuery = ''
+        relationOffset = 0
+        relationSelection = new Set(isRelation
+          ? (isSingle ? (savedValue === null ? [] : [savedValue]) : savedValue) : [])
+        if (isSingle) {
+          const empty = appendChoiceOption('', isRelation ? 'No row' : 'No option',
           savedValue === (isRelation ? null : ''), true)
+          if (isRelation) empty.querySelector('input').addEventListener('change', () => relationSelection.clear())
+        }
         for (const [choiceValue, choiceLabel] of choices) {
           appendChoiceOption(choiceValue, choiceLabel,
             isSingle ? savedValue === choiceValue : savedValue.includes(choiceValue),
             isSingle, !isRelation)
         }
-        if (isRelation && isSingle && savedValue !== null && !choiceLabels.has(savedValue)) {
-          appendChoiceOption(savedValue, `Missing row ${savedValue}`, true, true)
-        }
         if (isRelation) appendAddRelatedRowPlaceholder(column)
         else appendAddOptionPlaceholder()
         multiDialog.showModal()
+        if (isRelation) loadRelationChoices()
       })
       td.append(button)
       return
@@ -964,7 +1096,6 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     const columnIds = data.columns.map((column) => column.id)
     const rowIds = []
     const rowData = new Map()
-    const rowNodes = new Map()
     const sortButtons = new Map()
     const table = document.createElement('table')
     table.className = 'mdb-data-table'
@@ -1093,8 +1224,6 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       for (const [id, { button, cell, column }] of sortButtons) {
         const direction = activeSort?.columnId === id ? activeSort.direction : null
         const next = direction === 'asc' ? 'descending' : direction === 'desc' ? 'saved order' : 'ascending'
-        button.disabled = rowsLoading || (['relation', 'multi_relation'].includes(column.type)
-          && !related.has(column.relation_database_id))
         button.innerHTML = direction === 'asc' ? sortUpIcon : direction === 'desc' ? sortDownIcon : sortIcon
         button.setAttribute('aria-label', `Sort ${column.name} ${next}`)
         button.title = `Sort ${next}`
@@ -1105,30 +1234,12 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     }
     function updateRowDragHandles() {
       body.querySelectorAll('.mdb-drag-handle[data-order-kind="rows"]').forEach((handle) => {
-        handle.disabled = rowsLoading || activeSort !== null || searchQuery !== ''
+        handle.disabled = allRowsLoading || activeSort !== null || searchQuery !== ''
         handle.draggable = !handle.disabled
       })
     }
     function applyView() {
-      const column = activeSort && data.columns.find((item) => item.id === activeSort.columnId)
-      const matching = filterRowsByQuery(data.rows, data.columns, searchQuery,
-        (item) => related.has(item.relation_database_id) ? relationChoiceCaches.get(item.id)?.labels : null)
-      const labels = column ? relationChoiceCaches.get(column.id)?.labels : null
-      const canSort = column && !rowsLoading
-        && (!['relation', 'multi_relation'].includes(column.type)
-          || related.has(column.relation_database_id))
-      const ordered = canSort ? sortRowsByColumn(matching, column, activeSort.direction, labels) : matching
-      const fragment = document.createDocumentFragment()
-      for (const row of data.rows) rowNodes.get(row.id).hidden = true
-      for (const row of ordered) {
-        const node = rowNodes.get(row.id)
-        node.hidden = false
-        fragment.append(node)
-      }
-      emptyRow.hidden = searchQuery === '' || ordered.length > 0 || rowsLoading
-        || data.columns.some((item) => ['relation', 'multi_relation'].includes(item.type)
-          && !related.has(item.relation_database_id))
-      body.insertBefore(fragment, rowPlaceholder)
+      emptyRow.hidden = searchQuery === '' || data.rows.length > 0
       updateRowDragHandles()
     }
     const head = document.createElement('thead')
@@ -1160,8 +1271,8 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       sort.addEventListener('click', () => {
         activeSort = activeSort?.columnId !== column.id ? { columnId: column.id, direction: 'asc' }
           : activeSort.direction === 'asc' ? { columnId: column.id, direction: 'desc' } : null
-        updateSortControls()
-        applyView()
+        pageOffset = 0
+        refresh()
       })
       contents.append(sort)
       sortButtons.set(column.id, { button: sort, cell, column })
@@ -1198,7 +1309,6 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         tr.className = 'mdb-data-row'
         tr.dataset.rowId = String(row.id)
         rowData.set(row.id, row)
-        rowNodes.set(row.id, tr)
         dropTarget(tr, 'rows', index, rowIds)
         const number = document.createElement('th')
         number.scope = 'row'
@@ -1230,7 +1340,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         fragment.append(tr)
       }
       body.insertBefore(fragment, rowPlaceholder)
-      if (searchQuery !== '') applyView()
+      applyView()
     }
     const emptyRow = document.createElement('tr')
     emptyRow.className = 'mdb-search-empty'
@@ -1263,62 +1373,10 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     tableArea.append(table)
     appendRows(data.rows)
     return {
-      appendRows,
-      exportData() { return { database: data.database, columns: data.columns, rows: data.rows, related } },
-      addRow(row) {
-        data.rows.push(row)
-        appendRows([row])
-        if (activeSort !== null) applyView()
-      },
-      removeRow(id) {
-        const removed = rowData.get(id)
-        if (!removed) return false
-        const dataIndex = data.rows.findIndex((row) => row.id === id)
-        data.rows.splice(dataIndex, 1)
-        rowIds.splice(rowIds.indexOf(id), 1)
-        rowNodes.get(id).remove()
-        rowNodes.delete(id)
-        rowData.delete(id)
-        for (const [index, row] of data.rows.entries()) {
-          const node = rowNodes.get(row.id)
-          node.dataset.reorderIndex = String(index)
-          node.querySelector('.mdb-drag-handle')
-            ?.setAttribute('aria-label', `Reorder row ${index + 1}`)
-          if (row.position > removed.position) {
-            row.position -= 1
-            node.querySelector('.mdb-row-heading span').textContent = String(row.position)
-            const deleteButton = node.querySelector('.mdb-row-delete')
-            deleteButton.setAttribute('aria-label', `Delete row ${row.position}`)
-            deleteButton.title = `Delete row ${row.position}`
-            for (const [columnIndex, column] of data.columns.entries()) {
-              node.cells[columnIndex + 1].querySelector('.mdb-cell-control, .mdb-multi-button, .mdb-image-button')
-                ?.setAttribute('aria-label', `${column.name}, row ${row.position}`)
-              node.cells[columnIndex + 1].querySelector('.mdb-date-button')
-                ?.setAttribute('aria-label', `Choose ${column.name}, row ${row.position}`)
-            }
-          }
-          for (const [columnIndex, column] of data.columns.entries()) {
-            if (column.relation_database_id !== databaseId) continue
-            const value = row.values?.[column.id]
-            const next = column.type === 'relation' && value === id ? null
-              : column.type === 'multi_relation' && Array.isArray(value) && value.includes(id)
-                ? value.filter((relatedId) => relatedId !== id) : undefined
-            if (next === undefined) continue
-            if (next === null || next.length === 0) delete row.values[column.id]
-            else row.values[column.id] = next
-            node.cells[columnIndex + 1].querySelector('.mdb-multi-button')?.setCellValue(next)
-          }
-        }
-        if (activeSort !== null || searchQuery !== '') applyView()
-        return true
-      },
+      database: data.database,
       rows: rowData,
-      applyView,
-      updateSortControls,
-      finishRows() {
-        updateSortControls()
-        applyView()
-      },
+      appendPage(rows) { data.rows.push(...rows); appendRows(rows) },
+      updateRowDragHandles,
     }
   }
 
@@ -1327,71 +1385,75 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     exportButton.disabled = true
     setStatus(status, '')
     try {
+      const parameters = new URLSearchParams({ limit: String(pageSize ?? 50), offset: String(pageOffset) })
+      if (searchQuery) parameters.set('q', searchQuery)
+      if (activeSort) {
+        parameters.set('sort_column_id', String(activeSort.columnId))
+        parameters.set('direction', activeSort.direction)
+      }
       const [[response, payload], [listResponse, listPayload]] = await Promise.all([
-        requestJson('GET', `${endpoint}?limit=50`), requestJson('GET', '/api/mdb/databases'),
+        requestJson('GET', `${endpoint}?${parameters}`), requestJson('GET', '/api/mdb/databases'),
       ])
       if (!page.isConnected || generation !== refreshGeneration) return false
+      if (response.status === 400 && payload?.error === 'Invalid sort column' && activeSort) {
+        activeSort = null
+        pageOffset = 0
+        return refresh()
+      }
       if (!response.ok) throw new Error(responseError(response, payload))
       if (!listResponse.ok) throw new Error(responseError(listResponse, listPayload))
       databases = listPayload.databases
+      if (pageSize !== null && pageOffset > 0 && payload.total_rows <= pageOffset) {
+        pageOffset = Math.max(0, Math.ceil(payload.total_rows / pageSize) - 1) * pageSize
+        return refresh()
+      }
+      pageTotal = payload.total_rows
+      loadedRows = payload.rows.length
+      allRowsLoading = pageSize === null && loadedRows < pageTotal
+      updatePageControls()
       const related = new Map()
       relatedDatabases = related
-      // An older API returns the complete table without a paging cursor.
-      rowsLoading = payload.next_after != null
       const table = showTable(payload, related)
       currentTable = table
       const relatedIds = [...new Set(payload.columns.filter((column) => ['relation', 'multi_relation'].includes(column.type))
         .map((column) => column.relation_database_id))]
-      function updateRelationLabels(id) {
-        for (const column of payload.columns.filter((item) => item.relation_database_id === id)) {
-          const cache = relationChoiceCaches.get(column.id)
-          if (!cache) continue
-          cache.choices = relatedChoices(column, related).map((item) => [item.id, item.label])
-          cache.labels.clear()
-          for (const [rowId, rowLabel] of cache.choices) cache.labels.set(rowId, rowLabel)
-        }
-        for (const update of relationRefreshes.get(id) ?? []) update()
-        table.updateSortControls()
-        if (activeSort !== null || searchQuery !== '') table.applyView()
-      }
-      table.updateOwnRelations = () => {
-        if (related.has(databaseId)) updateRelationLabels(databaseId)
-      }
-      const loadRows = async () => {
-        let after = payload.next_after ?? null
-        while (after !== null) {
-          const [pageResponse, pagePayload] = await requestJson('GET',
-            `${endpoint}?limit=200&after=${encodeURIComponent(after)}`)
-          if (!page.isConnected || generation !== refreshGeneration) return
-          if (!pageResponse.ok) throw new Error(responseError(pageResponse, pagePayload))
-          if (!Array.isArray(pagePayload?.rows) || !Object.hasOwn(pagePayload, 'next_after')
-            || pagePayload.rows.some((row) => BigInt(row.position) <= BigInt(after))
-            || (pagePayload.next_after !== null && BigInt(pagePayload.next_after) <= BigInt(after))) {
-            throw new Error('Database row pages repeated. Reload after updating the API.')
-          }
-          payload.rows.push(...pagePayload.rows)
-          table.appendRows(pagePayload.rows)
-          after = pagePayload.next_after
-        }
-        if (!page.isConnected || generation !== refreshGeneration) return
-        rowsLoading = false
-        table.finishRows()
-        if (relatedIds.includes(databaseId)) {
-          related.set(databaseId, payload)
-          updateRelationLabels(databaseId)
-        }
-      }
-      const loadRelated = async () => {
-        await Promise.all(relatedIds.filter((id) => id !== databaseId).map(async (id) => {
-          const [relatedResponse, relatedPayload] = await requestJson('GET', `/api/mdb/databases/${id}`)
-          if (!page.isConnected || generation !== refreshGeneration) return
+      const metadataReady = Promise.all(relatedIds.map(async (id) => {
+        const target = id === databaseId ? payload : await (async () => {
+          const [relatedResponse, relatedPayload] = await requestJson('GET',
+            `/api/mdb/databases/${id}?limit=1`)
           if (!relatedResponse.ok) throw new Error(responseError(relatedResponse, relatedPayload))
-          related.set(id, relatedPayload)
-          updateRelationLabels(id)
+          return relatedPayload
+        })()
+        if (!page.isConnected || generation !== refreshGeneration) return
+        related.set(id, target)
+      }))
+      async function loadRelationLabels(rows, refreshStart = new Map()) {
+        if (!page.isConnected || generation !== refreshGeneration) return
+        await Promise.all(relatedIds.map(async (id) => {
+          for (const column of payload.columns.filter((item) => item.relation_database_id === id)) {
+            const ids = [...new Set(rows.flatMap((row) => {
+              const value = row.values?.[column.id]
+              return Array.isArray(value) ? value : value == null ? [] : [value]
+            }))]
+            const cache = relationChoiceCaches.get(column.id)
+            if (!cache || !ids.length) continue
+            for (let offset = 0; offset < ids.length; offset += 100) {
+              const selected = ids.slice(offset, offset + 100)
+              const params = new URLSearchParams({ ids: selected.join(','),
+                display_column_id: String(column.relation_display_column_id ?? 0) })
+              const [choiceResponse, choicePayload] = await requestJson('GET',
+                `/api/mdb/databases/${id}/choices?${params}`)
+              if (!choiceResponse.ok) throw new Error(responseError(choiceResponse, choicePayload))
+              if (!page.isConnected || generation !== refreshGeneration) return
+              for (const choice of choicePayload.choices) cache.labels.set(choice.id, choice.label)
+            }
+          }
+          if (!page.isConnected || generation !== refreshGeneration) return
+          for (const update of (relationRefreshes.get(id) ?? []).slice(refreshStart.get(id) ?? 0)) update()
         }))
       }
-      rowsReady = loadRows()
-      const results = await Promise.allSettled([rowsReady, loadRelated()])
+      rowsReady = metadataReady.then(() => loadRelationLabels(payload.rows))
+      const results = await Promise.allSettled([rowsReady])
       if (!page.isConnected || generation !== refreshGeneration) return false
       for (const result of results) {
         if (result.status === 'rejected') throw result.reason
@@ -1400,6 +1462,39 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       exportButton.disabled = payload.columns.length === 0
       exportButton.title = payload.columns.length === 0
         ? 'Add a column before exporting CSV' : 'Export CSV'
+      if (allRowsLoading) {
+        void (async () => {
+          try {
+            while (loadedRows < pageTotal) {
+              if (!page.isConnected || generation !== refreshGeneration) return
+              const nextParameters = new URLSearchParams(parameters)
+              nextParameters.set('limit', '200')
+              nextParameters.set('offset', String(loadedRows))
+              const [nextResponse, nextPayload] = await requestJson('GET', `${endpoint}?${nextParameters}`)
+              if (!page.isConnected || generation !== refreshGeneration) return
+              if (!nextResponse.ok) throw new Error(responseError(nextResponse, nextPayload))
+              if (!Array.isArray(nextPayload?.rows) || nextPayload.rows.length === 0
+                || nextPayload.total_rows !== pageTotal
+                || nextPayload.rows.some((row) => table.rows.has(row.id))) {
+                throw new Error('Database rows changed while loading. Reload to try again.')
+              }
+              const refreshStart = new Map(relatedIds.map((id) => [id,
+                relationRefreshes.get(id)?.length ?? 0]))
+              table.appendPage(nextPayload.rows)
+              loadedRows += nextPayload.rows.length
+              updatePageControls()
+              await loadRelationLabels(nextPayload.rows, refreshStart)
+            }
+            if (!page.isConnected || generation !== refreshGeneration) return
+            allRowsLoading = false
+            table.updateRowDragHandles()
+          } catch (error) {
+            if (page.isConnected && generation === refreshGeneration) {
+              setStatus(status, error.message || 'Could not load all rows.', true)
+            }
+          }
+        })()
+      }
       return true
     } catch (error) {
       if (page.isConnected && generation === refreshGeneration) {
@@ -1417,37 +1512,20 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     try {
       await Promise.all([...pendingWrites])
       if (!page.isConnected || generation !== refreshGeneration) return
-      const { database, columns, rows, related } = table.exportData()
-      const relationLabels = new Map(columns.filter((column) =>
-        ['relation', 'multi_relation'].includes(column.type)).map((column) => [
-        column.id, new Map(relatedChoices(column, related).map(({ id, label }) => [id, label])),
-      ]))
-      const field = (value) => `"${String(value).replaceAll('"', '""')}"`
-      const valueFor = (row, column) => {
-        const value = row.values?.[column.id]
-        if (value === undefined || value === null) return ''
-        if (column.type === 'checkbox') return value ? 'true' : 'false'
-        if (column.type === 'relation') {
-          return relationLabels.get(column.id)?.get(value) ?? `Missing row ${value}`
-        }
-        if (column.type === 'multi_relation') {
-          return value.map((id) => relationLabels.get(column.id)?.get(id) ?? `Missing row ${id}`).join(', ')
-        }
-        return Array.isArray(value) ? value.join(', ') : value
+      const { database } = table
+      const params = new URLSearchParams()
+      if (searchQuery) params.set('q', searchQuery)
+      if (activeSort) {
+        params.set('sort_column_id', String(activeSort.columnId))
+        params.set('direction', activeSort.direction)
       }
-      const chunks = ['\uFEFF', columns.map((column) => field(column.name)).join(','), '\r\n']
-      for (const row of rows) {
-        chunks.push(columns.map((column) => field(valueFor(row, column))).join(','), '\r\n')
-      }
-      const url = URL.createObjectURL(new Blob(chunks, { type: 'text/csv;charset=utf-8' }))
       const link = document.createElement('a')
-      link.href = url
+      link.href = `${endpoint}/export.csv?${params}`
       link.download = `${database.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'database'}.csv`
       document.body.append(link)
       link.click()
       link.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
-      notice.show('CSV exported.')
+      notice.show('CSV download started.')
     } catch (error) {
       if (page.isConnected) notice.show(error.message || 'Could not export CSV.', 'error')
     } finally {
@@ -1509,7 +1587,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   const importDatabaseColumns = new Map()
   async function loadImportLookupColumns(databaseId) {
     if (importDatabaseColumns.has(databaseId)) return importDatabaseColumns.get(databaseId)
-    const [response, payload] = await requestJson('GET', `/api/mdb/databases/${databaseId}`)
+    const [response, payload] = await requestJson('GET', `/api/mdb/databases/${databaseId}?limit=1`)
     if (!response.ok) throw new Error(responseError(response, payload))
     const columns = payload.columns.filter((column) => importLookupTypes.has(column.type))
     importDatabaseColumns.set(databaseId, columns)
@@ -1835,7 +1913,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     try {
       let target = relatedDatabases.get(targetId)
       if (!target) {
-        const [response, payload] = await requestJson('GET', `/api/mdb/databases/${targetId}`)
+        const [response, payload] = await requestJson('GET', `/api/mdb/databases/${targetId}?limit=1`)
         if (!response.ok) throw new Error(responseError(response, payload))
         target = payload
         relatedDatabases.set(targetId, target)
@@ -2017,9 +2095,18 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         }
         rowsCreated = true
       }
-      const selectedChoices = [...multiOptions.querySelectorAll('input[data-choice]:checked')]
-        .map((input) => cell.isRelation ? (input.value ? Number(input.value) : null)
-          : (renameMap.get(input.value) ?? input.value))
+      const selectedChoices = cell.isRelation
+        ? [...relationSelection, ...[...multiOptions.querySelectorAll('.mdb-option-draft input[data-choice]:checked')]
+          .map((input) => Number(input.value))]
+        : [...multiOptions.querySelectorAll('input[data-choice]:checked')]
+          .map((input) => renameMap.get(input.value) ?? input.value)
+      if (cell.isRelation && cell.isSingle) {
+        const draft = multiOptions.querySelector('.mdb-option-draft input[data-choice]:checked')
+        if (draft) selectedChoices.splice(0, selectedChoices.length, Number(draft.value))
+        else if (multiOptions.querySelector('.mdb-option:not(.mdb-relation-choice) input[data-choice]:checked')) {
+          selectedChoices.splice(0)
+        }
+      }
       const selected = cell.isSingle ? (selectedChoices[0] ?? (cell.isRelation ? null : '')) : selectedChoices
       multiCell = null
       multiDialog.close()
@@ -2067,10 +2154,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       if (!response.ok) throw new Error(responseError(response, payload))
       deleteDialog.close()
       const label = item.kind === 'columns' ? 'Column' : 'Row'
-      if (item.kind === 'rows' && currentTable.removeRow(item.id)) {
-        currentTable.updateOwnRelations()
-        notice.show('Row deleted.')
-      } else if (await refresh()) notice.show(`${label} deleted.`)
+      if (await refresh()) notice.show(`${label} deleted.`)
       else notice.show(`${label} deleted, but the table could not refresh.`, 'warning')
     } catch (error) {
       if (page.isConnected) setStatus(deleteStatus, error.message || 'Could not delete item.', true)
@@ -2090,16 +2174,15 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       const [response, payload] = await postJson(`${endpoint}/rows`, {})
       if (!page.isConnected) return
       if (!response.ok) throw new Error(responseError(response, payload))
-      if (!button.isConnected) {
-        if (await refresh()) notice.show('Row added.')
-        return
+      searchInput.value = ''
+      searchQuery = ''
+      activeSort = null
+      pageOffset = pageSize === null ? 0 : Math.floor((payload.position - 1) / pageSize) * pageSize
+      if (await refresh()) {
+        notice.show('Row added.')
+        tableArea.querySelector(`tbody tr.mdb-data-row[data-row-id="${payload.id}"]`)
+          ?.querySelector('.mdb-cell-control, .mdb-multi-button')?.focus()
       }
-      clearSearch()
-      currentTable.addRow(payload)
-      currentTable.updateOwnRelations()
-      notice.show('Row added.')
-      tableArea.querySelector(`tbody tr.mdb-data-row[data-row-id="${payload.id}"]`)
-        ?.querySelector('.mdb-cell-control, .mdb-multi-button')?.focus()
     } catch (error) {
       if (page.isConnected) {
         setStatus(status, '')

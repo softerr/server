@@ -565,17 +565,26 @@ function handleReorderMdbItems(array $user, int $databaseId, string $kind): neve
         'rows' => 'public.database_row',
         default => respond(404, ['error' => 'Not found']),
     };
+    $start = $payload['start_position'] ?? null;
+    if ($start !== null && ($kind !== 'rows' || !is_int($start) || $start < 1
+        || count($ids) > 200 || $ids === [] || $start > PHP_INT_MAX - count($ids))) {
+        respond(400, ['error' => 'Invalid row page order']);
+    }
     $db = connectMdbDb();
     mdbBeginWrite($db, $user, $databaseId);
     $existing = @pg_query_params($db,
-        "SELECT id, position FROM {$table} WHERE database_id = $1 ORDER BY position", [$databaseId]);
+        "SELECT id, position FROM {$table} WHERE database_id = $1"
+        . ($start === null ? '' : ' AND position >= $2 AND position < $3')
+        . ' ORDER BY position', $start === null ? [$databaseId] : [$databaseId, $start, $start + count($ids)]);
     if ($existing === false) respond(500, ['error' => 'Failed to check item order']);
     $actualIds = [];
-    $maxPosition = 0;
     while (($row = pg_fetch_assoc($existing)) !== false) {
         $actualIds[] = (int) $row['id'];
-        $maxPosition = max($maxPosition, (int) $row['position']);
     }
+    $maximum = @pg_query_params($db,
+        "SELECT COALESCE(MAX(position), 0) FROM {$table} WHERE database_id = $1", [$databaseId]);
+    if ($maximum === false) respond(500, ['error' => 'Failed to check item order']);
+    $maxPosition = (int) pg_fetch_result($maximum, 0, 0);
     $sortedIds = $ids;
     sort($sortedIds, SORT_NUMERIC);
     sort($actualIds, SORT_NUMERIC);
@@ -586,13 +595,15 @@ function handleReorderMdbItems(array $user, int $databaseId, string $kind): neve
             respond(409, ['error' => 'No room to reorder items']);
         }
         $shifted = @pg_query_params($db,
-            "UPDATE {$table} SET position = position + $2 WHERE database_id = $1",
-            [$databaseId, $maxPosition]);
+            "UPDATE {$table} SET position = position + $2 WHERE database_id = $1"
+            . ($start === null ? '' : ' AND position >= $3 AND position < $4'),
+            $start === null ? [$databaseId, $maxPosition]
+                : [$databaseId, $maxPosition, $start, $start + count($ids)]);
         $ordered = @pg_query_params($db,
-            "UPDATE {$table} item SET position = desired.position
+            "UPDATE {$table} item SET position = desired.position + $3
              FROM unnest($2::bigint[]) WITH ORDINALITY AS desired(id, position)
              WHERE item.database_id = $1 AND item.id = desired.id",
-            [$databaseId, '{' . implode(',', $ids) . '}']);
+            [$databaseId, '{' . implode(',', $ids) . '}', ($start ?? 1) - 1]);
         if ($shifted === false || $ordered === false
             || pg_affected_rows($shifted) !== count($ids)
             || pg_affected_rows($ordered) !== count($ids)) {
