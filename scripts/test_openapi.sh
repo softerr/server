@@ -39,7 +39,7 @@ seed_args=()
 if [[ -n "${OPENAPI_TEST_SEED:-}" ]]; then seed_args=(--seed "${OPENAPI_TEST_SEED}"); fi
 schemathesis run "${REPO_ROOT}/docs/openapi.yaml" \
   --origin "${origin}" \
-  --include-operation-id-regex '^(getReadiness|logout)$' \
+  --include-operation-id-regex '^(getReadiness|getCoreReadiness|getMediaReadiness|getAppReadiness|logout)$' \
   --phases examples,fuzzing \
   --mode positive \
   --max-examples 5 \

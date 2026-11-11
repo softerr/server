@@ -68,6 +68,27 @@ source "${SCRIPT_DIR}/lib/atomic_deploy.sh"
 source "${SCRIPT_DIR}/lib/deploy_checks.sh"
 source "${SCRIPT_DIR}/lib/apt_locks.sh"
 
+# Check the schema of a component when this release changes its API code.
+# An outage in an unchanged app must not roll back an unrelated API release.
+verify_media_health=false
+for file in media.php handlers/images.php handlers/audio.php \
+  handlers/media_groups.php handlers/online_images.php lib/db.php lib/http.php; do
+  if ! cmp -s -- "${api_release}/${file}" "${TARGET_DIR}/${file}"; then
+    verify_media_health=true
+    break
+  fi
+done
+verify_app_health=()
+for app in "${WEB_APPS[@]}"; do
+  [[ -z "${APP_HEALTH_ROUTES[$app]}" ]] && continue
+  if [[ ! -d "${TARGET_DIR}/apps/${app}" ]] \
+    || ! diff -qr -- "${api_release}/apps/${app}" "${TARGET_DIR}/apps/${app}" >/dev/null \
+    || ! cmp -s -- "${api_release}/lib/db.php" "${TARGET_DIR}/lib/db.php" \
+    || ! cmp -s -- "${api_release}/lib/http.php" "${TARGET_DIR}/lib/http.php"; then
+    verify_app_health+=("${app}")
+  fi
+done
+
 routes_file=/etc/nginx/snippets/softerr-routes.conf
 socket="$(sed -nE 's/^[[:space:]]*fastcgi_pass unix:([^;]+);/\1/p' "${routes_file}" | head -n 1)"
 if [[ ! "${socket}" =~ ^/run/php/php([0-9.]+)-fpm\.sock$ ]]; then
@@ -101,13 +122,19 @@ restart_api_fpm() {
 }
 verify_api_release() {
   restart_api_fpm || return 1
-  verify_local_app_route /api/ api || return 1
+  verify_local_app_route /api/health/core api || return 1
   verify_local_app_route /api/auth/me auth-required || return 1
   verify_local_app_route /api/media/images auth-required || return 1
+  if [[ "${verify_media_health}" == true ]]; then
+    verify_local_app_route /api/health/media api || return 1
+  fi
   local app
   for app in "${WEB_APPS[@]}"; do
     [[ -z "${APP_HEALTH_ROUTES[$app]}" ]] && continue
     verify_local_app_route "${APP_HEALTH_ROUTES[$app]}" auth-required || return 1
+  done
+  for app in "${verify_app_health[@]}"; do
+    verify_local_app_route "/api/health/${app}" api || return 1
   done
 }
 if [[ -f "${api_release}/apps/musico/backfill_artwork_names.php" ]]; then

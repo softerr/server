@@ -1,14 +1,8 @@
 <?php
 declare(strict_types=1);
 
-function handleReadiness(): never
+function checkCoreReadiness(): void
 {
-    if (!class_exists(ZipArchive::class)) {
-        respond(503, ['status' => 'unavailable', 'error' => 'ZIP support is not ready']);
-    }
-    if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) {
-        respond(503, ['status' => 'unavailable', 'error' => 'Image thumbnail support is not ready']);
-    }
     if (appBaseUrl() === null) {
         respond(503, ['status' => 'unavailable', 'error' => 'Verification email is not configured']);
     }
@@ -33,19 +27,13 @@ function handleReadiness(): never
     if ($schema === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Database schema is not ready']);
     }
+}
 
-    $healthFiles = glob(__DIR__ . '/../apps/*/health.php');
-    if ($healthFiles === false || count($healthFiles) === 0) {
-        respond(503, ['status' => 'unavailable', 'error' => 'App readiness checks are missing']);
+function checkMediaReadiness(): void
+{
+    if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Image thumbnail support is not ready']);
     }
-    foreach ($healthFiles as $healthFile) {
-        $check = require $healthFile;
-        if (!is_callable($check)) {
-            respond(503, ['status' => 'unavailable', 'error' => 'App readiness check is invalid']);
-        }
-        $check();
-    }
-
     [$mediaDb, $mediaError] = openMediaDb();
     if ($mediaDb === false) {
         respond(503, ['status' => 'unavailable', 'error' => $mediaError]);
@@ -71,5 +59,47 @@ function handleReadiness(): never
     if (@pg_query($mediaDb, 'SELECT id, owner_auth_user_id, original_name, mime_type, size_bytes, sha256, content FROM public.audio_file LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media audio schema is not ready']);
     }
+}
+
+function checkAppReadiness(string $app): void
+{
+    $check = require __DIR__ . "/../apps/{$app}/health.php";
+    if (!is_callable($check)) {
+        respond(503, ['status' => 'unavailable', 'error' => 'App readiness check is invalid']);
+    }
+    $check();
+}
+
+function handleReadiness(?string $component = null): never
+{
+    if ($component === 'core') {
+        checkCoreReadiness();
+        respond(200, ['status' => 'ok', 'message' => 'Core API is ready']);
+    }
+    if ($component === 'media') {
+        checkMediaReadiness();
+        respond(200, ['status' => 'ok', 'message' => 'Media API is ready']);
+    }
+    if ($component !== null) {
+        if (!preg_match('/^[a-z][a-z0-9_]*$/D', $component)
+            || !is_file(__DIR__ . "/../apps/{$component}/health.php")) {
+            respond(404, ['error' => 'Not found']);
+        }
+        checkAppReadiness($component);
+        respond(200, ['status' => 'ok', 'message' => "{$component} API is ready"]);
+    }
+
+    if (!class_exists(ZipArchive::class)) {
+        respond(503, ['status' => 'unavailable', 'error' => 'ZIP support is not ready']);
+    }
+    checkCoreReadiness();
+    $healthFiles = glob(__DIR__ . '/../apps/*/health.php');
+    if ($healthFiles === false || count($healthFiles) === 0) {
+        respond(503, ['status' => 'unavailable', 'error' => 'App readiness checks are missing']);
+    }
+    foreach ($healthFiles as $healthFile) {
+        checkAppReadiness(basename(dirname($healthFile)));
+    }
+    checkMediaReadiness();
     respond(200, ['status' => 'ok', 'message' => 'API is ready']);
 }

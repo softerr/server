@@ -26,9 +26,9 @@ paths:
       operationId: getReadiness
       summary: Check API readiness
       description: |
-        Checks the verification URL configuration, ZIP support, all five PostgreSQL
-        databases, and their required schemas. It does not check email delivery.
-        Use `/api/`; Nginx redirects `/api` to `/api/`.
+        Aggregate readiness for the verification URL configuration, ZIP and image
+        support, all app databases, and their required schemas. It does not check
+        email delivery. Use `/api/`; Nginx redirects `/api` to `/api/`.
       responses:
         '200':
           description: API is ready.
@@ -48,6 +48,67 @@ paths:
               example:
                 status: unavailable
                 error: Database connection failed
+
+  /health/core:
+    get:
+      tags: [Health]
+      operationId: getCoreReadiness
+      summary: Check authentication API readiness
+      description: Checks the verification URL configuration and auth database schema independently of app and media databases. API deployment uses this route.
+      responses:
+        '200':
+          description: Core API is ready.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ComponentReadiness'}
+              example: {status: ok, message: Core API is ready}
+        '503':
+          description: Core API is unavailable.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReadinessUnavailable'}
+
+  /health/media:
+    get:
+      tags: [Health]
+      operationId: getMediaReadiness
+      summary: Check media API readiness
+      description: Checks image thumbnail support and the media database schema independently of app databases.
+      responses:
+        '200':
+          description: Media API is ready.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ComponentReadiness'}
+              example: {status: ok, message: Media API is ready}
+        '503':
+          description: Media API is unavailable.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReadinessUnavailable'}
+
+  /health/{app}:
+    parameters:
+      - name: app
+        in: path
+        required: true
+        schema: {type: string, enum: [quiz, musico, mdb]}
+    get:
+      tags: [Health]
+      operationId: getAppReadiness
+      summary: Check one app database schema
+      responses:
+        '200':
+          description: App API is ready.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ComponentReadiness'}
+        '404': {description: Unknown app.}
+        '503':
+          description: App API is unavailable.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReadinessUnavailable'}
 
   /mdb/databases:
     get:
@@ -5083,6 +5144,12 @@ components:
         message:
           type: string
           const: API is ready
+    ComponentReadiness:
+      type: object
+      required: [status, message]
+      properties:
+        status: {type: string, const: ok}
+        message: {type: string}
     ReadinessUnavailable:
       type: object
       required: [status, error]

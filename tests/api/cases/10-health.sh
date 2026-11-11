@@ -13,6 +13,19 @@ test_api_health_method_not_allowed() {
   assert_json_value '.error' 'Method not allowed' || return 1
 }
 
+test_api_component_health() {
+  local component
+  for component in core media quiz musico mdb; do
+    api_request GET "/api/health/${component}"
+    assert_status 200 || return 1
+    assert_json_value '.status' 'ok' || return 1
+  done
+  api_request GET /api/health/unknown
+  assert_status 404 || return 1
+  api_request POST /api/health/core '{}'
+  assert_status 405 || return 1
+}
+
 test_api_php_entrypoints_are_internal() {
   local entrypoint
   for entrypoint in index auth quiz media musico; do
@@ -23,4 +36,5 @@ test_api_php_entrypoints_are_internal() {
 
 register_test_case test_api_health_get
 register_test_case test_api_health_method_not_allowed
+register_test_case test_api_component_health
 register_test_case test_api_php_entrypoints_are_internal
