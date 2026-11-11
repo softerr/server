@@ -18,6 +18,20 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 source "${SCRIPT_DIR}/load_ssh_env.sh"
 source "${REPO_ROOT}/scripts/lib/app_selection.sh"
 
+upload_script_lib() {
+  local path
+  local -a files=()
+  while IFS= read -r -d '' path; do
+    files+=("${REPO_ROOT}/${path}")
+  done < <(git -C "${REPO_ROOT}" ls-files -z -- scripts/lib)
+  if [[ "${#files[@]}" -eq 0 ]]; then
+    echo 'No tracked scripts/lib files found for the deployment artifact.' >&2
+    exit 1
+  fi
+  scp $SSH_OPTS -P "$PORT" "${files[@]}" \
+    "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
+}
+
 case "${MODE}" in
   server)
     select_apps all
@@ -39,14 +53,7 @@ case "${MODE}" in
       "${REPO_ROOT}/scripts/setup_nginx.sh" "${REPO_ROOT}/scripts/deploy_api.sh" \
       "${REPO_ROOT}/scripts/deploy_home.sh" \
       "${REPO_ROOT}/scripts/deploy_web_app.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-    scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
-      "${REPO_ROOT}/scripts/lib/app_selection.sh" \
-      "${REPO_ROOT}/scripts/lib/app_registry.sh" \
-      "${REPO_ROOT}/scripts/lib/apt_locks.sh" \
-      "${REPO_ROOT}/scripts/lib/api_env.sh" \
-      "${REPO_ROOT}/scripts/lib/deploy_checks.sh" \
-      "${REPO_ROOT}/scripts/lib/verify_media_archive.py" \
-      "${REPO_ROOT}/scripts/lib/tls_certificate.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
+    upload_script_lib
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/app/api/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/app/api/"
     for app in "${WEB_APPS[@]}"; do
@@ -66,10 +73,7 @@ case "${MODE}" in
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/setup_php_fpm.sh" \
       "${REPO_ROOT}/scripts/setup_email_worker.sh" \
       "${REPO_ROOT}/scripts/setup_nginx.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-    scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/apt_locks.sh" \
-      "${REPO_ROOT}/scripts/lib/api_env.sh" \
-      "${REPO_ROOT}/scripts/lib/tls_certificate.sh" \
-      "${REPO_ROOT}/scripts/lib/app_registry.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
+    upload_script_lib
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
     for app in "${WEB_APPS[@]}"; do
       [[ -n "${APP_HEALTH_ROUTES[$app]}" ]] || continue
@@ -83,10 +87,7 @@ case "${MODE}" in
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/setup_postgresql.sh" \
       "${REPO_ROOT}/scripts/backup_postgresql.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-    scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/apt_locks.sh" \
-      "${REPO_ROOT}/scripts/lib/app_registry.sh" \
-      "${REPO_ROOT}/scripts/lib/verify_media_archive.py" \
-      "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
+    upload_script_lib
     scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
     load_app_registry "${REPO_ROOT}"
     for app in "${WEB_APPS[@]}"; do
@@ -121,18 +122,12 @@ case "${MODE}" in
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/provision.sh" \
       "${REPO_ROOT}/scripts/deploy_web_app.sh" "${REPO_ROOT}/scripts/deploy_home.sh" \
       "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-    scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
-      "${REPO_ROOT}/scripts/lib/app_selection.sh" "${REPO_ROOT}/scripts/lib/app_registry.sh" \
-      "${REPO_ROOT}/scripts/lib/deploy_checks.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
+    upload_script_lib
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/apps.tsv" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/"
     if [[ "${needs_api}" == true ]]; then
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/setup_nginx.sh" \
         "${REPO_ROOT}/scripts/deploy_api.sh" "${REPO_ROOT}/scripts/backup_postgresql.sh" \
         "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
-      scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/api_env.sh" \
-        "${REPO_ROOT}/scripts/lib/apt_locks.sh" "${REPO_ROOT}/scripts/lib/tls_certificate.sh" \
-        "${REPO_ROOT}/scripts/lib/verify_media_archive.py" \
-        "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/lib/"
       scp $SSH_OPTS -P "$PORT" -r "${REPO_ROOT}/configs/nginx/." "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/nginx/"
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/configs/postgresql/auth.sql" \
         "${REPO_ROOT}/configs/postgresql/media.sql" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/configs/postgresql/"
