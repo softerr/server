@@ -177,6 +177,15 @@ jobs:
           sudo journalctl -u postgresql --no-pager -n 150 || true
           exit 1
 
+      - name: Check API pause during backup capture
+        run: |
+          set -euo pipefail
+          api_url="${API_TEST_BASE_URL%/}/api/"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "${api_url}")" = 200
+          test "$(sudo flock -x /var/lib/softerr/backup-capture.lock \
+            curl -sS -o /dev/null -w '%{http_code}' "${api_url}")" = 503
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "${api_url}")" = 200
+
       - name: Run API tests
         run: |
           set -euo pipefail

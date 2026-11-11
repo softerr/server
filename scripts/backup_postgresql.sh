@@ -8,6 +8,7 @@ fi
 
 BACKUP_DIR=/var/backups/softerr
 MEDIA_DIR=/var/lib/softerr/media
+CAPTURE_LOCK=/var/lib/softerr/backup-capture.lock
 MEGA_DIR=/softerr-backups
 MEGA_HOME=/var/lib/softerr-mega
 RETENTION_DAYS=7
@@ -42,6 +43,7 @@ restore_db=''
 restore_created=false
 progress_log=''
 media_manifest=''
+declare -a captured_databases=() captured_checks=() captured_jobs=() captured_partials=() captured_archives=()
 cleanup() {
   local result=$?
   trap - EXIT
@@ -49,6 +51,9 @@ cleanup() {
     postgres dropdb --if-exists -- "${restore_db}" || result=1
   fi
   [[ -z "${partial}" ]] || rm -f -- "${partial}"
+  if (( ${#captured_partials[@]} )); then
+    rm -f -- "${captured_partials[@]}"
+  fi
   [[ -z "${progress_log}" ]] || rm -f -- "${progress_log}"
   [[ -z "${media_manifest}" ]] || rm -f -- "${media_manifest}"
   exit "${result}"
@@ -130,25 +135,37 @@ for archive in "${BACKUP_DIR}"/*.tar; do
 done
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-backup_database() {
+capture_database() {
   local db="$1" check_sql="$2" compression="${3:-6}" jobs="${4:-1}"
   local archive started
   partial="$(mktemp -- "${BACKUP_DIR}/.${db}-${stamp}.XXXXXXXX.partial")"
   local partial_name="${partial##*/}"
   archive="${BACKUP_DIR}/${partial_name#.}"
   archive="${archive%.partial}.dump"
-  restore_db="softerr_restore_check_${db}_$(date -u +%s)_$$"
   chown postgres:www-data "${partial}"
   chmod 640 "${partial}"
   echo "Backing up ${db}..."
   started=$SECONDS
   postgres pg_dump --format=custom --compress="${compression}" --dbname="${db}" --file="${partial}"
   echo "Dumped ${db} in $((SECONDS - started)) seconds."
+  captured_databases+=("${db}")
+  captured_checks+=("${check_sql}")
+  captured_jobs+=("${jobs}")
+  captured_partials+=("${partial}")
+  captured_archives+=("${archive}")
+  partial=''
+}
+
+verify_upload_database() {
+  local index="$1" db="${captured_databases[$1]}" check_sql="${captured_checks[$1]}"
+  local jobs="${captured_jobs[$1]}" archive="${captured_archives[$1]}"
+  local captured="${captured_partials[$1]}" started
+  restore_db="softerr_restore_check_${db}_$(date -u +%s)_$$"
   echo "Restoring backup into temporary database ${restore_db}..."
   started=$SECONDS
   postgres createdb --template=template0 -- "${restore_db}"
   restore_created=true
-  postgres pg_restore --exit-on-error --jobs="${jobs}" --dbname="${restore_db}" -- "${partial}"
+  postgres pg_restore --exit-on-error --jobs="${jobs}" --dbname="${restore_db}" -- "${captured}"
   echo "Loaded ${db} in $((SECONDS - started)) seconds."
   started=$SECONDS
   postgres psql -X -v ON_ERROR_STOP=1 --dbname="${restore_db}" -Atqc "${check_sql}" >/dev/null
@@ -160,13 +177,36 @@ backup_database() {
     echo "Refusing to overwrite existing backup: ${archive}" >&2
     return 1
   fi
-  mv -- "${partial}" "${archive}"
-  partial=''
+  mv -- "${captured}" "${archive}"
   upload_verified "${archive}"
 }
 
-backup_database auth 'SELECT 1 FROM public."user", public.user_token, public.verification_email_outbox, public.approval_email_outbox LIMIT 0'
-backup_database media 'SELECT i.id, i.blob_id, b.sha256, token_image.image_id FROM public.image i, public.image_blob b, public.api_token_image_access token_image LIMIT 0' 0 2 1
+if [[ ! -f "${CAPTURE_LOCK}" ]]; then
+  echo "Backup capture lock is missing: ${CAPTURE_LOCK}" >&2
+  exit 1
+fi
+exec 8<> "${CAPTURE_LOCK}"
+echo 'Waiting for active API and worker requests before capturing a restore point...'
+flock -x 8
+capture_started=$SECONDS
+capture_database auth 'SELECT 1 FROM public."user", public.user_token, public.verification_email_outbox, public.approval_email_outbox LIMIT 0'
+capture_database media 'SELECT i.id, i.blob_id, b.sha256, token_image.image_id FROM public.image i, public.image_blob b, public.api_token_image_access token_image LIMIT 0' 0 2 1
+for app in "${WEB_APPS[@]}"; do
+  [[ -z "${APP_DATABASES[$app]}" ]] && continue
+  capture_database "${APP_DATABASES[$app]}" "${APP_BACKUP_CHECKS[$app]}"
+done
+media_manifest="$(mktemp -- "${BACKUP_DIR}/.media-manifest.XXXXXXXX")"
+postgres psql -X -At -F '|' -d media -c \
+  "SELECT 'images', trim(sha256), size_bytes FROM public.image_blob
+   UNION ALL SELECT 'audio', trim(sha256), size_bytes FROM public.audio_file" \
+  > "${media_manifest}"
+flock -u 8
+exec 8>&-
+echo "Captured one restore point in $((SECONDS - capture_started)) seconds; API writes can resume."
+
+for index in "${!captured_databases[@]}"; do
+  verify_upload_database "${index}"
+done
 backup_media_files() {
   local archive partial_name started
   partial="$(mktemp -- "${BACKUP_DIR}/.media-files-${stamp}.XXXXXXXX.partial")"
@@ -177,11 +217,6 @@ backup_media_files() {
   archive="${archive%.partial}.tar"
   echo 'Archiving private media files...'
   started=$SECONDS
-  media_manifest="$(mktemp -- "${BACKUP_DIR}/.media-manifest.XXXXXXXX")"
-  postgres psql -X -At -F '|' -d media -c \
-    "SELECT 'images', trim(sha256), size_bytes FROM public.image_blob
-     UNION ALL SELECT 'audio', trim(sha256), size_bytes FROM public.audio_file" \
-    > "${media_manifest}"
   tar -C "${MEDIA_DIR}" --exclude='.upload-*' -cf "${partial}" images thumbnails audio
   python3 /usr/local/lib/softerr/verify_media_archive.py \
     "${partial}" "${MEDIA_DIR}" "${media_manifest}"
@@ -197,10 +232,10 @@ backup_media_files() {
   upload_verified "${archive}"
 }
 backup_media_files
-for app in "${WEB_APPS[@]}"; do
-  [[ -z "${APP_DATABASES[$app]}" ]] && continue
-  backup_database "${APP_DATABASES[$app]}" "${APP_BACKUP_CHECKS[$app]}"
-done
+
+# Old backup sets did not coordinate their databases. Mark this installation
+# only after every archive in the new set has passed verification and upload.
+touch /var/lib/softerr/backup-capture-ready
 
 # Keep the preceding complete set until every database in this run is verified.
 prune_remote auth "${RETENTION_COUNT}"

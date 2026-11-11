@@ -4,6 +4,8 @@ declare(strict_types=1);
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/lib/http.php';
+require_once __DIR__ . '/lib/backup_lock.php';
+requireBackupCaptureReadLock();
 require_once __DIR__ . '/lib/url.php';
 require_once __DIR__ . '/lib/timezone.php';
 require_once __DIR__ . '/lib/session.php';

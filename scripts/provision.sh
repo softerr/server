@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/app_registry.sh"
 source "${SCRIPT_DIR}/lib/apt_locks.sh"
+source "${SCRIPT_DIR}/lib/backup_capture_lock.sh"
+source "${SCRIPT_DIR}/lib/backup_service.sh"
 load_app_registry "${REPO_ROOT}"
 declare -A SCHEMA_APPLIED=()
 
@@ -40,7 +42,11 @@ run_root_script() {
 }
 
 run_postgresql() {
-  run_root_script "${SCRIPT_DIR}/setup_postgresql.sh"
+  if [[ "${1:-}" == defer-backup ]]; then
+    DEFER_INITIAL_BACKUP=1 run_root_script "${SCRIPT_DIR}/setup_postgresql.sh"
+  else
+    run_root_script "${SCRIPT_DIR}/setup_postgresql.sh"
+  fi
   AUTH_SCHEMA_APPLIED=1
   MEDIA_SCHEMA_APPLIED=1
   local app
@@ -55,11 +61,14 @@ ensure_app_schema() {
     echo "App database schema is missing: ${schema}" >&2
     exit 1
   fi
+  ensure_backup_capture_lock
+  lock_schema_setup
   sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d postgres <<SQL
 SELECT 'CREATE DATABASE ${database}'
 WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${database}') \gexec
 SQL
   sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d "${database}" < "${REPO_ROOT}/${schema}"
+  unlock_schema_setup
   SCHEMA_APPLIED["${app}"]=1
   if [[ -f /etc/systemd/system/softerr-backup-postgresql.service ]]; then
     install -m 644 "${REPO_ROOT}/configs/apps.tsv" /etc/softerr/apps.tsv
@@ -82,13 +91,16 @@ run_email_worker() {
 }
 
 run_api_deploy() {
+  ensure_backup_capture_lock
   if [[ "${AUTH_SCHEMA_APPLIED:-0}" != 1 ]]; then
     local auth_schema="${REPO_ROOT}/configs/postgresql/auth.sql"
     if [[ ! -f "${auth_schema}" ]]; then
       echo "Auth schema not found: ${auth_schema}" >&2
       exit 1
     fi
+    lock_schema_setup
     sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${auth_schema}"
+    unlock_schema_setup
     AUTH_SCHEMA_APPLIED=1
   fi
   if [[ "${MEDIA_SCHEMA_APPLIED:-0}" != 1 ]]; then
@@ -97,13 +109,21 @@ run_api_deploy() {
       echo "Media schema not found: ${media_schema}" >&2
       exit 1
     fi
+    lock_schema_setup
     sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d media < "${media_schema}"
+    unlock_schema_setup
     MEDIA_SCHEMA_APPLIED=1
   fi
   local app
   for app in "${WEB_APPS[@]}"; do ensure_app_schema "${app}"; done
   run_root_script "${SCRIPT_DIR}/deploy_api.sh"
   API_DEPLOYED=1
+  if [[ -f /run/softerr-backup-needed ]]; then
+    echo 'Running initial consistent backup after API deployment...'
+    run_initial_backup
+    rm -f /run/softerr-backup-needed
+    systemctl enable --now softerr-backup-postgresql.timer
+  fi
 }
 
 run_web_deploy() {
@@ -152,13 +172,14 @@ run_component() {
       run_app_deploys
       ;;
     all)
-      run_postgresql
+      run_postgresql defer-backup
       run_php_fpm
       run_email_worker
       run_nginx
       run_api_deploy
       local app
       for app in "${WEB_APPS[@]}"; do run_web_deploy "${app}"; done
+      systemctl enable --now softerr-backup-postgresql.timer
       ;;
     *)
       if web_app_exists "${component}"; then run_web_deploy "${component}"

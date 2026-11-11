@@ -5,6 +5,17 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
+require_once __DIR__ . '/../lib/backup_lock.php';
+try {
+    if (!acquireBackupCaptureReadLock()) {
+        fwrite(STDERR, "Backup capture in progress; email worker will retry later.\n");
+        exit(0);
+    }
+} catch (RuntimeException $error) {
+    fwrite(STDERR, $error->getMessage() . "\n");
+    exit(1);
+}
+
 require_once __DIR__ . '/../mail.php';
 require_once __DIR__ . '/../lib/db.php';
 

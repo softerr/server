@@ -5,6 +5,8 @@ header('Content-Type: application/json');
 header('Cache-Control: private, no-store');
 
 require_once __DIR__ . '/lib/http.php';
+require_once __DIR__ . '/lib/backup_lock.php';
+requireBackupCaptureReadLock();
 require_once __DIR__ . '/lib/url.php';
 require_once __DIR__ . '/lib/session.php';
 require_once __DIR__ . '/apps/mdb/databases.php';

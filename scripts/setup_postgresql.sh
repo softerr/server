@@ -10,6 +10,8 @@ fi
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/apt_locks.sh"
+source "${SCRIPT_DIR}/lib/backup_capture_lock.sh"
+source "${SCRIPT_DIR}/lib/backup_service.sh"
 source "${SCRIPT_DIR}/lib/app_registry.sh"
 load_app_registry "${REPO_ROOT}"
 INIT_SQL_FILE="${REPO_ROOT}/configs/postgresql/init.sql"
@@ -64,6 +66,13 @@ fi
 echo "Starting PostgreSQL service..."
 systemctl enable --now postgresql
 
+# Keep the inode stable across setup runs and deployments.
+ensure_backup_capture_lock
+
+# A running backup waits for schema setup, and setup waits for an in-progress
+# capture before changing any database objects.
+lock_schema_setup
+
 echo "Applying PostgreSQL init SQL: ${INIT_SQL_FILE}"
 sudo -u postgres psql -X \
   -v ON_ERROR_STOP=1 \
@@ -96,6 +105,7 @@ done
 
 echo "Pruning expired verification tokens..."
 sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d auth < "${PRUNE_SQL_FILE}"
+unlock_schema_setup
 
 echo "Installing expired-token cleanup timer..."
 install -d -m 755 /etc/softerr
@@ -153,37 +163,33 @@ complete_mega_backup_set_exists() {
   return 1
 }
 
+backup_current=false
+defer_backup="${DEFER_INITIAL_BACKUP:-0}"
+if [[ -f /var/www/api/index.php && ! -f /var/www/api/lib/backup_lock.php ]]; then
+  defer_backup=1
+fi
 if systemctl is-enabled --quiet softerr-backup-postgresql.timer \
   && [[ "$(systemctl show --value -p Result softerr-backup-postgresql.service)" == success ]] \
+  && [[ -f /var/lib/softerr/backup-capture-ready ]] \
   && complete_mega_backup_set_exists; then
+  backup_current=true
+  rm -f /run/softerr-backup-needed
   echo "A complete recent MEGA backup set exists; the daily timer will make the next backup."
-else
-  echo "Starting initial database backups and restore checks; this can take several minutes..."
-  backup_started="$(date '+%Y-%m-%d %H:%M:%S')"
-  systemctl start softerr-backup-postgresql.service &
-  backup_start_pid=$!
-  backup_wait_seconds=0
-  while kill -0 "${backup_start_pid}" 2>/dev/null; do
-    sleep 1
-    backup_wait_seconds=$((backup_wait_seconds + 1))
-    if (( backup_wait_seconds % 60 == 0 )) && kill -0 "${backup_start_pid}" 2>/dev/null; then
-      backup_stage="$(journalctl --quiet --no-pager --output=cat --unit=softerr-backup-postgresql.service \
-        --since="${backup_started}" -n 1 2>/dev/null || true)"
-      echo "Initial backup and restore checks are still running: ${backup_stage:-waiting for service output}"
-    fi
-  done
-  if ! wait "${backup_start_pid}"; then
-    journalctl --quiet --no-pager --output=cat --unit=softerr-backup-postgresql.service \
-      --since="${backup_started}" || true
-    echo "Initial database backup or restore check failed." >&2
-    exit 1
-  fi
-  journalctl --quiet --no-pager --output=cat --unit=softerr-backup-postgresql.service \
-    --since="${backup_started}" || true
-  echo "Initial database backups and restore checks passed."
 fi
-echo "Enabling daily backup timer..."
-systemctl enable --now softerr-backup-postgresql.timer
+if [[ "${backup_current}" != true && "${defer_backup}" == 1 ]]; then
+  echo 'Deferring the initial backup until the updated API is deployed.'
+  touch /run/softerr-backup-needed
+elif [[ "${backup_current}" != true ]]; then
+  echo "Starting initial database backups and restore checks; this can take several minutes..."
+  run_initial_backup
+  rm -f /run/softerr-backup-needed
+fi
+if [[ "${defer_backup}" != 1 ]]; then
+  echo "Enabling daily backup timer..."
+  systemctl enable --now softerr-backup-postgresql.timer
+else
+  systemctl disable --now softerr-backup-postgresql.timer >/dev/null 2>&1 || true
+fi
 
 echo "Done."
 echo "PostgreSQL is installed and app database schemas are initialized."

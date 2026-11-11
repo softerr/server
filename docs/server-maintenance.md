@@ -135,9 +135,13 @@ sudo -u postgres psql -d auth -c "\copy (SELECT * FROM public.user_token ORDER B
 
 PostgreSQL setup installs `softerr-backup-postgresql.timer`. It runs daily after 03:00 server time, dumps `auth`, `media`, `quiz`, `musico`, and `mdb`, restores each dump into a temporary database, checks the expected tables, and uploads it to `/softerr-backups` in MEGA. It also archives the private files in `/var/lib/softerr/media` as `media-files.tar` and compares the archive contents with the source files. A complete backup set includes both `media.dump` and `media-files.tar`; restore both to recover images and audio. The temporary local archives are removed after MEGA reports the expected sizes. Failed uploads remain in `/var/backups/softerr` for retry. MEGA keeps up to 7 days and 7 archives per database, except `media` and `media-files`, which keep one each. A failed dump, restore, archive check, or upload makes the service fail. Keep enough temporary disk space for a dump, its restored database, a media TAR, and an admin download ZIP. The MEGA session belongs to `www-data` under `/var/lib/softerr-mega`; bootstrap opens the interactive MEGAcmd shell once; use `login YOUR_MEGA_EMAIL`, answer its password and 2FA prompts, then `exit --only-shell`. Do not log this account out while automated backups are in use.
 
+The backup first waits for active API and worker requests, then holds their writes while it captures every database dump and the media manifest. New API requests receive HTTP 503 with `Retry-After` during this brief capture. Restore checks, media archiving, and MEGA uploads run after the lock is released. The media archive may include extra files created after capture, but it must contain every file referenced by the captured manifest. Restore all archives with the same timestamp together.
+
 Images and audio are stored as private files; PostgreSQL holds their hashes, sizes, and ownership. The media database dump skips compression and its restore check uses two parallel jobs.
 
 Server setup reuses a complete MEGA backup set from the past two days when the daily timer is enabled and its last backup succeeded. It runs the full backup and restore check during first-time setup or if that check fails. Data changed after the reused backup is not covered until the next scheduled backup.
+
+During an upgrade from a version without the capture lock, full setup waits until the updated API is deployed before making its first coordinated backup. A standalone PostgreSQL setup on such a server also defers the backup; deploy the API afterward to complete it and re-enable the daily timer.
 
 Check the timer, run a backup now, and inspect the result:
 
