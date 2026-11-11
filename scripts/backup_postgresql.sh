@@ -168,18 +168,7 @@ backup_database() {
 backup_database auth 'SELECT 1 FROM public."user", public.user_token, public.verification_email_outbox, public.approval_email_outbox LIMIT 0'
 backup_database media 'SELECT i.id, i.blob_id, b.sha256, token_image.image_id FROM public.image i, public.image_blob b, public.api_token_image_access token_image LIMIT 0' 0 2 1
 backup_media_files() {
-  local archive partial_name started require_files
-  require_files="$(postgres psql -X -Atqc "SELECT NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'image_blob' AND column_name = 'content'
-  ) AND NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'audio_file' AND column_name = 'content'
-  )" --dbname=media)"
-  if [[ "${require_files}" != t ]]; then
-    echo 'Legacy media byte columns remain; the media file archive starts after API migration.'
-    return
-  fi
+  local archive partial_name started
   partial="$(mktemp -- "${BACKUP_DIR}/.media-files-${stamp}.XXXXXXXX.partial")"
   chown root:www-data "${partial}"
   chmod 640 "${partial}"

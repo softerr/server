@@ -9,30 +9,6 @@ CREATE TABLE IF NOT EXISTS public.image_blob (
     thumbnail_mime_type VARCHAR(16)
 );
 
--- A committed database still has BYTEA columns until deploy_api.sh copies
--- them to private media storage and the new API release is verified.
-ALTER TABLE public.image_blob ADD COLUMN IF NOT EXISTS size_bytes INTEGER;
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_schema = 'public' AND table_name = 'image_blob'
-                 AND column_name = 'content') THEN
-        UPDATE public.image_blob SET size_bytes = octet_length(content)
-        WHERE size_bytes IS NULL;
-        ALTER TABLE public.image_blob ALTER COLUMN content DROP NOT NULL;
-        ALTER TABLE public.image_blob ALTER COLUMN thumbnail_content DROP NOT NULL;
-    END IF;
-END $$;
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint
-                   WHERE conrelid = 'public.image_blob'::regclass
-                     AND conname = 'image_blob_size_bytes_check') THEN
-        ALTER TABLE public.image_blob ADD CONSTRAINT image_blob_size_bytes_check
-            CHECK (size_bytes BETWEEN 1 AND 6291456);
-    END IF;
-END $$;
-
 CREATE TABLE IF NOT EXISTS public.media_group (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -96,15 +72,6 @@ CREATE TABLE IF NOT EXISTS public.audio_file (
 );
 CREATE INDEX IF NOT EXISTS audio_file_owner_id_idx
     ON public.audio_file (owner_auth_user_id, id DESC);
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_schema = 'public' AND table_name = 'audio_file'
-                 AND column_name = 'content') THEN
-        ALTER TABLE public.audio_file ALTER COLUMN content DROP NOT NULL;
-    END IF;
-END $$;
-
 CREATE TABLE IF NOT EXISTS public.quiz_import_recovery (
     id CHAR(32) PRIMARY KEY,
     owner_auth_user_id BIGINT NOT NULL,

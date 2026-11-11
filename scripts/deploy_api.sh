@@ -43,13 +43,9 @@ for app in "${WEB_APPS[@]}"; do
 done
 
 api_release="$(mktemp -d "${TMPDIR:-/tmp}/softerr-api-source.XXXXXXXX")"
-fpm_paused=false
 cleanup_api_deploy() {
   local result=$?
   trap - EXIT
-  if [[ "${fpm_paused}" == true ]]; then
-    systemctl start "php${php_version}-fpm.service" || result=1
-  fi
   rm -rf -- "${api_release}" || result=1
   exit "${result}"
 }
@@ -147,52 +143,18 @@ verify_api_release() {
     verify_local_app_route "/api/health/${app}" api || return 1
   done
 }
-if [[ -f "${api_release}/apps/musico/backfill_artwork_names.php" ]]; then
-  echo "Renaming existing generic Musico artwork files..."
-  chmod 755 "${api_release}"
-  sudo -u postgres "php${php_version}" "${api_release}/apps/musico/backfill_artwork_names.php"
-fi
 install -d -m 755 /usr/local/lib/softerr /var/lib/softerr
 install -d -o postgres -g www-data -m 2770 /var/lib/softerr/media \
   /var/lib/softerr/media/images /var/lib/softerr/media/thumbnails \
   /var/lib/softerr/media/audio
-install -m 644 "${REPO_ROOT}/app/api/lib/media_storage.php" \
-  /usr/local/lib/softerr/media_storage.php
-install -m 644 "${SCRIPT_DIR}/migrate_media_files.php" \
-  /usr/local/lib/softerr/migrate_media_files.php
 install -m 755 "${SCRIPT_DIR}/backup_postgresql.sh" \
   /usr/local/lib/softerr/backup_postgresql.sh
 install -m 644 "${SCRIPT_DIR}/lib/verify_media_archive.py" \
   /usr/local/lib/softerr/verify_media_archive.py
-legacy_media_columns="$(runuser -u postgres -g www-data -- "php${php_version}" \
-  /usr/local/lib/softerr/migrate_media_files.php status)"
-if [[ "${legacy_media_columns}" == yes ]]; then
-  echo "Copying existing media bytes to private files..."
-  runuser -u postgres -g www-data -- "php${php_version}" /usr/local/lib/softerr/migrate_media_files.php copy
-  echo "Pausing API requests while checking for recent media uploads..."
-  systemctl stop "php${php_version}-fpm.service"
-  fpm_paused=true
-  if ! runuser -u postgres -g www-data -- "php${php_version}" \
-    /usr/local/lib/softerr/migrate_media_files.php copy; then
-    exit 1
-  fi
-fi
 if ! atomic_deploy_dir "${api_release}" "${TARGET_DIR}" "${WEB_USER}" "${WEB_GROUP}" verify_api_release; then
   restart_api_fpm || true
   exit 1
 fi
-fpm_paused=false
-
-if [[ "${legacy_media_columns}" == yes ]]; then
-  echo "Removing legacy media bytes from PostgreSQL..."
-  runuser -u postgres -g www-data -- "php${php_version}" \
-    /usr/local/lib/softerr/migrate_media_files.php finalize
-  if systemctl is-enabled --quiet softerr-backup-postgresql.timer; then
-    echo "Starting a media-aware backup in the background..."
-    systemctl start --no-block softerr-backup-postgresql.service
-  fi
-fi
-
 echo "API deployed successfully."
 echo "Source: ${SOURCE_DIR}"
 echo "Target: ${TARGET_DIR}"

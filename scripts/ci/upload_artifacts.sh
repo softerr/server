@@ -37,7 +37,6 @@ case "${MODE}" in
       "${REPO_ROOT}/scripts/backup_postgresql.sh" \
       "${REPO_ROOT}/scripts/setup_php_fpm.sh" "${REPO_ROOT}/scripts/setup_email_worker.sh" \
       "${REPO_ROOT}/scripts/setup_nginx.sh" "${REPO_ROOT}/scripts/deploy_api.sh" \
-      "${REPO_ROOT}/scripts/migrate_media_files.php" \
       "${REPO_ROOT}/scripts/deploy_home.sh" \
       "${REPO_ROOT}/scripts/deploy_web_app.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
     scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/atomic_deploy.sh" \
@@ -129,7 +128,6 @@ case "${MODE}" in
     if [[ "${needs_api}" == true ]]; then
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/setup_nginx.sh" \
         "${REPO_ROOT}/scripts/deploy_api.sh" "${REPO_ROOT}/scripts/backup_postgresql.sh" \
-        "${REPO_ROOT}/scripts/migrate_media_files.php" \
         "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/scripts/"
       scp $SSH_OPTS -P "$PORT" "${REPO_ROOT}/scripts/lib/api_env.sh" \
         "${REPO_ROOT}/scripts/lib/apt_locks.sh" "${REPO_ROOT}/scripts/lib/tls_certificate.sh" \

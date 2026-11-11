@@ -153,16 +153,7 @@ complete_mega_backup_set_exists() {
   return 1
 }
 
-legacy_media_columns="$(sudo -u postgres psql -X -Atqc "SELECT EXISTS (
-  SELECT 1 FROM information_schema.columns
-  WHERE table_schema = 'public' AND table_name = 'image_blob' AND column_name = 'content'
-) OR EXISTS (
-  SELECT 1 FROM information_schema.columns
-  WHERE table_schema = 'public' AND table_name = 'audio_file' AND column_name = 'content'
-)" -d media)"
-if [[ "${legacy_media_columns}" == t ]]; then
-  echo 'Legacy media bytes will move to private files during API deployment; the verified media file backup runs afterward.'
-elif systemctl is-enabled --quiet softerr-backup-postgresql.timer \
+if systemctl is-enabled --quiet softerr-backup-postgresql.timer \
   && [[ "$(systemctl show --value -p Result softerr-backup-postgresql.service)" == success ]] \
   && complete_mega_backup_set_exists; then
   echo "A complete recent MEGA backup set exists; the daily timer will make the next backup."
