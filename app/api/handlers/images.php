@@ -688,76 +688,100 @@ function authorizedMediaImageRows($db, array $user, array $ids): array
     return $rows;
 }
 
-function imageUsageRows($quizDb, array $user, int $imageId, bool $shared): array
+function imageUsageParameters(array $ids, array $rows, array $user): array
 {
+    $shared = [];
+    foreach ($ids as $id) $shared[] = $rows[$id]['shared'] === 't' ? 't' : 'f';
+    return ['{' . implode(',', $ids) . '}', '{' . implode(',', $shared) . '}', $user['id']];
+}
+
+function quizImageReferenceValues(string $column): string
+{
+    $paths = ['image_id', 'answer_image_id', 'keyword_image_id',
+        'definition_image_id', 'name_image_id'];
+    return 'jsonb_array_elements(' . implode(' || ', array_map(
+        static fn (string $key): string => "jsonb_path_query_array({$column}, 'strict $.**.{$key}', '{}'::jsonb, true)",
+        $paths)) . ')';
+}
+
+function appendQuizImageUsage($quizDb, array $params, array &$images): void
+{
+    $questionReferences = quizImageReferenceValues('t.config');
+    $attemptReferences = quizImageReferenceValues('s.config');
     $result = @pg_query_params($quizDb,
-        'SELECT \'question\' AS kind, q.id AS quiz_id, q.name AS quiz_name,
+        'WITH selected AS (
+           SELECT image_id, shared FROM unnest($1::bigint[], $2::boolean[]) AS image(image_id, shared)
+         )
+         SELECT DISTINCT selected.image_id, \'question\' AS kind, q.id AS quiz_id, q.name AS quiz_name,
                 t.id AS question_id, t.prompt, NULL::bigint AS attempt_id
          FROM public.question t JOIN public.quiz q ON q.id = t.quiz_id
          JOIN public."user" u ON u.id = q.user_id
-         WHERE ($3::boolean OR u.auth_user_id = $4)
-           AND jsonb_path_exists(t.config, $1::jsonpath, jsonb_build_object(\'id\', $2::bigint))
+         CROSS JOIN LATERAL ' . $questionReferences . ' AS reference(value)
+         JOIN selected ON reference.value = to_jsonb(selected.image_id)
+         WHERE (selected.shared OR u.auth_user_id = $3)
          UNION ALL
-         SELECT \'attempt\' AS kind, q.id AS quiz_id, q.name AS quiz_name,
+         SELECT DISTINCT selected.image_id, \'attempt\' AS kind, q.id AS quiz_id, q.name AS quiz_name,
                 s.question_id, s.prompt, s.attempt_id
          FROM public.quiz_attempt_source s
          JOIN public.quiz_attempt a ON a.id = s.attempt_id
          JOIN public.quiz q ON q.id = a.quiz_id
          JOIN public."user" u ON u.id = q.user_id
-         WHERE ($3::boolean OR u.auth_user_id = $4)
-           AND jsonb_path_exists(s.config, $1::jsonpath, jsonb_build_object(\'id\', $2::bigint))
-         ORDER BY quiz_id, kind, attempt_id, question_id',
-        [QUIZ_IMAGE_REFERENCE_PATH, $imageId, $shared ? 't' : 'f', $user['id']]);
+         CROSS JOIN LATERAL ' . $attemptReferences . ' AS reference(value)
+         JOIN selected ON reference.value = to_jsonb(selected.image_id)
+         WHERE (selected.shared OR u.auth_user_id = $3)
+         ORDER BY image_id, quiz_id, kind, attempt_id, question_id', $params);
     if ($result === false) respond(500, ['error' => 'Failed to check image usage']);
-    $uses = [];
     while (($row = pg_fetch_assoc($result)) !== false) {
-        $uses[] = [
+        $images[(int) $row['image_id']]['uses'][] = [
             'kind' => $row['kind'], 'quiz_id' => (int) $row['quiz_id'],
             'quiz_name' => $row['quiz_name'], 'question_id' => (int) $row['question_id'],
             'question_prompt' => $row['prompt'],
             'attempt_id' => $row['attempt_id'] === null ? null : (int) $row['attempt_id'],
         ];
     }
-    return $uses;
 }
 
-function musicoImageUsageRows($musicoDb, array $user, int $imageId, bool $shared): array
+function appendMusicoImageUsage($musicoDb, array $params, array &$images): void
 {
     $result = @pg_query_params($musicoDb,
-        'SELECT t.id, t.title FROM public.track t JOIN public."user" u ON u.id = t.user_id
-         WHERE t.art_image_id = $1 AND ($2::boolean OR u.auth_user_id = $3)
-         ORDER BY t.id', [$imageId, $shared ? 't' : 'f', $user['id']]);
+        'WITH selected AS (
+           SELECT image_id, shared FROM unnest($1::bigint[], $2::boolean[]) AS image(image_id, shared)
+         )
+         SELECT selected.image_id, t.id, t.title
+         FROM public.track t JOIN public."user" u ON u.id = t.user_id
+         JOIN selected ON selected.image_id = t.art_image_id
+         WHERE selected.shared OR u.auth_user_id = $3
+         ORDER BY selected.image_id, t.id', $params);
     if ($result === false) respond(500, ['error' => 'Failed to check image usage']);
-    $uses = [];
     while (($row = pg_fetch_assoc($result)) !== false) {
-        $uses[] = ['kind' => 'musico_track', 'track_id' => (int) $row['id'], 'track_name' => $row['title']];
+        $images[(int) $row['image_id']]['uses'][] = [
+            'kind' => 'musico_track', 'track_id' => (int) $row['id'], 'track_name' => $row['title']];
     }
-    return $uses;
 }
 
-function mdbImageUsageRows($mdbDb, array $user, int $imageId, bool $shared): array
+function appendMdbImageUsage($mdbDb, array $params, array &$images): void
 {
     $result = @pg_query_params($mdbDb,
-        'SELECT d.id AS database_id, d.name AS database_name,
+        'WITH selected AS (
+           SELECT image_id, shared FROM unnest($1::bigint[], $2::boolean[]) AS image(image_id, shared)
+         )
+         SELECT selected.image_id, d.id AS database_id, d.name AS database_name,
                 r.id AS row_id, r.position AS row_position, c.name AS column_name
          FROM public.database_cell v
          JOIN public.database_column c ON c.id = v.column_id AND c.database_id = v.database_id
          JOIN public.database_row r ON r.id = v.row_id AND r.database_id = v.database_id
          JOIN public.user_database d ON d.id = v.database_id
          JOIN public."user" u ON u.id = d.user_id
-         WHERE c.type = \'image\' AND v.value = $1::text
-           AND ($2::boolean OR u.auth_user_id = $3)
-         ORDER BY d.name, r.position, c.position',
-        [$imageId, $shared ? 't' : 'f', $user['id']]);
+         JOIN selected ON v.value = selected.image_id::text
+         WHERE c.type = \'image\' AND (selected.shared OR u.auth_user_id = $3)
+         ORDER BY selected.image_id, d.name, r.position, c.position', $params);
     if ($result === false) respond(500, ['error' => 'Failed to check image usage']);
-    $uses = [];
     while (($row = pg_fetch_assoc($result)) !== false) {
-        $uses[] = ['kind' => 'mdb_cell',
+        $images[(int) $row['image_id']]['uses'][] = ['kind' => 'mdb_cell',
             'database_id' => (int) $row['database_id'], 'database_name' => $row['database_name'],
             'row_id' => (int) $row['row_id'], 'row_position' => (int) $row['row_position'],
             'column_name' => $row['column_name']];
     }
-    return $uses;
 }
 
 function handleImageUsage(): never
@@ -772,17 +796,17 @@ function handleImageUsage(): never
     $images = [];
     foreach ($ids as $id) {
         $row = $rows[$id];
-        $images[] = [
+        $images[$id] = [
             'id' => $id, 'name' => $row['original_name'],
             'scope' => $row['shared'] === 't' ? 'shared' : 'personal',
-            'uses' => array_merge(
-                imageUsageRows($quizDb, $user, $id, $row['shared'] === 't'),
-                musicoImageUsageRows($musicoDb, $user, $id, $row['shared'] === 't'),
-                mdbImageUsageRows($mdbDb, $user, $id, $row['shared'] === 't')
-            ),
+            'uses' => [],
         ];
     }
-    respond(200, ['images' => $images]);
+    $params = imageUsageParameters($ids, $rows, $user);
+    appendQuizImageUsage($quizDb, $params, $images);
+    appendMusicoImageUsage($musicoDb, $params, $images);
+    appendMdbImageUsage($mdbDb, $params, $images);
+    respond(200, ['images' => array_values($images)]);
 }
 
 function handleDeleteImage(int $imageId): never

@@ -371,6 +371,17 @@ test_shared_media_across_users_and_quizzes() (
     "${API_TEST_BASE_URL%/}/api/media/images/${private_id}")"
   [[ "${response##*$'\n'}" == 409 ]] || { fail_test "image used by attempt could be deleted: ${response}"; return 1; }
   response="$(curl -sS -b "$admin_cookie" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --argjson a "$private_id" --argjson b "$answer_id" --argjson c "$shared_id" \
+      '{image_ids:[$a,$b,$c]}')" \
+    "${API_TEST_BASE_URL%/}/api/media/images/usage")"
+  jq -e --argjson a "$private_id" --argjson b "$answer_id" \
+    --argjson c "$shared_id" --argjson quiz "$history_quiz_id" \
+    '.images as $images | ($images | map(.id)) == [$a,$b,$c]
+      and ($images[0].uses | any(.kind == "attempt" and .quiz_id == $quiz))
+      and ($images[1].uses | any(.kind == "question" and .quiz_id == $quiz))
+      and ($images[2].uses | all(.quiz_id? != $quiz))' <<<"$response" >/dev/null \
+    || { fail_test "batch image usage mixed selected images: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -H 'Content-Type: application/json' \
     --data "$(jq -nc --argjson id "$private_id" '{image_ids:[$id]}')" \
     "${API_TEST_BASE_URL%/}/api/media/images/usage")"
   jq -e --argjson id "$history_quiz_id" \
