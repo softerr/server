@@ -367,7 +367,7 @@
 .mdb-related-blank-label { flex: 1; color: var(--text-grey); }
 
 .mdb-editor {
-  width: min(100%, 1800px);
+  width: 100%;
   padding: 24px 16px 16px;
   display: flex;
   flex: 1;

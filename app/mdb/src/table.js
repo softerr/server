@@ -159,15 +159,16 @@ export function createTableController({ page, endpoint, requestJson, responseErr
     const flexibleColumns = data.columns.length
       ? data.columns.map((column, index) => column.width === null ? index : -1).filter((index) => index >= 0)
       : [0]
+    const fillColumns = flexibleColumns.length ? flexibleColumns : columnWidths.map((_, index) => index)
     const extraWidth = Math.max(0, tableArea.clientWidth - rowHeadingWidth - 56
       - columnWidths.reduce((sum, width) => sum + width, 0))
-    for (const [offset, index] of flexibleColumns.entries()) {
+    for (const [offset, index] of fillColumns.entries()) {
       columnWidths[index] = Math.min(1200, columnWidths[index]
-        + Math.floor(extraWidth / flexibleColumns.length)
-        + (offset < extraWidth % flexibleColumns.length ? 1 : 0))
+        + Math.floor(extraWidth / fillColumns.length)
+        + (offset < extraWidth % fillColumns.length ? 1 : 0))
     }
     let tableWidth = rowHeadingWidth + columnWidths.reduce((sum, width) => sum + width, 0) + 56
-    table.style.width = `${tableWidth}px`
+    table.style.width = '100%'
     table.style.minWidth = `${tableWidth}px`
     const widths = document.createElement('colgroup')
     const columnCols = []
@@ -184,7 +185,6 @@ export function createTableController({ page, endpoint, requestJson, responseErr
       columnWidths[index] = next
       tableWidth += next - previous
       columnCols[index].style.width = `${next}px`
-      table.style.width = `${tableWidth}px`
       table.style.minWidth = `${tableWidth}px`
       return next
     }
