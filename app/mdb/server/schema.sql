@@ -14,6 +14,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS user_database_user_name_idx
 CREATE INDEX IF NOT EXISTS user_database_user_id_idx
     ON public.user_database (user_id, id DESC);
 
+CREATE TABLE IF NOT EXISTS public.database_share (
+    database_id BIGINT NOT NULL REFERENCES public.user_database(id) ON DELETE CASCADE,
+    auth_user_id BIGINT NOT NULL,
+    can_edit BOOLEAN NOT NULL DEFAULT FALSE,
+    created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (database_id, auth_user_id)
+);
+CREATE INDEX IF NOT EXISTS database_share_user_idx
+    ON public.database_share (auth_user_id, database_id);
+
 CREATE TABLE IF NOT EXISTS public.database_column (
     id BIGSERIAL PRIMARY KEY,
     database_id BIGINT NOT NULL REFERENCES public.user_database(id) ON DELETE CASCADE,
@@ -147,6 +157,7 @@ GRANT CONNECT ON DATABASE mdb TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public."user" TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.user_database TO auth_api;
+GRANT SELECT, INSERT, DELETE, UPDATE (can_edit) ON TABLE public.database_share TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.database_column, public.database_row TO auth_api;
 GRANT UPDATE (name, position, width, type, options, relation_database_id, relation_display_column_id) ON TABLE public.database_column TO auth_api;
 GRANT UPDATE (position) ON TABLE public.database_row TO auth_api;

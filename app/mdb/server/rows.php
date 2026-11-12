@@ -82,7 +82,7 @@ function handleAddMdbRows(array $user, int $databaseId): never
 function handleGetMdbRowUsage(array $user, int $databaseId, int $rowId): never
 {
     $db = connectAppDb('mdb');
-    mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
+    mdbOwnedDatabase($db, $user, $databaseId);
     $row = @pg_query_params($db,
         'SELECT 1 FROM public.database_row WHERE database_id = $1 AND id = $2',
         [$databaseId, $rowId]);
@@ -99,13 +99,16 @@ function handleGetMdbRowUsage(array $user, int $databaseId, int $rowId): never
            ON cell.database_id = c.database_id AND cell.column_id = c.id
          JOIN public.database_row r
            ON r.database_id = cell.database_id AND r.id = cell.row_id
-         WHERE u.auth_user_id = $1 AND c.relation_database_id = $2
+         WHERE (u.auth_user_id = $1 OR ($4::boolean AND EXISTS (
+             SELECT 1 FROM public.database_share s
+             WHERE s.database_id = d.id AND s.auth_user_id = $1)))
+           AND c.relation_database_id = $2
            AND CASE c.type
              WHEN \'relation\' THEN cell.value = $3::text
              WHEN \'multi_relation\' THEN cell.value::jsonb @> jsonb_build_array($3::bigint)
              ELSE FALSE END
          ORDER BY d.name, r.position, c.position',
-        [$user['id'], $databaseId, $rowId]);
+        [$user['id'], $databaseId, $rowId, !isset($user['api_token_id']) ? 't' : 'f']);
     if ($result === false) respond(500, ['error' => 'Failed to check row usage']);
     $uses = [];
     while (($usage = pg_fetch_assoc($result)) !== false) {

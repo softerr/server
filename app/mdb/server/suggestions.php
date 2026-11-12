@@ -6,7 +6,7 @@ function mdbSuggestionOwner(array $user, int $databaseId): void
     if (($user['account_kind'] ?? 'human') !== 'human') {
         respond(403, ['error' => 'Browser session required to review suggestions']);
     }
-    mdbOwnedDatabase(connectAppDb('mdb'), (int) $user['id'], $databaseId);
+    mdbOwnedDatabase(connectAppDb('mdb'), $user, $databaseId, true);
 }
 
 function mdbSuggestionCell($db, int $databaseId, int $rowId, int $columnId): ?array

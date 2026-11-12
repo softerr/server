@@ -4,6 +4,7 @@ import { createPageNotice } from '@softerr/shared/page-notice.js'
 import { removeIcon, deleteIcon } from '@softerr/shared/icons.js'
 import { setupMdbSuggestions } from './suggestions.js'
 import { renderDatabases } from './library.js'
+import { setupMdbSharing } from './sharing.js'
 import { createImagePicker } from './image-picker.js'
 import { createOrderingController } from './ordering.js'
 import { createCsvController } from './csv.js'
@@ -22,6 +23,9 @@ const exportCsvIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 const suggestionsIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
   <path d="M20 11.5c0 4.2-3.6 7.5-8 7.5-1.1 0-2.1-.2-3-.6L4 20l1.1-4.1A7.2 7.2 0 0 1 4 11.5C4 7.4 7.6 4 12 4s8 3.4 8 7.5Z"/>
   <path d="M8.5 10h7M8.5 13h5"/>
+</svg>`
+const shareIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.5a5.5 5.5 0 0 1 11 0V19H3.5ZM19 8v6m-3-3h6"/>
 </svg>`
 
 function renderDatabaseEditor(app, { requestJson, postJson, responseError, setStatus }) {
@@ -47,6 +51,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
           <button id="mdb-import-button" class="auth-button auth-button-secondary mdb-editor-tool" type="button" aria-label="Import CSV" title="Import CSV">${importCsvIcon}</button>
           <button id="mdb-export-button" class="auth-button auth-button-secondary mdb-editor-tool" type="button" aria-label="Export CSV" title="Export CSV" disabled>${exportCsvIcon}</button>
           <button id="mdb-suggestions-button" class="auth-button auth-button-secondary mdb-editor-tool" type="button" aria-label="Suggestions" title="Suggestions">${suggestionsIcon}<span class="mdb-suggestions-count" aria-hidden="true" hidden></span></button>
+          <button id="mdb-share-button" class="auth-button auth-button-secondary mdb-editor-tool" type="button" aria-label="Share database" title="Share database" hidden>${shareIcon}</button>
           <div class="mdb-header-pager">
             <label class="mdb-page-size">Rows
               <select id="mdb-page-size" aria-label="Rows per page">
@@ -71,6 +76,20 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       <p id="mdb-editor-status" class="form-status" role="status" aria-live="polite"></p>
       <div id="mdb-table-area" class="mdb-table-area"></div>
     </main>
+    <dialog id="mdb-share-dialog" class="mdb-dialog mdb-share-dialog" aria-labelledby="mdb-share-title">
+      <div class="mdb-dialog-heading">
+        <h2 id="mdb-share-title">Share database</h2>
+        <button id="mdb-share-close" type="button" aria-label="Close sharing">×</button>
+      </div>
+      <p>Choose what each person can do with this database.</p>
+      <div id="mdb-share-list" class="mdb-share-list"></div>
+      <form id="mdb-share-form">
+        <label class="field"><span>Username</span><input name="username" maxlength="100" required autocomplete="off" /></label>
+        <label class="field"><span>Access</span><select name="permission"><option value="view">Can view</option><option value="edit">Can edit</option></select></label>
+        <p id="mdb-share-status" class="form-status" role="status" aria-live="polite"></p>
+        <div class="dialog-actions"><button class="auth-button auth-button-primary" type="submit">Share</button></div>
+      </form>
+    </dialog>
     <dialog id="mdb-column-dialog" class="mdb-dialog" aria-labelledby="mdb-column-title">
       <div class="mdb-dialog-heading">
         <h2 id="mdb-column-title">Add column</h2>
@@ -186,6 +205,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   let loadedRows = 0
   let allRowsLoading = false
   let currentTable = null
+  let canEdit = false
 
   let searchTimer = null
   searchInput.addEventListener('input', () => {
@@ -233,6 +253,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   })
 
   function saveCell(control, rowId, columnId, value, previous, restore, saved) {
+    if (!canEdit) return null
     if (JSON.stringify(value) === JSON.stringify(previous)) return null
     control.disabled = true
     notice.show('Saving cell…', 'info')
@@ -307,6 +328,11 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       if (!response.ok) throw new Error(responseError(response, payload))
       if (!listResponse.ok) throw new Error(responseError(listResponse, listPayload))
       databases = listPayload.databases
+      canEdit = payload.database.permission !== 'view'
+      page.querySelector('.mdb-editor').dataset.permission = payload.database.permission
+      page.querySelector('#mdb-share-button').hidden = !payload.database.is_owner
+      page.querySelector('#mdb-suggestions-button').hidden = !payload.database.is_owner
+      page.querySelector('#mdb-import-button').hidden = !canEdit
       if (pageSize !== null && pageOffset > 0 && payload.total_rows <= pageOffset) {
         pageOffset = Math.max(0, Math.ceil(payload.total_rows / pageSize) - 1) * pageSize
         return refresh()
@@ -322,6 +348,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       const relatedIds = [...new Set(payload.columns.filter((column) => ['relation', 'multi_relation'].includes(column.type))
         .map((column) => column.relation_database_id))]
       const metadataReady = Promise.all(relatedIds.map(async (id) => {
+        if (id !== databaseId && !databases.some((database) => database.id === id)) return
         const target = id === databaseId ? payload : await (async () => {
           const [relatedResponse, relatedPayload] = await requestJson('GET',
             `/api/mdb/databases/${id}?limit=1`)
@@ -334,6 +361,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       async function loadRelationLabels(rows, refreshStart = new Map()) {
         if (!page.isConnected || generation !== refreshGeneration) return
         await Promise.all(relatedIds.map(async (id) => {
+          if (id !== databaseId && !databases.some((database) => database.id === id)) return
           for (const column of payload.columns.filter((item) => item.relation_database_id === id)) {
             const ids = [...new Set(rows.flatMap((row) => {
               const value = row.values?.[column.id]
@@ -414,7 +442,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     getActiveSort: () => activeSort, getDatabases: () => databases })
 
   async function createRow(button) {
-    if (button.disabled) return
+    if (button.disabled || !canEdit) return
     button.disabled = true
     try {
       await rowsReady
@@ -443,6 +471,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   }
   setupMdbSuggestions(page, { endpoint, requestJson, responseError, setStatus, notice,
     refresh, waitForWrites: () => Promise.all([...pendingWrites]) })
+  setupMdbSharing(page, { endpoint, requestJson, responseError, setStatus, notice })
   refresh()
 }
 

@@ -3,7 +3,10 @@ declare(strict_types=1);
 
 function publicMdbDatabase(array $row): array
 {
-    return ['id' => (int) $row['id'], 'name' => $row['name'], 'created' => $row['created']];
+    return ['id' => (int) $row['id'], 'name' => $row['name'], 'created' => $row['created'],
+        'is_owner' => ($row['is_owner'] ?? 't') === 't',
+        'permission' => ($row['is_owner'] ?? 't') === 't' ? 'owner'
+            : (($row['shared_can_edit'] ?? 'f') === 't' ? 'edit' : 'view')];
 }
 
 function mdbName(mixed $value): string
@@ -19,15 +22,26 @@ function mdbName(mixed $value): string
     return $name;
 }
 
-function mdbOwnedDatabase($db, int $authUserId, int $databaseId): array
+function mdbOwnedDatabase($db, array $user, int $databaseId,
+    bool $ownerOnly = false, bool $write = false): array
 {
     $result = @pg_query_params($db,
-        'SELECT d.id, d.name, d.created FROM public.user_database d
+        'SELECT d.id, d.name, d.created, (u.auth_user_id = $2) AS is_owner,
+             COALESCE((SELECT s.can_edit FROM public.database_share s
+                 WHERE s.database_id = d.id AND s.auth_user_id = $2), FALSE) AS shared_can_edit
+         FROM public.user_database d
          JOIN public."user" u ON u.id = d.user_id
-         WHERE d.id = $1 AND u.auth_user_id = $2', [$databaseId, $authUserId]);
+         WHERE d.id = $1 AND (u.auth_user_id = $2 OR ($3::boolean AND EXISTS (
+             SELECT 1 FROM public.database_share s
+             WHERE s.database_id = d.id AND s.auth_user_id = $2
+               AND (NOT $4::boolean OR s.can_edit))))',
+        [$databaseId, $user['id'], !$ownerOnly && !isset($user['api_token_id']) ? 't' : 'f',
+         $write ? 't' : 'f']);
     if ($result === false) respond(500, ['error' => 'Failed to load database']);
     $row = pg_fetch_assoc($result);
-    if ($row === false) respond(404, ['error' => 'Database not found']);
+    if ($row === false || ($ownerOnly && $row['is_owner'] !== 't')) {
+        respond(404, ['error' => 'Database not found']);
+    }
     return $row;
 }
 
@@ -52,20 +66,39 @@ function mdbLockDatabases($db, array $databaseIds): void
 }
 
 function mdbBeginWrite($db, array $user, int $databaseId,
-    array $additionalDatabaseIds = [], bool $exclusiveOwner = false): void
+    array $additionalDatabaseIds = [], bool $exclusiveOwner = false, bool $ownerOnly = false,
+    array $additionalAuthUserIds = []): void
 {
-    if (@pg_query($db, 'BEGIN') === false
-        || @pg_query_params($db, $exclusiveOwner
-            ? 'SELECT pg_advisory_xact_lock($1::bigint)'
-            : 'SELECT pg_advisory_xact_lock_shared($1::bigint)', [$user['id']]) === false) {
+    $databaseIds = array_values(array_unique([$databaseId, ...$additionalDatabaseIds]));
+    $owners = @pg_query_params($db,
+        'SELECT DISTINCT u.auth_user_id FROM public.user_database d
+         JOIN public."user" u ON u.id = d.user_id WHERE d.id = ANY($1::bigint[])',
+        ['{' . implode(',', $databaseIds) . '}']);
+    if ($owners === false) respond(500, ['error' => 'Failed to edit database']);
+    $ownerIds = [];
+    while (($owner = pg_fetch_assoc($owners)) !== false) $ownerIds[] = (int) $owner['auth_user_id'];
+    $lockIds = array_values(array_unique([(int) $user['id'], ...$ownerIds, ...$additionalAuthUserIds]));
+    sort($lockIds, SORT_NUMERIC);
+    if (@pg_query($db, 'BEGIN') === false) {
         respond(500, ['error' => 'Failed to edit database']);
     }
-    mdbLockDatabases($db, [$databaseId, ...$additionalDatabaseIds]);
+    foreach ($lockIds as $id) {
+        $exclusive = $exclusiveOwner && in_array($id, $ownerIds, true);
+        if (@pg_query_params($db, $exclusive
+            ? 'SELECT pg_advisory_xact_lock($1::bigint)'
+            : 'SELECT pg_advisory_xact_lock_shared($1::bigint)', [$id]) === false) {
+            respond(500, ['error' => 'Failed to edit database']);
+        }
+    }
+    mdbLockDatabases($db, $databaseIds);
     $active = @pg_query_params(connectDb(),
-        'SELECT 1 FROM public."user" WHERE id = $1
-         AND verified = TRUE AND approved_at IS NOT NULL AND deleting = FALSE', [$user['id']]);
+        'SELECT COUNT(*) FROM public."user" WHERE id = ANY($1::bigint[])
+         AND verified = TRUE AND approved_at IS NOT NULL AND deleting = FALSE',
+        ['{' . implode(',', $lockIds) . '}']);
     if ($active === false) respond(500, ['error' => 'Failed to authorize account']);
-    if (pg_num_rows($active) === 0) respond(401, ['error' => 'Not authenticated']);
-    mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
+    if ((int) pg_fetch_result($active, 0, 0) !== count($lockIds)) {
+        respond(401, ['error' => 'Not authenticated']);
+    }
+    mdbOwnedDatabase($db, $user, $databaseId, $ownerOnly, true);
 }
 

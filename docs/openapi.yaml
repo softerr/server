@@ -114,13 +114,13 @@ paths:
     get:
       tags: [MDB]
       operationId: listMdbDatabases
-      summary: List databases created by the current account
+      summary: List owned and shared databases
       security:
         - apiBearer: []
         - sessionCookie: []
       responses:
         '200':
-          description: Databases owned by the current account, newest first.
+          description: Databases accessible to the current account, newest first. API tokens only see their existing grants.
           content:
             application/json:
               schema:
@@ -238,6 +238,103 @@ paths:
         '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
         '404': {description: Database not found in this account.}
         '500': {$ref: '#/components/responses/InternalError'}
+
+  /mdb/databases/{databaseId}/shares:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    get:
+      tags: [MDB]
+      operationId: listMdbShares
+      summary: List users with access to an owned database
+      description: Requires the owner's browser session.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Current shares.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [shares]
+                properties:
+                  shares:
+                    type: array
+                    items: {$ref: '#/components/schemas/MdbShare'}
+        '404': {description: Database not found or not owned by this user.}
+    post:
+      tags: [MDB]
+      operationId: addMdbShare
+      summary: Share a database with a user
+      description: Requires the owner's browser session. The recipient must be a verified, approved human account.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, permission]
+              properties:
+                username: {type: string}
+                permission: {type: string, enum: [view, edit]}
+      responses:
+        '201':
+          description: Database shared.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MdbShare'}
+        '400': {description: Invalid request or owner selected as recipient.}
+        '404': {description: Database or recipient not found.}
+        '409': {description: Database already shared with this user.}
+
+  /mdb/databases/{databaseId}/shares/{userId}:
+    parameters:
+      - name: databaseId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+      - name: userId
+        in: path
+        required: true
+        schema: {type: integer, format: int64, minimum: 1}
+    patch:
+      tags: [MDB]
+      operationId: updateMdbShare
+      summary: Change a user's database access
+      description: Requires the owner's browser session.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [permission]
+              properties:
+                permission: {type: string, enum: [view, edit]}
+      responses:
+        '200':
+          description: Access updated.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MdbShare'}
+        '404': {description: Database or share not found.}
+    delete:
+      tags: [MDB]
+      operationId: removeMdbShare
+      summary: Revoke a user's database access
+      description: Requires the owner's browser session.
+      security:
+        - sessionCookie: []
+      responses:
+        '204': {description: Access revoked.}
+        '404': {description: Database or share not found.}
 
   /mdb/databases/{databaseId}/choices:
     parameters:
@@ -4643,11 +4740,20 @@ components:
   schemas:
     MdbDatabase:
       type: object
-      required: [id, name, created]
+      required: [id, name, created, is_owner, permission]
       properties:
         id: {type: integer, format: int64, minimum: 1}
         name: {type: string, minLength: 1, maxLength: 100}
         created: {type: string}
+        is_owner: {type: boolean}
+        permission: {type: string, enum: [owner, view, edit]}
+    MdbShare:
+      type: object
+      required: [user_id, permission]
+      properties:
+        user_id: {type: integer, format: int64, minimum: 1}
+        username: {type: [string, 'null']}
+        permission: {type: string, enum: [view, edit]}
     MdbColumn:
       type: object
       required: [id, name, position, width, type, options, relation_database_id, relation_display_column_id]

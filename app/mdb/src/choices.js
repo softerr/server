@@ -229,7 +229,7 @@ export function createChoiceController({ page, endpoint, requestJson, postJson, 
   relatedPrev.addEventListener('click', () => { relationOffset -= 50; loadRelationChoices() })
   relatedNext.addEventListener('click', () => { relationOffset += 50; loadRelationChoices() })
 
-  function addChoiceControl(td, row, column, related, label, value) {
+  function addChoiceControl(td, row, column, related, label, value, editable = true) {
     const isRelation = column.type === 'relation' || column.type === 'multi_relation'
     const isSingle = column.type === 'select' || column.type === 'relation'
     if (isRelation && !getRelationChoiceCaches().has(column.id)) {
@@ -259,7 +259,7 @@ export function createChoiceController({ page, endpoint, requestJson, postJson, 
     }
     button.setCellValue = (next) => { savedValue = next; display() }
     const refreshChoices = () => {
-      button.disabled = isRelation && !related.has(column.relation_database_id)
+      button.disabled = !editable || (isRelation && !related.has(column.relation_database_id))
       display()
     }
     if (isRelation) {

@@ -51,7 +51,8 @@ function mdbColumnSettings(array $payload, ?array $current = null): array
     return [$type, [], null, null];
 }
 
-function mdbRequireRelatedDatabase($db, array $user, ?int $relationId, ?int $displayId): void
+function mdbRequireRelatedDatabase($db, array $user, int $databaseId,
+    ?int $relationId, ?int $displayId): void
 {
     if ($relationId === null) return;
     if (($user['api_token_id'] ?? null) !== null && (int) $user['id'] === (int) $user['service_owner_id']
@@ -60,7 +61,11 @@ function mdbRequireRelatedDatabase($db, array $user, ?int $relationId, ?int $dis
     }
     $result = @pg_query_params($db,
         'SELECT 1 FROM public.user_database d JOIN public."user" u ON u.id = d.user_id
-         WHERE d.id = $1 AND u.auth_user_id = $2', [$relationId, $user['id']]);
+         JOIN public.user_database source ON source.id = $4 AND source.user_id = d.user_id
+         WHERE d.id = $1 AND (u.auth_user_id = $2 OR ($3::boolean AND EXISTS (
+             SELECT 1 FROM public.database_share s
+             WHERE s.database_id = d.id AND s.auth_user_id = $2)))',
+        [$relationId, $user['id'], !isset($user['api_token_id']) ? 't' : 'f', $databaseId]);
     if ($result === false) respond(500, ['error' => 'Failed to check related database']);
     if (pg_num_rows($result) === 0) respond(400, ['error' => 'Related database not found']);
     if ($displayId === null) return;
@@ -78,7 +83,7 @@ function handleAddMdbColumn(array $user, int $databaseId): never
     [$type, $options, $relationId, $displayId] = mdbColumnSettings($payload ?? []);
     $db = connectAppDb('mdb');
     mdbBeginWrite($db, $user, $databaseId);
-    mdbRequireRelatedDatabase($db, $user, $relationId, $displayId);
+    mdbRequireRelatedDatabase($db, $user, $databaseId, $relationId, $displayId);
     $result = @pg_query_params($db,
         'INSERT INTO public.database_column
              (database_id, name, position, type, options, relation_database_id, relation_display_column_id)
@@ -126,7 +131,7 @@ function handleUpdateMdbColumn(array $user, int $databaseId, int $columnId): nev
         || !in_array($type, ['select', 'multi_select'], true))) {
         respond(400, ['error' => 'Option renames require a select column']);
     }
-    mdbRequireRelatedDatabase($db, $user, $relationId, $displayId);
+    mdbRequireRelatedDatabase($db, $user, $databaseId, $relationId, $displayId);
     $duplicate = @pg_query_params($db,
         'SELECT 1 FROM public.database_column
          WHERE database_id = $1 AND id <> $2 AND lower(name) = lower($3)',

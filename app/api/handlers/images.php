@@ -453,6 +453,20 @@ function imageUsedByReadableOwnerApp(int $imageId, array $user): bool
     return false;
 }
 
+function sharedAppImageIds(array $imageIds, array $user): array
+{
+    if (($user['account_kind'] ?? 'human') !== 'human' || $imageIds === []) return [];
+    $visible = [];
+    foreach (glob(__DIR__ . '/../apps/*/media_access.php') ?: [] as $file) {
+        $check = require $file;
+        if (!is_callable($check)) respond(500, ['error' => 'Invalid app media access']);
+        foreach ($check($imageIds, $user) as $id) {
+            if (is_int($id) && in_array($id, $imageIds, true)) $visible[$id] = true;
+        }
+    }
+    return array_keys($visible);
+}
+
 function storedMediaThumbnail($db, array $row): array
 {
     $hash = trim($row['sha256']);
@@ -502,7 +516,8 @@ function handleGetImage(int $imageId, bool $thumbnail = false): never
         $readOwnerId = $user['service_owner_id'] ?? null;
         $ownerImage = imageUsedByReadableOwnerQuiz($imageId, $user)
             || imageUsedByReadableOwnerApp($imageId, $user);
-        if (!$ownerImage && !imageUsedByAccessibleQuiz($imageId, $user)) {
+        if (!$ownerImage && !imageUsedByAccessibleQuiz($imageId, $user)
+            && !in_array($imageId, sharedAppImageIds([$imageId], $user), true)) {
             respond(404, ['error' => 'Image not found']);
         }
         $result = @pg_query_params($db,
@@ -579,6 +594,21 @@ function handleGetMediaThumbnails(): never
             if ($row === false) continue;
             [$mime, $bytes] = storedMediaThumbnail($db, $row);
             $images[] = ['id' => $id, 'mime_type' => $mime, 'data' => base64_encode($bytes)];
+        }
+    }
+    $found = array_column($images, null, 'id');
+    $sharedIds = array_values(array_diff(sharedAppImageIds($ids, $user), array_keys($found)));
+    if ($sharedIds !== []) {
+        $sharedImages = @pg_query_params($db,
+            'SELECT i.id, b.id AS blob_id, b.sha256, b.mime_type, b.width, b.height,
+                    b.thumbnail_mime_type
+             FROM public.image i JOIN public.image_blob b ON b.id = i.blob_id
+             WHERE i.id = ANY($1::bigint[])', ['{' . implode(',', $sharedIds) . '}']);
+        if ($sharedImages === false) respond(500, ['error' => 'Failed to load thumbnails']);
+        while (($row = pg_fetch_assoc($sharedImages)) !== false) {
+            [$mime, $bytes] = storedMediaThumbnail($db, $row);
+            $images[] = ['id' => (int) $row['id'], 'mime_type' => $mime,
+                'data' => base64_encode($bytes)];
         }
     }
     header('Cache-Control: private, no-store');
@@ -732,7 +762,9 @@ function appendMdbImageUsage($mdbDb, array $params, array &$images): void
          JOIN public.user_database d ON d.id = v.database_id
          JOIN public."user" u ON u.id = d.user_id
          JOIN selected ON v.value = selected.image_id::text
-         WHERE c.type = \'image\' AND (selected.shared OR u.auth_user_id = $3)
+         WHERE c.type = \'image\' AND (selected.shared OR u.auth_user_id = $3
+             OR EXISTS (SELECT 1 FROM public.database_share share
+                 WHERE share.database_id = d.id AND share.auth_user_id = $3))
          ORDER BY selected.image_id, d.name, r.position, c.position', $params);
     if ($result === false) respond(500, ['error' => 'Failed to check image usage']);
     while (($row = pg_fetch_assoc($result)) !== false) {
@@ -831,7 +863,9 @@ function handleDeleteImage(int $imageId): never
           JOIN public.user_database d ON d.id = v.database_id
           JOIN public."user" u ON u.id = d.user_id
           WHERE c.type = \'image\' AND v.value = $1::text
-            AND ($2::boolean OR u.auth_user_id = $3)) AS used',
+            AND ($2::boolean OR u.auth_user_id = $3 OR EXISTS (
+                SELECT 1 FROM public.database_share share
+                WHERE share.database_id = d.id AND share.auth_user_id = $3))) AS used',
         [$imageId, $shared ? 't' : 'f', $user['id']]);
     if ($mdbUsed === false) respond(500, ['error' => 'Failed to delete image']);
     if ($force !== '1' && (pg_fetch_result($used, 0, 'used') === 't'

@@ -20,7 +20,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
   dragHandle, dropTarget, openColumnDialog, openDeleteDialog, createRow, refresh,
   getActiveSort, setActiveSort, getSearchQuery, getAllRowsLoading, setPageOffset,
   resetRelationCaches }) {
-  function addCellControl(td, row, column, related) {
+  function addCellControl(td, row, column, related, editable) {
     const label = `${column.name}, row ${row.position}`
     const value = row.values?.[column.id]
     if (column.type === 'image') {
@@ -45,6 +45,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
       }
       button.addEventListener('click', () => openImageDialog({ button, row, column,
         get value() { return savedValue }, set value(next) { savedValue = next; render() } }))
+      button.disabled = !editable
       render()
       td.append(button)
       return
@@ -58,11 +59,13 @@ export function createTableController({ page, endpoint, requestJson, responseErr
       input.autocomplete = 'off'
       input.placeholder = 'YYYY-MM-DD'
       input.value = value ?? ''
+      input.readOnly = !editable
       input.setAttribute('aria-label', label)
       const picker = document.createElement('input')
       picker.type = 'date'
       picker.className = 'mdb-date-native-picker'
       picker.value = input.value
+      picker.disabled = !editable
       picker.tabIndex = -1
       picker.setAttribute('aria-hidden', 'true')
       const calendar = document.createElement('button')
@@ -70,6 +73,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
       calendar.className = 'mdb-date-button'
       calendar.innerHTML = calendarIcon
       calendar.setAttribute('aria-label', `Choose ${label}`)
+      calendar.hidden = !editable
       calendar.addEventListener('click', () => {
         picker.value = parsePastedDate(input.value, navigator.language) ?? savedValue
         try { picker.showPicker() } catch { picker.focus(); picker.click() }
@@ -106,7 +110,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
       return
     }
     if (['select', 'multi_select', 'relation', 'multi_relation'].includes(column.type)) {
-      addChoiceControl(td, row, column, related, label, value)
+      addChoiceControl(td, row, column, related, label, value, editable)
       return
     }
 
@@ -122,6 +126,8 @@ export function createTableController({ page, endpoint, requestJson, responseErr
       control.value = value ?? ''
     }
     let savedValue = column.type === 'checkbox' ? control.checked : control.value
+    if (column.type === 'checkbox') control.disabled = !editable
+    else control.readOnly = !editable
     control.addEventListener('change', () => {
       const next = column.type === 'checkbox' ? control.checked : control.value
       saveCell(control, row.id, column.id, next, savedValue,
@@ -133,6 +139,8 @@ export function createTableController({ page, endpoint, requestJson, responseErr
   }
 
   function showTable(data, related) {
+    const editable = data.database.permission !== 'view'
+    tableArea.classList.toggle('mdb-readonly', !editable)
     title.textContent = data.database.name
     tableArea.replaceChildren()
     resetRelationCaches()
@@ -191,6 +199,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
       handle.setAttribute('aria-valuemax', '1200')
       handle.setAttribute('aria-valuenow', String(columnWidths[index]))
       handle.title = 'Drag to resize, or press Left or Right arrow'
+      handle.disabled = !editable
       let drag = null
       let keyboardStart = null
       const update = (width) => {
@@ -278,7 +287,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
     }
     function updateRowDragHandles() {
       body.querySelectorAll('.mdb-drag-handle[data-order-kind="rows"]').forEach((handle) => {
-        handle.disabled = getAllRowsLoading() || getActiveSort() !== null || getSearchQuery() !== ''
+        handle.disabled = !editable || getAllRowsLoading() || getActiveSort() !== null || getSearchQuery() !== ''
         handle.draggable = !handle.disabled
       })
     }
@@ -307,6 +316,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
       button.querySelector('span').textContent = column.name
       button.title = column.name
       button.setAttribute('aria-label', `Edit column ${column.name}`)
+      button.disabled = !editable
       button.addEventListener('click', () => openColumnDialog(column))
       contents.append(button)
       const sort = document.createElement('button')
@@ -338,6 +348,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
     addColumn.innerHTML = '<span aria-hidden="true">+</span>'
     addColumn.setAttribute('aria-label', 'Add column')
     addColumn.title = 'Add column'
+    addColumn.hidden = !editable
     addColumn.addEventListener('click', () => openColumnDialog())
     columnPlaceholder.append(addColumn)
     headRow.append(columnPlaceholder)
@@ -365,12 +376,13 @@ export function createTableController({ page, endpoint, requestJson, responseErr
         deleteRow.innerHTML = deleteIcon
         deleteRow.setAttribute('aria-label', `Delete row ${row.position}`)
         deleteRow.title = `Delete row ${row.position}`
+        deleteRow.hidden = !editable
         deleteRow.addEventListener('click', () => openDeleteDialog('rows', row))
         number.append(dragHandle('rows', row, index, rowIds), numberLabel, deleteRow)
         tr.append(number)
         for (const column of data.columns) {
           const td = document.createElement('td')
-          addCellControl(td, row, column, related)
+          addCellControl(td, row, column, related, editable)
           tr.append(td)
         }
         if (data.columns.length === 0) {
@@ -403,6 +415,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
     addRow.innerHTML = '<span aria-hidden="true">+</span>'
     addRow.setAttribute('aria-label', 'Add row')
     addRow.title = 'Add row'
+    addRow.hidden = !editable
     addRow.addEventListener('click', () => createRow(addRow))
     rowCell.append(addRow)
     rowPlaceholder.append(rowCell)

@@ -184,7 +184,7 @@ function handlePreviewMdbCsv(array $user, int $databaseId): never
 {
     [$headers, $rows] = mdbCsvRead();
     $db = connectAppDb('mdb');
-    mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
+    mdbOwnedDatabase($db, $user, $databaseId);
     $plans = mdbCsvColumnPlans($db, $databaseId, $headers, $rows);
     respond(200, ['row_count' => count($rows), 'columns' => array_map(
         static fn (array $plan): array => ['name' => $plan['name'],
@@ -237,7 +237,7 @@ function mdbCsvRelationPlan($db, array $user, ?array $existing, mixed $settings,
         && tokenOwnerAccess($user, 'mdb', (int) $targetId, true) === null) {
         respond(403, ['error' => 'Related database is not editable by this token']);
     }
-    mdbOwnedDatabase($db, (int) $user['id'], (int) $targetId);
+    mdbOwnedDatabase($db, $user, (int) $targetId);
     $result = @pg_query_params($db,
         'SELECT id, type, options FROM public.database_column WHERE database_id = $1 AND id = $2',
         [$targetId, $lookupId]);
@@ -396,8 +396,12 @@ function mdbCsvRequireLockTargets($db, array $user, int $databaseId, array $affe
     $owned = @pg_query_params($db,
         'SELECT COUNT(*) FROM public.user_database d
          JOIN public."user" u ON u.id = d.user_id
-         WHERE d.id = ANY($1::bigint[]) AND u.auth_user_id = $2',
-        ['{' . implode(',', $targets) . '}', $user['id']]);
+         JOIN public.user_database source ON source.id = $4 AND source.user_id = d.user_id
+         WHERE d.id = ANY($1::bigint[]) AND (u.auth_user_id = $2
+             OR ($3::boolean AND EXISTS (SELECT 1 FROM public.database_share s
+                 WHERE s.database_id = d.id AND s.auth_user_id = $2 AND s.can_edit)))',
+        ['{' . implode(',', $targets) . '}', $user['id'],
+         !isset($user['api_token_id']) ? 't' : 'f', $databaseId]);
     if ($owned === false) respond(500, ['error' => 'Failed to check related databases']);
     if ((int) pg_fetch_result($owned, 0, 0) !== count($targets)) {
         respond(400, ['error' => 'Related database not found']);
@@ -412,7 +416,7 @@ function handleImportMdbCsv(array $user, int $databaseId): never
     $relations = json_decode((string) ($_POST['relations'] ?? '{}'), true);
     if (!is_array($relations)) respond(400, ['error' => 'Invalid relation settings']);
     $db = connectAppDb('mdb');
-    mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
+    mdbOwnedDatabase($db, $user, $databaseId);
     $plans = mdbCsvColumnPlans($db, $databaseId, $headers, $rows);
     $affected = mdbCsvAffectedDatabases($databaseId, $plans, $types, $relations);
     mdbCsvRequireLockTargets($db, $user, $databaseId, $affected);

@@ -45,8 +45,7 @@ function handleDeleteMdbItem(array $user, int $databaseId, int $itemId, string $
     // Deleting a row clears references in other databases, so it must
     // exclude their writes until the cleanup has committed.
     mdbBeginWrite($db, $user, $databaseId, [], $kind === 'rows');
-    if ($kind === 'rows' && ($user['api_token_id'] ?? null) !== null
-        && (int) $user['id'] === (int) $user['service_owner_id']) {
+    if ($kind === 'rows') {
         $references = @pg_query_params($db,
             'SELECT DISTINCT c.database_id FROM public.database_column c
              JOIN public.database_cell cell
@@ -57,8 +56,25 @@ function handleDeleteMdbItem(array $user, int $databaseId, int $itemId, string $
             [$databaseId, $itemId]);
         if ($references === false) respond(500, ['error' => 'Failed to check related rows']);
         while (($reference = pg_fetch_assoc($references)) !== false) {
-            if (tokenOwnerAccess($user, 'mdb', (int) $reference['database_id'], true) === null) {
-                respond(403, ['error' => 'Row is used by a database this token cannot edit']);
+            $sourceId = (int) $reference['database_id'];
+            if (($user['api_token_id'] ?? null) !== null
+                && (int) $user['id'] === (int) $user['service_owner_id']) {
+                if (tokenOwnerAccess($user, 'mdb', $sourceId, true) === null) {
+                    respond(403, ['error' => 'Row is used by a database this token cannot edit']);
+                }
+            } elseif (($user['api_token_id'] ?? null) !== null) {
+                continue;
+            } else {
+                $allowed = @pg_query_params($db,
+                    'SELECT 1 FROM public.user_database d JOIN public."user" u ON u.id = d.user_id
+                     WHERE d.id = $1 AND (u.auth_user_id = $2 OR EXISTS (
+                         SELECT 1 FROM public.database_share s
+                         WHERE s.database_id = d.id AND s.auth_user_id = $2 AND s.can_edit))',
+                    [$sourceId, $user['id']]);
+                if ($allowed === false) respond(500, ['error' => 'Failed to check related rows']);
+                if (pg_num_rows($allowed) === 0) {
+                    respond(403, ['error' => 'Row is used by a database you cannot edit']);
+                }
             }
         }
     }

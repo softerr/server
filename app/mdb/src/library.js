@@ -52,6 +52,12 @@ export function renderDatabases(app, { requestJson, postJson, responseError, set
       card.className = 'mdb-card'
       card.innerHTML = `<span class="mdb-card-icon">${databaseIcon}</span><h2></h2>`
       card.querySelector('h2').textContent = database.name
+      if (!database.is_owner) {
+        const access = document.createElement('span')
+        access.className = 'mdb-card-access'
+        access.textContent = database.permission === 'edit' ? 'Shared with you · Can edit' : 'Shared with you · Can view'
+        card.append(access)
+      }
       card.addEventListener('click', () => { window.location.hash = `database?id=${database.id}` })
       grid.append(card)
     }

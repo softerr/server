@@ -153,7 +153,7 @@ function handleQueryMdbDatabase(array $user, int $databaseId): never
 {
     [$limit, $offset, $query, $sortId, $direction] = mdbTableQuery();
     $db = connectAppDb('mdb');
-    $database = mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
+    $database = mdbOwnedDatabase($db, $user, $databaseId);
     $columnsResult = @pg_query_params($db,
         'SELECT id, name, position, width, type, options, relation_database_id,
             relation_display_column_id FROM public.database_column
@@ -176,7 +176,7 @@ function handleQueryMdbDatabase(array $user, int $databaseId): never
 function handleMdbChoices(array $user, int $databaseId): never
 {
     $db = connectAppDb('mdb');
-    mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
+    mdbOwnedDatabase($db, $user, $databaseId);
     $displayId = filter_var($_GET['display_column_id'] ?? '0', FILTER_VALIDATE_INT,
         ['options' => ['min_range' => 0]]);
     if ($displayId === false) respond(400, ['error' => 'Invalid display column']);
@@ -267,7 +267,7 @@ function handleExportMdbCsv(array $user, int $databaseId): never
     if (@pg_query($db, 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY') === false) {
         respond(500, ['error' => 'Failed to start CSV export']);
     }
-    $database = mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
+    $database = mdbOwnedDatabase($db, $user, $databaseId);
     $columnsResult = @pg_query_params($db,
         'SELECT id, name, type, relation_database_id, relation_display_column_id
          FROM public.database_column WHERE database_id = $1 ORDER BY position', [$databaseId]);

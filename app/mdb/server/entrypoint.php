@@ -40,6 +40,21 @@ if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)$#D', $path, $matc
     }
     respond(405, ['error' => 'Method not allowed']);
 }
+if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)/shares$#D', $path, $match)) {
+    $id = filter_var($match[1], FILTER_VALIDATE_INT);
+    if ($id === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'GET') handleListMdbShares($requestUser, $id);
+    if ($method === 'POST') handleAddMdbShare($requestUser, $id);
+    respond(405, ['error' => 'Method not allowed']);
+}
+if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)/shares/([1-9][0-9]*)$#D', $path, $match)) {
+    $id = filter_var($match[1], FILTER_VALIDATE_INT);
+    $recipientId = filter_var($match[2], FILTER_VALIDATE_INT);
+    if ($id === false || $recipientId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'PATCH') handleUpdateMdbShare($requestUser, $id, $recipientId);
+    if ($method === 'DELETE') handleRemoveMdbShare($requestUser, $id, $recipientId);
+    respond(405, ['error' => 'Method not allowed']);
+}
 if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)/(choices|export\.csv)$#D', $path, $match)) {
     $id = filter_var($match[1], FILTER_VALIDATE_INT);
     if ($id === false) respond(404, ['error' => 'Not found']);

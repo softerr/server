@@ -5,13 +5,20 @@ function handleListMdbDatabases(array $user): never
 {
     $db = connectAppDb('mdb');
     $result = @pg_query_params($db,
-        'SELECT d.id, d.name, d.created FROM public.user_database d
+        'SELECT d.id, d.name, d.created, (u.auth_user_id = $5) AS is_owner,
+             COALESCE((SELECT s.can_edit FROM public.database_share s
+                 WHERE s.database_id = d.id AND s.auth_user_id = $5), FALSE) AS shared_can_edit
+         FROM public.user_database d
          JOIN public."user" u ON u.id = d.user_id
          WHERE u.auth_user_id = $1 OR (u.auth_user_id = $2
-             AND ($3::boolean OR d.id = ANY($4::bigint[]))) ORDER BY d.id DESC',
+             AND ($3::boolean OR d.id = ANY($4::bigint[])))
+             OR ($6::boolean AND EXISTS (SELECT 1 FROM public.database_share s
+                 WHERE s.database_id = d.id AND s.auth_user_id = $5))
+         ORDER BY d.id DESC',
         [$user['service_account_id'] ?? $user['id'], $user['service_owner_id'] ?? null,
          tokenOwnerAccess($user, 'mdb') !== null ? 't' : 'f',
-         '{' . implode(',', tokenOwnerResourceIds($user, 'mdb')) . '}']);
+         '{' . implode(',', tokenOwnerResourceIds($user, 'mdb')) . '}', $user['id'],
+         !isset($user['api_token_id']) ? 't' : 'f']);
     if ($result === false) respond(500, ['error' => 'Failed to load databases']);
     $databases = [];
     while ($row = pg_fetch_assoc($result)) $databases[] = publicMdbDatabase($row);
@@ -55,7 +62,7 @@ function handleCreateMdbDatabase(array $user): never
 function handleGetMdbDatabase(array $user, int $databaseId): never
 {
     $db = connectAppDb('mdb');
-    $database = mdbOwnedDatabase($db, (int) $user['id'], $databaseId);
+    $database = mdbOwnedDatabase($db, $user, $databaseId);
     $paged = isset($_GET['limit']);
     if (!$paged && isset($_GET['after'])) respond(400, ['error' => 'Invalid row cursor']);
     if ($paged) {
