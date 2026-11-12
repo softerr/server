@@ -4,7 +4,7 @@ import { renderMedia } from './media.js'
 import { renderBackups } from './backups.js'
 import { renderTokens } from './tokens.js'
 import { createPageNotice } from '@softerr/shared/page-notice.js'
-import { deleteIcon } from '@softerr/shared/icons.js'
+import { deleteIcon, editIcon } from '@softerr/shared/icons.js'
 
 function renderUsers(app, { currentUser, requestJson, responseError, setStatus }) {
   app.querySelector('#page').innerHTML = `
@@ -17,6 +17,18 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
           <tbody id="users-table-body"></tbody>
         </table>
       </div>
+      <dialog id="edit-user-dialog" class="user-dialog" aria-labelledby="edit-user-title">
+        <form id="edit-user-form">
+          <h2 id="edit-user-title">Edit user</h2>
+          <label class="field"><span>Username</span><input name="username" maxlength="100" required autocomplete="off"></label>
+          <label class="field"><span>Email</span><input name="email" type="email" maxlength="255" required autocomplete="off"></label>
+          <p id="edit-user-status" class="form-status" role="status" aria-live="polite"></p>
+          <div class="user-dialog-actions">
+            <button id="cancel-edit-user" class="auth-button auth-button-secondary" type="button">Cancel</button>
+            <button id="confirm-edit-user" class="auth-button auth-button-primary" type="submit">Save changes</button>
+          </div>
+        </form>
+      </dialog>
       <dialog id="delete-user-dialog" class="user-dialog" aria-labelledby="delete-user-title">
         <h2 id="delete-user-title">Delete user?</h2>
         <p>Delete <strong id="delete-user-name"></strong> and all their quizzes? This cannot be undone.</p>
@@ -33,11 +45,17 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
   const status = app.querySelector('#users-status')
   const tableWrap = app.querySelector('#users-table-wrap')
   const body = app.querySelector('#users-table-body')
+  const editDialog = app.querySelector('#edit-user-dialog')
+  const editForm = app.querySelector('#edit-user-form')
+  const editStatus = app.querySelector('#edit-user-status')
+  const confirmEdit = app.querySelector('#confirm-edit-user')
+  const cancelEdit = app.querySelector('#cancel-edit-user')
   const deleteDialog = app.querySelector('#delete-user-dialog')
   const deleteStatus = app.querySelector('#delete-user-status')
   const confirmDelete = app.querySelector('#confirm-delete-user')
   const cancelDelete = app.querySelector('#cancel-delete-user')
   let deletingRow = null
+  let editingRow = null
   requestJson('GET', '/api/auth/users').then(([response, payload]) => {
     if (!app.contains(body)) return
     if (!response.ok) {
@@ -53,9 +71,11 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
       const row = document.createElement('tr')
       row.dataset.userId = String(user.id)
       row.dataset.username = user.username
-      for (const value of [user.id, user.username, user.email]) {
+      for (const [index, value] of [user.id, user.username, user.email].entries()) {
         const cell = document.createElement('td')
         cell.textContent = String(value)
+        if (index === 1) cell.className = 'user-username'
+        if (index === 2) cell.className = 'user-email'
         row.append(cell)
       }
 
@@ -103,6 +123,13 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
       const actionCell = document.createElement('td')
       const action = document.createElement('div')
       action.className = 'role-action'
+      const edit = document.createElement('button')
+      edit.type = 'button'
+      edit.className = 'user-edit'
+      edit.innerHTML = editIcon
+      edit.setAttribute('aria-label', `Edit ${user.username}`)
+      edit.title = `Edit ${user.username}`
+      edit.disabled = user.deleting
       const remove = document.createElement('button')
       remove.type = 'button'
       remove.className = 'user-delete'
@@ -116,7 +143,7 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
       rowStatus.setAttribute('aria-live', 'polite')
       if (user.deleting) rowStatus.textContent = 'Deletion pending'
       else if (user.id === currentUser.id) rowStatus.textContent = 'Your account'
-      action.append(remove, rowStatus)
+      action.append(edit, remove, rowStatus)
       actionCell.append(action)
       row.append(actionCell)
       rows.append(row)
@@ -158,6 +185,63 @@ function renderUsers(app, { currentUser, requestJson, responseError, setStatus }
       }
     } finally {
       if (app.contains(row)) select.disabled = false
+    }
+  })
+
+  body.addEventListener('click', (event) => {
+    const edit = event.target.closest('.user-edit')
+    if (!edit || edit.disabled || !body.contains(edit)) return
+    editingRow = edit.closest('tr')
+    editForm.elements.username.value = editingRow.querySelector('.user-username').textContent
+    editForm.elements.email.value = editingRow.querySelector('.user-email').textContent
+    setStatus(editStatus, '')
+    editDialog.showModal()
+    editForm.elements.username.focus()
+  })
+
+  editDialog.addEventListener('cancel', (event) => {
+    if (confirmEdit.disabled) event.preventDefault()
+  })
+  cancelEdit.addEventListener('click', () => editDialog.close())
+  editForm.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    if (!editingRow || confirmEdit.disabled) return
+    const row = editingRow
+    confirmEdit.disabled = true
+    cancelEdit.disabled = true
+    setStatus(editStatus, 'Saving…')
+    try {
+      const [response, payload] = await requestJson('PATCH', `/api/auth/users/${row.dataset.userId}`, {
+        username: editForm.elements.username.value.trim(),
+        email: editForm.elements.email.value.trim(),
+      })
+      if (!app.contains(editDialog)) return
+      if (!response.ok) {
+        setStatus(editStatus, responseError(response, payload), true)
+        return
+      }
+      row.dataset.username = payload.username
+      row.querySelector('.user-username').textContent = payload.username
+      row.querySelector('.user-email').textContent = payload.email
+      row.querySelector('.role-select').setAttribute('aria-label', `Role for ${payload.username}`)
+      row.querySelector('.user-edit').setAttribute('aria-label', `Edit ${payload.username}`)
+      row.querySelector('.user-edit').title = `Edit ${payload.username}`
+      row.querySelector('.user-delete').setAttribute('aria-label', `Delete ${payload.username}`)
+      row.querySelector('.user-delete').title = `Delete ${payload.username}`
+      row.querySelector('.user-approve')?.setAttribute('aria-label', `Approve ${payload.username}`)
+      if (payload.id === currentUser.id) {
+        currentUser.username = payload.username
+        currentUser.email = payload.email
+        app.querySelector('#nav-username').textContent = payload.username
+      }
+      notice.show(`${payload.username} updated.`)
+      editingRow = null
+      editDialog.close()
+    } catch {
+      if (app.contains(editDialog)) setStatus(editStatus, 'Could not update user. Please try again.', true)
+    } finally {
+      confirmEdit.disabled = false
+      cancelEdit.disabled = false
     }
   })
 

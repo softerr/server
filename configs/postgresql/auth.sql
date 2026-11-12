@@ -115,7 +115,7 @@ GRANT USAGE ON SCHEMA public TO auth_api;
 REVOKE INSERT, UPDATE ON TABLE public."user" FROM auth_api;
 GRANT SELECT ON TABLE public."user" TO auth_api;
 GRANT INSERT (username, password, email, account_kind, service_owner_id, display_name, verified, approved_at) ON TABLE public."user" TO auth_api;
-GRANT UPDATE (password, verified, role, deleting, approved_at, approved_by) ON TABLE public."user" TO auth_api;
+GRANT UPDATE (username, email, password, verified, role, deleting, approved_at, approved_by) ON TABLE public."user" TO auth_api;
 GRANT DELETE ON TABLE public."user" TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_token TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.api_token TO auth_api;

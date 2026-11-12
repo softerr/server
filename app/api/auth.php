@@ -146,10 +146,9 @@ if (is_string($path) && preg_match('#^/users/([1-9][0-9]*)$#', $path, $userMatch
     if ($userId === false) {
         respond(404, ['error' => 'Not found']);
     }
-    if ($method !== 'DELETE') {
-        respond(405, ['error' => 'Method not allowed']);
-    }
-    handleDeleteUser($userId);
+    if ($method === 'PATCH') handleUpdateUserIdentity($userId);
+    if ($method === 'DELETE') handleDeleteUser($userId);
+    respond(405, ['error' => 'Method not allowed']);
 }
 
 if ($path === '/logout') {

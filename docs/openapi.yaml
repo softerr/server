@@ -2535,6 +2535,35 @@ paths:
           type: integer
           format: int64
           minimum: 1
+    patch:
+      tags: [Administration]
+      operationId: updateUserIdentity
+      summary: Change a user's username and email
+      description: Requires an approved, verified admin session. Email is normalized to lowercase. If the target is unverified and the email changes, the old verification link is invalidated and a new email is queued. A verified account remains verified when an admin changes its email.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email]
+              properties:
+                username: {type: string, minLength: 1, maxLength: 100}
+                email: {type: string, format: email, maxLength: 255}
+      responses:
+        '200':
+          description: Updated user.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '400': {description: Invalid username or email.}
+        '401': {description: No active session.}
+        '403': {description: Current account is not an admin.}
+        '404': {description: Target user does not exist or is being deleted.}
+        '409': {description: Username or email already exists.}
+        '500': {$ref: '#/components/responses/InternalError'}
     delete:
       tags: [Administration]
       operationId: deleteUser

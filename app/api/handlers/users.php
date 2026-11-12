@@ -54,6 +54,69 @@ function beginAdminMutation($db, int $adminId): void
     }
 }
 
+function handleUpdateUserIdentity(int $targetId): never
+{
+    $currentUser = currentSessionUser();
+    if ($currentUser['role'] !== 'admin') respond(403, ['error' => 'Admin access required']);
+
+    $payload = readJsonBody();
+    if (!is_array($payload) || !is_string($payload['username'] ?? null)
+        || !is_string($payload['email'] ?? null)) {
+        respond(400, ['error' => 'Username and email are required']);
+    }
+    $username = trim($payload['username']);
+    $email = strtolower(trim($payload['email']));
+    if ($username === '' || strlen($username) > 100) {
+        respond(400, ['error' => 'Username must be between 1 and 100 bytes']);
+    }
+    if ($email === '' || strlen($email) > 255 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        respond(400, ['error' => 'Invalid email']);
+    }
+
+    header('Cache-Control: no-store');
+    $db = connectDb();
+    beginAdminMutation($db, (int) $currentUser['id']);
+    $targetResult = @pg_query_params($db,
+        'SELECT email, verified FROM public."user"
+         WHERE id = $1 AND account_kind = \'human\' AND deleting = FALSE FOR UPDATE',
+        [$targetId]);
+    if ($targetResult === false) respond(500, ['error' => 'Failed to update user']);
+    $target = pg_fetch_assoc($targetResult);
+    if ($target === false) respond(404, ['error' => 'User not found']);
+    $emailChanged = $target['email'] !== $email;
+
+    $updated = @pg_query_params($db,
+        'UPDATE public."user" SET username = $2, email = $3 WHERE id = $1
+         RETURNING id, username, email, role, verified, approved_at, created',
+        [$targetId, $username, $email]);
+    if ($updated === false) {
+        $error = strtolower(pg_last_error($db));
+        @pg_query($db, 'ROLLBACK');
+        if (str_contains($error, 'duplicate key value') || str_contains($error, '23505')) {
+            respond(409, ['error' => 'Username or email already exists']);
+        }
+        respond(500, ['error' => 'Failed to update user']);
+    }
+    if ($emailChanged && $target['verified'] !== 't') {
+        // An old verification link must never verify the replacement address.
+        $cleared = @pg_query_params($db,
+            'DELETE FROM public.user_token WHERE user_id = $1 AND type = \'verify\'',
+            [$targetId]);
+        $token = $cleared === false ? false : @pg_query_params($db,
+            'INSERT INTO public.user_token (user_id, type, email_attempted_at)
+             VALUES ($1, \'verify\', CURRENT_TIMESTAMP) RETURNING id', [$targetId]);
+        $tokenId = $token === false ? false : pg_fetch_result($token, 0, 'id');
+        $queued = $tokenId === false ? false : @pg_query_params($db,
+            'INSERT INTO public.verification_email_outbox (token_id) VALUES ($1)', [$tokenId]);
+        if ($queued === false) {
+            @pg_query($db, 'ROLLBACK');
+            respond(500, ['error' => 'Failed to queue verification email']);
+        }
+    }
+    if (@pg_query($db, 'COMMIT') === false) respond(500, ['error' => 'Failed to update user']);
+    respond(200, publicUser(pg_fetch_assoc($updated)));
+}
+
 function handleUpdateUserRole(int $targetId): never
 {
     $currentUser = currentSessionUser();
