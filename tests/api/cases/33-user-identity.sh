@@ -2,6 +2,7 @@
 
 test_admin_updates_user_identity() (
   set -e
+  sudo -n systemctl restart nginx
   local admin_name admin_email admin_id target_name target_email target_id
   local pending_name pending_email pending_id old_token new_token cookie response
   local updated_name updated_email
@@ -50,7 +51,7 @@ test_admin_updates_user_identity() (
   response="$(curl -sS -H 'Content-Type: application/json' \
     --data "$(jq -nc --arg e "${target_email}" '{email:$e,password:"test_password_123"}')" \
     -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/auth/login")"
-  [[ "${response##*$'\n'}" == 401 ]] || { fail_test 'Old email still logged in'; return 1; }
+  [[ "${response##*$'\n'}" == 401 ]] || { fail_test "Old email login returned an unexpected status: ${response}"; return 1; }
   response="$(curl -sS -H 'Content-Type: application/json' \
     --data "$(jq -nc --arg e "${updated_email}" '{email:$e,password:"test_password_123"}')" \
     -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/auth/login")"

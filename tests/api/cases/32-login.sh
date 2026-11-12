@@ -187,10 +187,10 @@ test_auth_login_session_lifecycle() {
     local role escaped_email permission_result target_name target_email target_id desired_role target_cookie quiz_id target_question_id
     escaped_email="$(sql_escape_literal "${TEST_EMAIL}")"
     if permission_result="$(sudo -n -u "${API_TEST_DB_SUPERUSER}" psql -X -v ON_ERROR_STOP=1 \
-      -d "${API_TEST_DB_NAME}" -Atqc "BEGIN; SET ROLE auth_api; UPDATE public.\"user\" SET email = email WHERE email = '${escaped_email}'; ROLLBACK;" 2>&1)" \
+      -d "${API_TEST_DB_NAME}" -Atqc "BEGIN; SET ROLE auth_api; UPDATE public.\"user\" SET account_kind = account_kind WHERE email = '${escaped_email}'; ROLLBACK;" 2>&1)" \
       || [[ "${permission_result}" != *'permission denied'* ]]; then
       rm -f "${cookie_file}"
-      fail_test "API database role could update account email: ${permission_result}"
+      fail_test "API database role could update account kind: ${permission_result}"
       return 1
     fi
     target_name="api_role_target_${API_TEST_RUN_ID}_${RANDOM}"
