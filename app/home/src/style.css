@@ -407,6 +407,15 @@
 
 .media-search:focus-within { border-color: var(--accent); }
 
+.public-file-list { display: grid; gap: 8px; margin-top: 20px; }
+.public-file-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px; border: 1px solid var(--border); border-radius: 4px;
+}
+.public-file-details { display: grid; gap: 3px; min-width: 0; flex: 1 1 220px; }
+.public-file-details a { overflow-wrap: anywhere; color: var(--accent); }
+.public-file-details span { color: var(--text-grey); font-size: 13px; }
+
 @media (max-width: 760px) {
   .media-toolbar { flex-wrap: wrap; gap: 10px; }
   .media-tools { order: 0; width: 100%; padding-bottom: 0; }
@@ -433,6 +442,9 @@
 .media-tabs {
   display: flex;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .media-view-control {

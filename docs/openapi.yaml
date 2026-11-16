@@ -2829,6 +2829,104 @@ paths:
                 type: string
               description: Browser page asking the user to try again later.
 
+  /media/files:
+    get:
+      tags: [Media]
+      operationId: listPublicFiles
+      summary: List public files owned by the signed-in user
+      security: [{sessionCookie: []}]
+      responses:
+        '200':
+          description: Files, usage, and limits.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [files, usage, limits]
+                properties:
+                  files: {type: array, items: {$ref: '#/components/schemas/PublicFile'}}
+                  usage:
+                    type: object
+                    required: [count, bytes]
+                    properties:
+                      count: {type: integer, minimum: 0}
+                      bytes: {type: integer, minimum: 0}
+                  limits:
+                    type: object
+                    required: [count, bytes, per_file_bytes]
+                    properties:
+                      count: {type: integer, example: 1000}
+                      bytes: {type: integer, example: 1073741824}
+                      per_file_bytes: {type: integer, example: 25165824}
+        '401': {description: Not authenticated.}
+    post:
+      tags: [Media]
+      operationId: uploadPublicFile
+      summary: Upload a file and create a public link
+      description: Browser session required. Files must be nonempty and at most 24 MiB; each account has a 1 GiB and 1,000 file limit.
+      security: [{sessionCookie: []}]
+      parameters:
+        - name: X-File-Name
+          in: header
+          required: true
+          description: Percent-encoded UTF-8 filename without path separators.
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '201':
+          description: Created file and public URL.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PublicFile'}
+        '400': {description: Invalid filename.}
+        '401': {description: Not authenticated.}
+        '413': {description: File or account storage limit exceeded.}
+
+  /media/files/{fileId}:
+    delete:
+      tags: [Media]
+      operationId: deletePublicFile
+      summary: Delete an owned public file
+      security: [{sessionCookie: []}]
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema: {type: integer, format: int64, minimum: 1}
+      responses:
+        '200': {description: File deleted; its public URL stops working.}
+        '404': {description: File does not exist or belongs to another user.}
+
+  /files/{publicId}/{filename}:
+    servers:
+      - url: /
+        description: Public URL at the server origin
+    get:
+      tags: [Media]
+      operationId: getPublicFile
+      summary: Download a public file without authentication
+      security: []
+      parameters:
+        - name: publicId
+          in: path
+          required: true
+          schema: {type: string, pattern: '^[a-f0-9]{32}$'}
+        - name: filename
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: File bytes. Safe raster images display inline; other types download as attachments.
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        '404': {description: No matching public file.}
+
   /media/audio:
     get:
       tags: [Media]
@@ -4943,6 +5041,16 @@ components:
               created: {type: string}
         next_cursor: {$ref: '#/components/schemas/MusicoCursor'}
         has_more: {type: boolean}
+    PublicFile:
+      type: object
+      required: [id, name, size_bytes, mime_type, created, url]
+      properties:
+        id: {type: integer, format: int64, minimum: 1}
+        name: {type: string}
+        size_bytes: {type: integer, minimum: 1}
+        mime_type: {type: string}
+        created: {type: string, format: date-time}
+        url: {type: string, description: Public path to prefix with the server origin.}
     MediaAudio:
       type: object
       required: [id, name, mime_type, size_bytes, sha256, created]

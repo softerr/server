@@ -13,7 +13,7 @@ def verify(archive: str, root: str, manifest: str) -> int:
     with open(manifest, encoding="utf-8") as source:
         for line in source:
             kind, digest, size = line.rstrip("\n").split("|")
-            if kind not in ("images", "audio") or not re.fullmatch(r"[a-f0-9]{64}", digest):
+            if kind not in ("images", "audio", "files") or not re.fullmatch(r"[a-f0-9]{64}", digest):
                 raise ValueError("Invalid media backup manifest")
             path = f"{kind}/{digest[:2]}/{digest}"
             size = int(size)
@@ -27,7 +27,7 @@ def verify(archive: str, root: str, manifest: str) -> int:
             if member.isdir():
                 continue
             if not member.isfile() or not re.fullmatch(
-                r"(images|thumbnails|audio)/[a-f0-9]{2}/[a-f0-9]{64}", member.name
+                r"(images|thumbnails|audio|files)/[a-f0-9]{2}/[a-f0-9]{64}", member.name
             ):
                 raise ValueError(f"Invalid media backup entry: {member.name}")
             path = os.path.join(root, member.name)
@@ -45,7 +45,7 @@ def verify(archive: str, root: str, manifest: str) -> int:
                     archive_hash.update(copied_chunk)
             if source_hash.digest() != archive_hash.digest():
                 raise ValueError(f"Media backup content mismatch: {member.name}")
-            if member.name.split("/")[0] in ("images", "audio"):
+            if member.name.split("/")[0] in ("images", "audio", "files"):
                 if source_hash.hexdigest() != os.path.basename(member.name):
                     raise ValueError(f"Media file hash mismatch: {member.name}")
             if member.name in expected and member.size != expected[member.name]:

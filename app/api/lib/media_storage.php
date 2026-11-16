@@ -6,7 +6,7 @@ const MEDIA_STORAGE_ROOT = '/var/lib/softerr/media';
 function mediaStoragePath(string $kind, string $hash): string
 {
     $hash = strtolower(trim($hash));
-    if (!in_array($kind, ['images', 'thumbnails', 'audio'], true)
+    if (!in_array($kind, ['images', 'thumbnails', 'audio', 'files'], true)
         || preg_match('/^[a-f0-9]{64}$/D', $hash) !== 1) {
         throw new InvalidArgumentException('Invalid media storage key');
     }

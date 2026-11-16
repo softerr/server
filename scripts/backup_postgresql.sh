@@ -190,7 +190,7 @@ echo 'Waiting for active API and worker requests before capturing a restore poin
 flock -x 8
 capture_started=$SECONDS
 capture_database auth 'SELECT 1 FROM public."user", public.user_token, public.verification_email_outbox, public.approval_email_outbox LIMIT 0'
-capture_database media 'SELECT i.id, i.blob_id, b.sha256, token_image.image_id FROM public.image i, public.image_blob b, public.api_token_image_access token_image LIMIT 0' 0 2 1
+capture_database media 'SELECT i.id, i.blob_id, b.sha256, token_image.image_id, public_file.id FROM public.image i, public.image_blob b, public.api_token_image_access token_image, public.public_file public_file LIMIT 0' 0 2 1
 for app in "${WEB_APPS[@]}"; do
   [[ -z "${APP_DATABASES[$app]}" ]] && continue
   capture_database "${APP_DATABASES[$app]}" "${APP_BACKUP_CHECKS[$app]}"
@@ -198,7 +198,8 @@ done
 media_manifest="$(mktemp -- "${BACKUP_DIR}/.media-manifest.XXXXXXXX")"
 postgres psql -X -At -F '|' -d media -c \
   "SELECT 'images', trim(sha256), size_bytes FROM public.image_blob
-   UNION ALL SELECT 'audio', trim(sha256), size_bytes FROM public.audio_file" \
+   UNION ALL SELECT 'audio', trim(sha256), size_bytes FROM public.audio_file
+   UNION ALL SELECT 'files', trim(sha256), size_bytes FROM public.public_file" \
   > "${media_manifest}"
 flock -u 8
 exec 8>&-
@@ -215,9 +216,9 @@ backup_media_files() {
   partial_name="${partial##*/}"
   archive="${BACKUP_DIR}/${partial_name#.}"
   archive="${archive%.partial}.tar"
-  echo 'Archiving private media files...'
+  echo 'Archiving media files...'
   started=$SECONDS
-  tar -C "${MEDIA_DIR}" --exclude='.upload-*' -cf "${partial}" images thumbnails audio
+  tar -C "${MEDIA_DIR}" --exclude='.upload-*' -cf "${partial}" images thumbnails audio files
   python3 /usr/local/lib/softerr/verify_media_archive.py \
     "${partial}" "${MEDIA_DIR}" "${media_manifest}"
   rm -f -- "${media_manifest}"
@@ -257,9 +258,9 @@ import time
 
 root = sys.argv[1]
 cutoff = time.time() - 2 * 86400
-sql = "SELECT 'images', trim(sha256) FROM public.image_blob UNION ALL SELECT 'audio', trim(sha256) FROM public.audio_file"
+sql = "SELECT 'images', trim(sha256) FROM public.image_blob UNION ALL SELECT 'audio', trim(sha256) FROM public.audio_file UNION ALL SELECT 'files', trim(sha256) FROM public.public_file"
 rows = subprocess.check_output(['runuser', '-u', 'postgres', '--', 'psql', '-X', '-At', '-F', '|', '-d', 'media', '-c', sql], text=True)
-referenced = {'images': set(), 'audio': set(), 'thumbnails': set()}
+referenced = {'images': set(), 'audio': set(), 'thumbnails': set(), 'files': set()}
 for row in rows.splitlines():
     kind, digest = row.split('|')
     referenced[kind].add(digest)

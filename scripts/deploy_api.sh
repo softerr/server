@@ -92,7 +92,7 @@ source "${SCRIPT_DIR}/lib/apt_locks.sh"
 # Check the schema of a component when this release changes its API code.
 # An outage in an unchanged app must not roll back an unrelated API release.
 verify_media_health=false
-for file in media.php handlers/images.php handlers/audio.php \
+for file in media.php handlers/images.php handlers/audio.php handlers/public_files.php \
   handlers/media_groups.php handlers/online_images.php lib/db.php lib/http.php; do
   if ! cmp -s -- "${api_release}/${file}" "${TARGET_DIR}/${file}"; then
     verify_media_health=true
@@ -149,7 +149,7 @@ verify_api_release() {
 install -d -m 755 /usr/local/lib/softerr /var/lib/softerr
 install -d -o postgres -g www-data -m 2770 /var/lib/softerr/media \
   /var/lib/softerr/media/images /var/lib/softerr/media/thumbnails \
-  /var/lib/softerr/media/audio
+  /var/lib/softerr/media/audio /var/lib/softerr/media/files
 install -m 755 "${SCRIPT_DIR}/backup_postgresql.sh" \
   /usr/local/lib/softerr/backup_postgresql.sh
 install -m 644 "${SCRIPT_DIR}/lib/app_registry.sh" \

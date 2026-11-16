@@ -73,10 +73,24 @@ CREATE TABLE IF NOT EXISTS public.audio_file (
 CREATE INDEX IF NOT EXISTS audio_file_owner_id_idx
     ON public.audio_file (owner_auth_user_id, id DESC);
 
+CREATE TABLE IF NOT EXISTS public.public_file (
+    id BIGSERIAL PRIMARY KEY,
+    owner_auth_user_id BIGINT NOT NULL,
+    public_id CHAR(32) NOT NULL UNIQUE,
+    original_name VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(128) NOT NULL,
+    size_bytes INTEGER NOT NULL CHECK (size_bytes BETWEEN 1 AND 25165824),
+    sha256 CHAR(64) NOT NULL,
+    created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS public_file_owner_id_idx
+    ON public.public_file (owner_auth_user_id, id DESC);
+
 GRANT CONNECT ON DATABASE media TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.image_blob TO auth_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.audio_file TO auth_api;
+GRANT SELECT, INSERT, DELETE ON TABLE public.public_file TO auth_api;
 GRANT UPDATE (thumbnail_mime_type) ON TABLE public.image_blob TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.image TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.api_token_image_access TO auth_api;
@@ -85,5 +99,6 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.media_group TO auth_api;
 GRANT SELECT, INSERT ON TABLE public.image_source TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.image_blob_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.audio_file_id_seq TO auth_api;
+GRANT USAGE, SELECT ON SEQUENCE public.public_file_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.image_id_seq TO auth_api;
 GRANT USAGE, SELECT ON SEQUENCE public.media_group_id_seq TO auth_api;

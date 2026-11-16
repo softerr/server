@@ -34,7 +34,7 @@ function checkMediaReadiness(): void
     if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) {
         respond(503, ['status' => 'unavailable', 'error' => 'Image thumbnail support is not ready']);
     }
-    foreach (['images', 'thumbnails', 'audio'] as $kind) {
+    foreach (['images', 'thumbnails', 'audio', 'files'] as $kind) {
         $directory = MEDIA_STORAGE_ROOT . '/' . $kind;
         if (!is_dir($directory) || !is_readable($directory) || !is_writable($directory)) {
             respond(503, ['status' => 'unavailable', 'error' => 'Media file storage is not ready']);
@@ -61,6 +61,9 @@ function checkMediaReadiness(): void
     }
     if (@pg_query($mediaDb, 'SELECT id, owner_auth_user_id, original_name, mime_type, size_bytes, sha256 FROM public.audio_file LIMIT 0') === false) {
         respond(503, ['status' => 'unavailable', 'error' => 'Media audio schema is not ready']);
+    }
+    if (@pg_query($mediaDb, 'SELECT id, owner_auth_user_id, public_id, original_name, mime_type, size_bytes, sha256 FROM public.public_file LIMIT 0') === false) {
+        respond(503, ['status' => 'unavailable', 'error' => 'Public file schema is not ready']);
     }
 }
 

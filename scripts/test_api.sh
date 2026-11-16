@@ -71,7 +71,8 @@ auth_cleanup_access="$(test_psql "${API_TEST_DB_NAME}" \
 media_cleanup_access="$(test_psql media \
   "SELECT has_table_privilege(current_user, 'public.image', 'DELETE')
     AND has_table_privilege(current_user, 'public.audio_file', 'DELETE')
-    AND has_table_privilege(current_user, 'public.media_group', 'DELETE');")" || media_cleanup_access=''
+    AND has_table_privilege(current_user, 'public.media_group', 'DELETE')
+    AND has_table_privilege(current_user, 'public.public_file', 'DELETE');")" || media_cleanup_access=''
 app_cleanup_access=t
 for app in "${WEB_APPS[@]}"; do
   [[ -n "${APP_DATABASES[$app]}" ]] || continue
@@ -136,6 +137,7 @@ cleanup_test_users() {
     DELETE FROM public.image WHERE owner_auth_user_id IN (${ids})
     OR (shared = TRUE AND left(original_name, length('${auth_prefix}')) = '${auth_prefix}');
     DELETE FROM public.audio_file WHERE owner_auth_user_id IN (${ids});
+    DELETE FROM public.public_file WHERE owner_auth_user_id IN (${ids});
     DELETE FROM public.media_group
     WHERE left(name, length('${auth_prefix}')) = '${auth_prefix}';
     DELETE FROM public.image_blob b WHERE NOT EXISTS

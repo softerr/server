@@ -4,7 +4,7 @@ test_shared_media_across_users_and_quizzes() (
   set -e
   # Earlier login cases may have exhausted the per-IP Nginx bucket.
   sudo -n systemctl restart nginx
-  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file answer_file direct_file folder_file large_file thumbnail_file response status shared_id private_id answer_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id public_attempt_id archive manifest count
+  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file answer_file direct_file folder_file large_file thumbnail_file public_file response status shared_id private_id answer_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id public_attempt_id archive manifest count public_file_id public_file_url
   admin_cookie="$(mktemp)"
   user_cookie="$(mktemp)"
   png_file="$(mktemp)"
@@ -14,8 +14,9 @@ test_shared_media_across_users_and_quizzes() (
   folder_file="$(mktemp)"
   large_file="$(mktemp)"
   thumbnail_file="$(mktemp)"
+  public_file="$(mktemp)"
   archive="$(mktemp)"
-  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$private_file" "$answer_file" "$direct_file" "$folder_file" "$large_file" "$thumbnail_file" "$archive"' EXIT
+  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$private_file" "$answer_file" "$direct_file" "$folder_file" "$large_file" "$thumbnail_file" "$public_file" "$archive"' EXIT
 
   create_test_identity
   admin_email="$TEST_EMAIL"
@@ -46,6 +47,36 @@ test_shared_media_across_users_and_quizzes() (
     --data "$(jq -nc --arg e "$user_email" '{email:$e,password:"test_password_123"}')" \
     -w $'\n%{http_code}' "${API_TEST_BASE_URL%/}/api/auth/login")"
   [[ "${response##*$'\n'}" == 200 ]] || { fail_test "user login failed: ${response}"; return 1; }
+
+  printf '%s' '<html><script>alert(1)</script></html>' > "$public_file"
+  status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST --data-binary @"$public_file" \
+    -H 'X-File-Name: report.html' "${API_TEST_BASE_URL%/}/api/media/files")"
+  [[ "$status" == 401 ]] || { fail_test "anonymous public file upload returned HTTP ${status}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -X POST --data-binary @"$public_file" \
+    -H 'X-File-Name: report.html' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/files")"
+  [[ "${response##*$'\n'}" == 201 ]] || { fail_test "public file upload failed: ${response}"; return 1; }
+  public_file_id="$(jq -r '.id' <<<"${response%$'\n'*}")"
+  public_file_url="$(jq -r '.url' <<<"${response%$'\n'*}")"
+  [[ "$public_file_url" =~ ^/files/[a-f0-9]{32}/report\.html$ ]] \
+    || { fail_test "invalid public file URL: ${response}"; return 1; }
+  response="$(curl -sS -D "$archive" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}${public_file_url}")"
+  [[ "${response##*$'\n'}" == 200 && "${response%$'\n'*}" == '<html><script>alert(1)</script></html>' ]] \
+    || { fail_test "anonymous public file read failed: ${response}"; return 1; }
+  grep -Eiq '^Content-Disposition: attachment' "$archive" \
+    || { fail_test 'HTML public file was not sent as an attachment'; return 1; }
+  response="$(curl -sS -b "$user_cookie" "${API_TEST_BASE_URL%/}/api/media/files")"
+  jq -e --argjson id "$public_file_id" 'any(.files[]; .id == $id)' <<<"$response" >/dev/null \
+    || { fail_test "uploaded file missing from list: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/files/${public_file_id}")"
+  [[ "${response##*$'\n'}" == 404 ]] || { fail_test "another user deleted public file: ${response}"; return 1; }
+  response="$(curl -sS -b "$user_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/files/${public_file_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "public file deletion failed: ${response}"; return 1; }
+  status="$(curl -sS -o /dev/null -w '%{http_code}' "${API_TEST_BASE_URL%/}${public_file_url}")"
+  [[ "$status" == 404 ]] || { fail_test "deleted public file remained accessible: HTTP ${status}"; return 1; }
 
   response="$(curl -sS -b "$user_cookie" -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/online-search?q=x")"

@@ -7,6 +7,10 @@ location / {
 
 __WEB_APP_ROUTES__
 
+location ^~ /files/ {
+    rewrite ^ /api/media.php last;
+}
+
 location = /api {
     return 301 /api/;
 }
@@ -61,6 +65,12 @@ location /api/auth/ {
 __APP_API_ROUTES__
 
 location ~ ^/api/media/audio(?:/|$) {
+    root /var/www;
+    client_max_body_size 26m;
+    try_files $uri /api/media.php?$query_string;
+}
+
+location ~ ^/api/media/files(?:/|$) {
     root /var/www;
     client_max_body_size 26m;
     try_files $uri /api/media.php?$query_string;

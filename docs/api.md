@@ -14,6 +14,19 @@ auth app, `/api/quiz/*` by the quiz app, `/api/media/*` by the shared media app,
 and `/api/` by the readiness endpoint.
 The PHP files are internal to Nginx and are not public API URLs.
 
+## Public files
+
+Signed-in users can upload any nonempty file of up to 24 MiB in **Media → Public
+files**. Each account can store up to 1,000 files and 1 GiB. Upload with
+`POST /api/media/files`, sending the raw file bytes and a percent-encoded
+filename in `X-File-Name`. The response includes a `url` such as
+`/files/0123456789abcdef0123456789abcdef/report.pdf`. Prefix it with the
+server origin to share the link. `GET /api/media/files` lists your files, and
+`DELETE /api/media/files/{id}` removes one. These management routes require a
+browser session. Anyone can use the public URL without signing in; deleting a
+file makes its URL unavailable. Images are displayed inline, while other file
+types download as attachments.
+
 ## MDB databases
 
 MDB uses the shared browser login. `GET /api/mdb/databases` lists databases

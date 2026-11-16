@@ -7,6 +7,7 @@ import { bindMediaCardSelection, updateMediaCardSelection } from './media-select
 import { createPageNotice } from '@softerr/shared/page-notice.js'
 import { createMediaDeletion } from './media-delete.js'
 import { renderAudioMedia } from './audio-media.js'
+import { renderPublicFiles } from './public-files.js'
 import { updateImageUsage } from '@softerr/shared/image-usage.js'
 import { editIcon as renameIcon } from '@softerr/shared/icons.js'
 
@@ -30,6 +31,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
           <button id="media-tab-personal" class="media-tab" type="button" role="tab" aria-controls="media-personal" aria-selected="true">My library</button>
           <button id="media-tab-shared" class="media-tab" type="button" role="tab" aria-controls="shared-media" aria-selected="false" tabindex="-1">Shared library</button>
           <button id="media-tab-audio" class="media-tab" type="button" role="tab" aria-controls="media-audio" aria-selected="false" tabindex="-1">Audio</button>
+          <button id="media-tab-files" class="media-tab" type="button" role="tab" aria-controls="media-files" aria-selected="false" tabindex="-1">Public files</button>
         </div>
         <div class="media-tools">
           <label class="media-search">
@@ -64,6 +66,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
       </section>
       <section id="shared-media" class="shared-media media-panel" role="tabpanel" aria-labelledby="media-tab-shared" tabindex="0" hidden></section>
       <section id="media-audio" class="media-panel" role="tabpanel" aria-labelledby="media-tab-audio" tabindex="0" hidden></section>
+      <section id="media-files" class="media-panel" role="tabpanel" aria-labelledby="media-tab-files" tabindex="0" hidden></section>
       <dialog id="media-rename-dialog" class="user-dialog" aria-labelledby="media-rename-title"><form id="media-rename-form"><h2 id="media-rename-title">Rename image</h2><label class="field"><span>Filename</span><input name="name" maxlength="255" required></label><p id="media-rename-status" class="form-status" role="status" aria-live="polite"></p><div class="user-dialog-actions"><button type="button" class="auth-button auth-button-secondary" data-cancel>Cancel</button><button type="submit" class="auth-button auth-button-primary">Save name</button></div></form></dialog>
     </main>
   `
@@ -114,17 +117,22 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
   const audioMedia = renderAudioMedia(page.querySelector('#media-audio'), {
     requestJson, responseError, setStatus, notify: notice.show,
   })
+  const publicFiles = renderPublicFiles(page.querySelector('#media-files'), {
+    requestJson, responseError, setStatus, notify: notice.show,
+  })
   search.addEventListener('input', () => {
     selected.clear()
     selectionAnchor.id = null
     sharedMedia.setSearch(search.value)
     audioMedia.setSearch(search.value)
+    publicFiles.setSearch(search.value)
     render()
   })
   const tabs = [...page.querySelectorAll('.media-tab')]
   const personalPanel = page.querySelector('#media-personal')
   const sharedPanel = page.querySelector('#shared-media')
   const audioPanel = page.querySelector('#media-audio')
+  const filesPanel = page.querySelector('#media-files')
   function selectTab(index) {
     for (const [position, tab] of tabs.entries()) {
       const active = position === index
@@ -134,8 +142,9 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
     personalPanel.hidden = index !== 0
     sharedPanel.hidden = index !== 1
     audioPanel.hidden = index !== 2
-    search.placeholder = index === 2 ? 'Search audio' : 'Search images'
-    search.setAttribute('aria-label', index === 2 ? 'Search audio by name' : 'Search images by name')
+    filesPanel.hidden = index !== 3
+    search.placeholder = index === 3 ? 'Search files' : index === 2 ? 'Search audio' : 'Search images'
+    search.setAttribute('aria-label', index === 3 ? 'Search files by name' : index === 2 ? 'Search audio by name' : 'Search images by name')
     thumbnailLoader.sync()
   }
   tabs.forEach((tab, index) => tab.addEventListener('click', () => selectTab(index)))

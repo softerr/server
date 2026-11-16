@@ -12,9 +12,27 @@ require_once __DIR__ . '/handlers/images.php';
 require_once __DIR__ . '/handlers/audio.php';
 require_once __DIR__ . '/handlers/online_images.php';
 require_once __DIR__ . '/handlers/media_groups.php';
+require_once __DIR__ . '/handlers/public_files.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+$publicPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+if (is_string($publicPath) && str_starts_with($publicPath, '/files/')) {
+    if ($method === 'GET' || $method === 'HEAD') handleGetPublicFile($publicPath, $method === 'HEAD');
+    respond(405, ['error' => 'Method not allowed']);
+}
 $path = apiRequestPath('/api/media');
+
+if ($path === '/files') {
+    if ($method === 'GET') handleListPublicFiles();
+    if ($method === 'POST') handleUploadPublicFile();
+    respond(405, ['error' => 'Method not allowed']);
+}
+if (is_string($path) && preg_match('#^/files/([1-9][0-9]*)$#D', $path, $match)) {
+    $fileId = filter_var($match[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($fileId === false) respond(404, ['error' => 'Not found']);
+    if ($method === 'DELETE') handleDeletePublicFile($fileId);
+    respond(405, ['error' => 'Method not allowed']);
+}
 
 if ($path === '/audio') {
     if ($method === 'GET') handleListMediaAudio();

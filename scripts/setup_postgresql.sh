@@ -90,7 +90,7 @@ echo "Preparing private media file storage..."
 install -d -m 755 /var/lib/softerr
 install -d -o postgres -g www-data -m 2770 /var/lib/softerr/media \
   /var/lib/softerr/media/images /var/lib/softerr/media/thumbnails \
-  /var/lib/softerr/media/audio
+  /var/lib/softerr/media/audio /var/lib/softerr/media/files
 
 for app in "${WEB_APPS[@]}"; do
   database="${APP_DATABASES[$app]}"
