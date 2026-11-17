@@ -263,6 +263,7 @@ export function createChoiceController({ page, endpoint, requestJson, postJson, 
       display()
     }
     if (isRelation) {
+      refreshChoices.rowId = row.id
       const updates = getRelationRefreshes().get(column.relation_database_id) ?? []
       updates.push(refreshChoices)
       getRelationRefreshes().set(column.relation_database_id, updates)

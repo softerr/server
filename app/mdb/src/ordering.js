@@ -4,7 +4,8 @@ const dragIcon = `<svg viewBox="0 0 16 20" fill="currentColor" aria-hidden="true
   <circle cx="5" cy="16" r="1.5"/><circle cx="11" cy="16" r="1.5"/>
 </svg>`
 export function createOrderingController({ page, tableArea, endpoint, requestJson, responseError,
-  setStatus, status, notice, pendingWrites, refresh, rowsCannotReorder, getPageSize, getPageOffset }) {
+  setStatus, status, notice, pendingWrites, refresh, applyRowOrder, rowsCannotReorder,
+  getPageSize, getPageOffset }) {
   let dragState = null
   let touchDrag = null
   let touchScrollFrame = null
@@ -14,19 +15,24 @@ export function createOrderingController({ page, tableArea, endpoint, requestJso
     tableArea.querySelectorAll('[data-drop-side]').forEach((item) => { delete item.dataset.dropSide })
   }
 
-  async function saveOrder(kind, oldIds, nextIds, focusId = null) {
+  async function saveOrder(kind, oldIds, nextIds, focusId = null, movedId = focusId) {
     if (reordering || (kind === 'rows' && rowsCannotReorder())
       || oldIds.every((id, index) => id === nextIds[index])) return
+    const pageSize = getPageSize()
+    const pageOffset = getPageOffset()
     reordering = true
     setStatus(status, `Saving ${kind} order…`)
     try {
       await Promise.all([...pendingWrites])
       const [response, payload] = await requestJson('PUT', `${endpoint}/${kind}/order`,
-        kind === 'rows' && getPageSize() !== null
-          ? { ids: nextIds, start_position: getPageOffset() + 1 } : { ids: nextIds })
+        kind === 'rows' && pageSize !== null
+          ? { ids: nextIds, start_position: pageOffset + 1 } : { ids: nextIds })
       if (!page.isConnected) return
       if (!response.ok) throw new Error(responseError(response, payload))
-      if (await refresh()) {
+      const updated = kind === 'rows'
+        && applyRowOrder(oldIds, nextIds, movedId, pageOffset, pageSize)
+      if (updated || await refresh({ preserveScroll: true })) {
+        setStatus(status, '')
         if (focusId !== null) {
           tableArea.querySelector(`.mdb-drag-handle[data-order-kind="${kind}"][data-order-id="${focusId}"]`)?.focus()
         }
@@ -48,7 +54,7 @@ export function createOrderingController({ page, tableArea, endpoint, requestJso
     const index = nextIds.indexOf(targetId)
     if (index < 0) return
     nextIds.splice(index + (after ? 1 : 0), 0, movedId)
-    saveOrder(kind, ids, nextIds)
+    saveOrder(kind, ids, nextIds, null, movedId)
   }
 
   function targetSide(element, kind, x, y) {
@@ -67,7 +73,7 @@ export function createOrderingController({ page, tableArea, endpoint, requestJso
     if (kind === 'rows') {
       const bounds = tableArea.getBoundingClientRect()
       if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return null
-      const headerBottom = tableArea.querySelector('thead')?.getBoundingClientRect().bottom ?? bounds.top
+      const headerBottom = tableArea.querySelector('thead th')?.getBoundingClientRect().bottom ?? bounds.top
       y = Math.max(y, Math.min(bounds.bottom - 1, headerBottom + 1))
     }
     let target = document.elementFromPoint(x, y)?.closest('[data-reorder-kind]')
@@ -98,7 +104,7 @@ export function createOrderingController({ page, tableArea, endpoint, requestJso
     const bounds = tableArea.getBoundingClientRect()
     const { x, y } = touchDrag
     if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return
-    const top = tableArea.querySelector('thead')?.getBoundingClientRect().bottom ?? bounds.top
+    const top = tableArea.querySelector('thead th')?.getBoundingClientRect().bottom ?? bounds.top
     const topDistance = y - top
     const bottomDistance = bounds.bottom - y
     const distance = Math.min(topDistance, bottomDistance)

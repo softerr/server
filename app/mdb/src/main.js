@@ -246,9 +246,49 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     pageNext.disabled = pageSize === null || pageOffset + pageSize >= pageTotal
   }
 
+  function revealRow(rowId) {
+    const row = tableArea.querySelector(`tbody tr.mdb-data-row[data-row-id="${rowId}"]`)
+    if (!row) return false
+    row.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    row.querySelector('.mdb-cell-control, .mdb-multi-button')?.focus({ preventScroll: true })
+    return true
+  }
+
+  async function loadRelationLabels(rows, columns, relatedIds, generation, refreshStart = new Map()) {
+    if (!page.isConnected || generation !== refreshGeneration) return
+    await Promise.all(relatedIds.map(async (id) => {
+      if (id !== databaseId && !databases.some((database) => database.id === id)) return
+      for (const column of columns.filter((item) => item.relation_database_id === id)) {
+        const ids = [...new Set(rows.flatMap((row) => {
+          const value = row.values?.[column.id]
+          return Array.isArray(value) ? value : value == null ? [] : [value]
+        }))]
+        const cache = relationChoiceCaches.get(column.id)
+        if (!cache || !ids.length) continue
+        for (let offset = 0; offset < ids.length; offset += 100) {
+          const selected = ids.slice(offset, offset + 100)
+          const params = new URLSearchParams({ ids: selected.join(','),
+            display_column_id: String(column.relation_display_column_id ?? 0) })
+          const [choiceResponse, choicePayload] = await requestJson('GET',
+            `/api/mdb/databases/${id}/choices?${params}`)
+          if (!choiceResponse.ok) throw new Error(responseError(choiceResponse, choicePayload))
+          if (!page.isConnected || generation !== refreshGeneration) return
+          for (const choice of choicePayload.choices) cache.labels.set(choice.id, choice.label)
+        }
+      }
+      if (!page.isConnected || generation !== refreshGeneration) return
+      for (const update of (relationRefreshes.get(id) ?? []).slice(refreshStart.get(id) ?? 0)) update()
+    }))
+  }
+
   const { dragHandle, dropTarget } = createOrderingController({
     page, tableArea, endpoint, requestJson, responseError, setStatus, status, notice, pendingWrites,
-    refresh, rowsCannotReorder: () => allRowsLoading || activeSort !== null || searchQuery !== '',
+    refresh, applyRowOrder: (oldIds, nextIds, movedId, offset, size) => {
+      if (pageOffset !== offset || pageSize !== size || activeSort !== null
+        || searchQuery !== '' || allRowsLoading) return false
+      return currentTable?.reorderRows(oldIds, nextIds, movedId) ?? false
+    },
+    rowsCannotReorder: () => allRowsLoading || activeSort !== null || searchQuery !== '',
     getPageSize: () => pageSize, getPageOffset: () => pageOffset,
   })
 
@@ -291,8 +331,60 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     getRelationRefreshes: () => relationRefreshes })
   const { openImageDialog } = createImagePicker({ page, requestJson, responseError, setStatus, notice, saveCell })
 
+  async function applyRowDeletion(rowId) {
+    const table = currentTable
+    if (!table?.rows.has(rowId) || activeSort !== null || searchQuery !== '' || allRowsLoading
+      || loadedRows !== Math.min(pageSize ?? pageTotal, pageTotal - pageOffset)) return false
+    const remainingTotal = pageTotal - 1
+    if (pageSize !== null && pageOffset > 0 && pageOffset >= remainingTotal) return false
+    const needsReplacement = pageSize !== null && pageOffset + pageSize <= remainingTotal
+    const generation = refreshGeneration
+    const deletedPosition = table.removeRow(rowId)
+    if (deletedPosition === null) return false
+    pageTotal = remainingTotal
+    loadedRows -= 1
+    updatePageControls()
+    for (const [id, updates] of relationRefreshes) {
+      relationRefreshes.set(id, updates.filter((update) => update.rowId !== rowId))
+    }
+    for (const column of table.columns) {
+      if (column.relation_database_id !== databaseId) continue
+      const labels = relationChoiceCaches.get(column.id)?.labels
+      if (!labels) continue
+      labels.delete(rowId)
+      if (column.relation_display_column_id !== null) continue
+      for (const [id, label] of labels) {
+        const match = /^Row (\d+)(?=:|$)/.exec(label)
+        if (match && Number(match[1]) > deletedPosition) {
+          labels.set(id, label.replace(/^Row \d+/, `Row ${Number(match[1]) - 1}`))
+        }
+      }
+    }
+    for (const update of relationRefreshes.get(databaseId) ?? []) update()
+    if (!needsReplacement) return true
+    try {
+      const params = new URLSearchParams({ limit: '1', offset: String(pageOffset + pageSize - 1) })
+      const [response, payload] = await requestJson('GET', `${endpoint}?${params}`)
+      if (!page.isConnected || generation !== refreshGeneration || currentTable !== table) return true
+      if (!response.ok || payload.total_rows !== pageTotal || payload.rows?.length !== 1
+        || table.rows.has(payload.rows[0].id) || payload.columns?.length !== table.columns.length
+        || payload.columns.some((column, index) => column.id !== table.columns[index].id)) return false
+      const relatedIds = [...new Set(table.columns.filter((column) =>
+        ['relation', 'multi_relation'].includes(column.type)).map((column) => column.relation_database_id))]
+      const refreshStart = new Map(relatedIds.map((id) => [id,
+        relationRefreshes.get(id)?.length ?? 0]))
+      table.appendPage(payload.rows)
+      loadedRows += 1
+      updatePageControls()
+      await loadRelationLabels(payload.rows, table.columns, relatedIds, generation, refreshStart)
+      return true
+    } catch {
+      return false
+    }
+  }
+
   const { openDeleteDialog } = createDeleteDialog({ page, endpoint, requestJson, responseError,
-    setStatus, notice, pendingWrites, refresh, getRowsReady: () => rowsReady })
+    setStatus, notice, pendingWrites, refresh, applyRowDeletion, getRowsReady: () => rowsReady })
   const { openColumnDialog } = createColumnDialog({ page, endpoint, databaseId, requestJson,
     postJson, responseError, setStatus, notice, pendingWrites, refresh, openDeleteDialog,
     getDatabases: () => databases, getRelatedDatabases: () => relatedDatabases })
@@ -305,8 +397,27 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
     resetRelationCaches: () => { relationRefreshes = new Map(); relationChoiceCaches = new Map() },
   })
 
-  async function refresh() {
+  async function refresh({ preserveScroll = false, revealRowId = null } = {}) {
     const generation = ++refreshGeneration
+    let scrollPosition = preserveScroll
+      ? { top: tableArea.scrollTop, left: tableArea.scrollLeft } : null
+    let pendingRowId = revealRowId
+    function restoreTableView() {
+      if (scrollPosition) {
+        tableArea.scrollTop = scrollPosition.top
+        tableArea.scrollLeft = scrollPosition.left
+        // In "All rows" mode, later batches may be needed to reach the saved offset.
+        if (tableArea.scrollTop >= scrollPosition.top && tableArea.scrollLeft >= scrollPosition.left) {
+          scrollPosition = null
+        }
+      }
+      if (pendingRowId !== null) {
+        if (revealRow(pendingRowId)) {
+          pendingRowId = null
+          scrollPosition = null
+        }
+      }
+    }
     exportButton.disabled = true
     setStatus(status, '')
     try {
@@ -323,7 +434,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       if (response.status === 400 && payload?.error === 'Invalid sort column' && activeSort) {
         activeSort = null
         pageOffset = 0
-        return refresh()
+        return refresh({ preserveScroll, revealRowId })
       }
       if (!response.ok) throw new Error(responseError(response, payload))
       if (!listResponse.ok) throw new Error(responseError(listResponse, listPayload))
@@ -335,7 +446,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       page.querySelector('#mdb-import-button').hidden = !canEdit
       if (pageSize !== null && pageOffset > 0 && payload.total_rows <= pageOffset) {
         pageOffset = Math.max(0, Math.ceil(payload.total_rows / pageSize) - 1) * pageSize
-        return refresh()
+        return refresh({ preserveScroll, revealRowId })
       }
       pageTotal = payload.total_rows
       loadedRows = payload.rows.length
@@ -345,6 +456,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       relatedDatabases = related
       const table = showTable(payload, related)
       currentTable = table
+      restoreTableView()
       const relatedIds = [...new Set(payload.columns.filter((column) => ['relation', 'multi_relation'].includes(column.type))
         .map((column) => column.relation_database_id))]
       const metadataReady = Promise.all(relatedIds.map(async (id) => {
@@ -358,33 +470,8 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         if (!page.isConnected || generation !== refreshGeneration) return
         related.set(id, target)
       }))
-      async function loadRelationLabels(rows, refreshStart = new Map()) {
-        if (!page.isConnected || generation !== refreshGeneration) return
-        await Promise.all(relatedIds.map(async (id) => {
-          if (id !== databaseId && !databases.some((database) => database.id === id)) return
-          for (const column of payload.columns.filter((item) => item.relation_database_id === id)) {
-            const ids = [...new Set(rows.flatMap((row) => {
-              const value = row.values?.[column.id]
-              return Array.isArray(value) ? value : value == null ? [] : [value]
-            }))]
-            const cache = relationChoiceCaches.get(column.id)
-            if (!cache || !ids.length) continue
-            for (let offset = 0; offset < ids.length; offset += 100) {
-              const selected = ids.slice(offset, offset + 100)
-              const params = new URLSearchParams({ ids: selected.join(','),
-                display_column_id: String(column.relation_display_column_id ?? 0) })
-              const [choiceResponse, choicePayload] = await requestJson('GET',
-                `/api/mdb/databases/${id}/choices?${params}`)
-              if (!choiceResponse.ok) throw new Error(responseError(choiceResponse, choicePayload))
-              if (!page.isConnected || generation !== refreshGeneration) return
-              for (const choice of choicePayload.choices) cache.labels.set(choice.id, choice.label)
-            }
-          }
-          if (!page.isConnected || generation !== refreshGeneration) return
-          for (const update of (relationRefreshes.get(id) ?? []).slice(refreshStart.get(id) ?? 0)) update()
-        }))
-      }
-      rowsReady = metadataReady.then(() => loadRelationLabels(payload.rows))
+      rowsReady = metadataReady.then(() => loadRelationLabels(payload.rows,
+        payload.columns, relatedIds, generation))
       const results = await Promise.allSettled([rowsReady])
       if (!page.isConnected || generation !== refreshGeneration) return false
       for (const result of results) {
@@ -414,8 +501,10 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
                 relationRefreshes.get(id)?.length ?? 0]))
               table.appendPage(nextPayload.rows)
               loadedRows += nextPayload.rows.length
+              restoreTableView()
               updatePageControls()
-              await loadRelationLabels(nextPayload.rows, refreshStart)
+              await loadRelationLabels(nextPayload.rows, payload.columns,
+                relatedIds, generation, refreshStart)
             }
             if (!page.isConnected || generation !== refreshGeneration) return
             allRowsLoading = false
@@ -451,14 +540,42 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       const [response, payload] = await postJson(`${endpoint}/rows`, {})
       if (!page.isConnected) return
       if (!response.ok) throw new Error(responseError(response, payload))
+      setStatus(status, '')
+      const targetOffset = pageSize === null ? 0 : Math.floor((payload.position - 1) / pageSize) * pageSize
+      const canAppend = currentTable && !allRowsLoading && activeSort === null && searchQuery === ''
+        && payload.position === pageTotal + 1
+        && loadedRows === pageTotal - pageOffset
+        && targetOffset === pageOffset
+      const canShowNewPage = currentTable && pageSize !== null && payload.position === pageTotal + 1
+        && targetOffset === payload.position - 1
       searchInput.value = ''
       searchQuery = ''
       activeSort = null
-      pageOffset = pageSize === null ? 0 : Math.floor((payload.position - 1) / pageSize) * pageSize
-      if (await refresh()) {
+      if (canAppend) {
+        currentTable.appendPage([payload])
+        loadedRows += 1
+        pageTotal += 1
+        updatePageControls()
+        revealRow(payload.id)
         notice.show('Row added.')
-        tableArea.querySelector(`tbody tr.mdb-data-row[data-row-id="${payload.id}"]`)
-          ?.querySelector('.mdb-cell-control, .mdb-multi-button')?.focus()
+        return
+      }
+      if (canShowNewPage) {
+        const { database, columns } = currentTable
+        refreshGeneration += 1
+        allRowsLoading = false
+        pageOffset = targetOffset
+        pageTotal += 1
+        loadedRows = 1
+        updatePageControls()
+        currentTable = showTable({ database, columns, rows: [payload] }, relatedDatabases)
+        revealRow(payload.id)
+        notice.show('Row added.')
+        return
+      }
+      pageOffset = targetOffset
+      if (await refresh({ preserveScroll: true, revealRowId: payload.id })) {
+        notice.show('Row added.')
       }
     } catch (error) {
       if (page.isConnected) {

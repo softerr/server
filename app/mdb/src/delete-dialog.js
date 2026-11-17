@@ -1,5 +1,5 @@
 export function createDeleteDialog({ page, endpoint, requestJson, responseError,
-  setStatus, notice, pendingWrites, refresh, getRowsReady }) {
+  setStatus, notice, pendingWrites, refresh, applyRowDeletion, getRowsReady }) {
   const deleteDialog = page.querySelector('#mdb-delete-dialog')
   const deleteStatus = page.querySelector('#mdb-delete-status')
   const deleteUsage = page.querySelector('#mdb-delete-usage')
@@ -84,7 +84,8 @@ export function createDeleteDialog({ page, endpoint, requestJson, responseError,
       if (!response.ok) throw new Error(responseError(response, payload))
       deleteDialog.close()
       const label = item.kind === 'columns' ? 'Column' : 'Row'
-      if (await refresh()) notice.show(`${label} deleted.`)
+      const updated = item.kind === 'rows' && await applyRowDeletion(item.id)
+      if (updated || await refresh({ preserveScroll: item.kind === 'rows' })) notice.show(`${label} deleted.`)
       else notice.show(`${label} deleted, but the table could not refresh.`, 'warning')
     } catch (error) {
       if (page.isConnected) setStatus(deleteStatus, error.message || 'Could not delete item.', true)

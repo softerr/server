@@ -41,7 +41,8 @@ export function createTableController({ page, endpoint, requestJson, responseErr
           preview.src = mediaThumbnailUrl(savedValue)
           button.append(preview)
         }
-        button.setAttribute('aria-label', `${savedValue === null ? 'Choose' : 'Change'} ${label} image`)
+        button.setAttribute('aria-label',
+          `${savedValue === null ? 'Choose' : 'Change'} ${column.name}, row ${row.position} image`)
       }
       button.addEventListener('click', () => openImageDialog({ button, row, column,
         get value() { return savedValue }, set value(next) { savedValue = next; render() } }))
@@ -148,6 +149,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
     const columnIds = data.columns.map((column) => column.id)
     const rowIds = []
     const rowData = new Map()
+    const rowElements = new Map()
     const sortButtons = new Map()
     const table = document.createElement('table')
     table.className = 'mdb-data-table'
@@ -364,6 +366,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
         tr.className = 'mdb-data-row'
         tr.dataset.rowId = String(row.id)
         rowData.set(row.id, row)
+        rowElements.set(row.id, tr)
         dropTarget(tr, 'rows', index, rowIds)
         const number = document.createElement('th')
         number.scope = 'row'
@@ -429,10 +432,78 @@ export function createTableController({ page, endpoint, requestJson, responseErr
     table.append(widths, head, body)
     tableArea.append(table)
     appendRows(data.rows)
+    function updateRowPositions(startIndex, endIndex, firstPosition) {
+      for (let index = startIndex; index <= endIndex; index += 1) {
+        const row = data.rows[index]
+        const element = rowElements.get(row.id)
+        const previousPosition = row.position
+        const position = firstPosition + index
+        row.position = position
+        element.dataset.reorderIndex = String(index)
+        element.querySelector('.mdb-row-heading > span').textContent = String(position)
+        element.querySelector('.mdb-drag-handle').setAttribute('aria-label', `Reorder row ${index + 1}`)
+        const deleteButton = element.querySelector('.mdb-row-delete')
+        deleteButton.setAttribute('aria-label', `Delete row ${position}`)
+        deleteButton.title = `Delete row ${position}`
+        for (const control of element.querySelectorAll('[aria-label]')) {
+          const label = control.getAttribute('aria-label')
+          control.setAttribute('aria-label', label.replace(`, row ${previousPosition}`, `, row ${position}`))
+        }
+      }
+    }
     return {
       database: data.database,
+      columns: data.columns,
       rows: rowData,
       appendPage(rows) { data.rows.push(...rows); appendRows(rows) },
+      reorderRows(oldIds, nextIds, movedId) {
+        if (oldIds.length !== rowIds.length || nextIds.length !== rowIds.length
+          || oldIds.some((id, index) => id !== rowIds[index]) || !rowData.has(movedId)
+          || nextIds.some((id) => !rowData.has(id))) return false
+        const oldIndex = rowIds.indexOf(movedId)
+        const nextIndex = nextIds.indexOf(movedId)
+        if (oldIndex < 0 || nextIndex < 0) return false
+        const movedElement = rowElements.get(movedId)
+        const followingId = nextIds[nextIndex + 1]
+        const followingElement = followingId === undefined ? rowPlaceholder
+          : rowElements.get(followingId)
+        if (!movedElement || !followingElement) return false
+        const startPosition = data.rows[0].position
+        body.insertBefore(movedElement, followingElement)
+        const [movedRow] = data.rows.splice(oldIndex, 1)
+        data.rows.splice(nextIndex, 0, movedRow)
+        rowIds.splice(oldIndex, 1)
+        rowIds.splice(nextIndex, 0, movedId)
+        updateRowPositions(Math.min(oldIndex, nextIndex), Math.max(oldIndex, nextIndex), startPosition)
+        return true
+      },
+      removeRow(rowId) {
+        const index = rowIds.indexOf(rowId)
+        if (index < 0) return null
+        const deletedPosition = data.rows[index].position
+        const firstPosition = data.rows[0].position
+        rowElements.get(rowId).remove()
+        rowIds.splice(index, 1)
+        data.rows.splice(index, 1)
+        rowData.delete(rowId)
+        rowElements.delete(rowId)
+        updateRowPositions(index, rowIds.length - 1, firstPosition)
+        for (const [columnIndex, column] of data.columns.entries()) {
+          if (column.relation_database_id !== data.database.id) continue
+          for (const row of data.rows) {
+            const value = row.values?.[column.id]
+            const next = column.type === 'relation' && value === rowId ? null
+              : column.type === 'multi_relation' && Array.isArray(value) && value.includes(rowId)
+                ? value.filter((id) => id !== rowId) : value
+            if (next === value) continue
+            row.values[column.id] = next
+            rowElements.get(row.id).cells[columnIndex + 1]
+              .querySelector('.mdb-multi-button')?.setCellValue(next)
+          }
+        }
+        applyView()
+        return deletedPosition
+      },
       updateRowDragHandles,
     }
   }
