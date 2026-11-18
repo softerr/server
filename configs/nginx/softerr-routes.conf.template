@@ -72,7 +72,7 @@ location ~ ^/api/media/audio(?:/|$) {
 
 location ~ ^/api/media/files(?:/|$) {
     root /var/www;
-    client_max_body_size 26m;
+    client_max_body_size 1024m;
     try_files $uri /api/media.php?$query_string;
 }
 
@@ -91,7 +91,8 @@ location /api/ {
 location = /api/media.php {
     root /var/www;
     internal;
-    client_max_body_size 26m;
+    client_max_body_size 1024m;
+    fastcgi_read_timeout 4h;
     include snippets/fastcgi-php.conf;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
     fastcgi_param HTTP_AUTHORIZATION $http_authorization;

@@ -19,6 +19,7 @@ export function renderPublicFiles(section, { requestJson, responseError, setStat
   const upload = section.querySelector('[data-upload]')
   const input = section.querySelector('[data-files]')
   let items = []
+  let limits = null
   let search = ''
   let busy = false
 
@@ -85,6 +86,7 @@ export function renderPublicFiles(section, { requestJson, responseError, setStat
       return
     }
     items = payload.files
+    limits = payload.limits
     section.querySelector('[data-usage]').textContent = `${formatBytes(payload.usage.bytes)} / ${formatBytes(payload.limits.bytes)}`
     const bar = section.querySelector('[data-bar]')
     bar.max = payload.limits.bytes
@@ -103,7 +105,12 @@ export function renderPublicFiles(section, { requestJson, responseError, setStat
     upload.disabled = true
     let uploaded = 0
     const errors = []
-    for (const file of files) {
+    for (const [index, file] of files.entries()) {
+      if (limits && file.size > limits.per_file_bytes) {
+        errors.push(`${file.name}: exceeds ${formatBytes(limits.per_file_bytes)} per file`)
+        continue
+      }
+      setStatus(status, `Uploading ${index + 1} of ${files.length}: ${file.name}…`)
       try {
         const response = await fetch('/api/media/files', {
           method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) }, body: file,

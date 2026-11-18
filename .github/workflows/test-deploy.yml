@@ -166,7 +166,10 @@ jobs:
           assert 'location /api/musico/' in routes
           assert 'location /api/mdb/' in routes
           assert routes.count('client_max_body_size 10m;') == 2
-          assert routes.count('client_max_body_size 26m;') == 5
+          assert routes.count('client_max_body_size 26m;') == 3
+          assert routes.count('client_max_body_size 1024m;') == 2
+          assert 'location ~ ^/api/media/files(?:/|$) {\n    root /var/www;\n    client_max_body_size 1024m;' in routes
+          assert 'location = /api/media.php {\n    root /var/www;\n    internal;\n    client_max_body_size 1024m;\n    fastcgi_read_timeout 4h;' in routes
           assert 'location ~ ^/api/quiz/quizzes/import/*$ {' in routes
           assert 'client_max_body_size 48m;' in routes
           assert 'client_max_body_size 2m;' in routes

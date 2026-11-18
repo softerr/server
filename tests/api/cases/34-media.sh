@@ -69,6 +69,32 @@ test_shared_media_across_users_and_quizzes() (
   response="$(curl -sS -b "$user_cookie" "${API_TEST_BASE_URL%/}/api/media/files")"
   jq -e --argjson id "$public_file_id" 'any(.files[]; .id == $id)' <<<"$response" >/dev/null \
     || { fail_test "uploaded file missing from list: ${response}"; return 1; }
+  jq -e '.limits.bytes == 1073741824 and .limits.per_file_bytes == 25165824' <<<"$response" >/dev/null \
+    || { fail_test "user public file limits are wrong: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" "${API_TEST_BASE_URL%/}/api/media/files")"
+  jq -e '.limits.bytes == 10737418240 and .limits.per_file_bytes == 1073741824' <<<"$response" >/dev/null \
+    || { fail_test "admin public file limits are wrong: ${response}"; return 1; }
+  truncate -s 25165825 "$large_file"
+  status="$(curl -sS -b "$user_cookie" -o /dev/null -w '%{http_code}' \
+    --data-binary @"$large_file" -H 'X-File-Name: large.bin' \
+    "${API_TEST_BASE_URL%/}/api/media/files")"
+  [[ "$status" == 413 ]] || { fail_test "user uploaded public file above 24 MiB: HTTP ${status}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" --data-binary @"$large_file" \
+    -H 'X-File-Name: large.bin' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/files")"
+  [[ "${response##*$'\n'}" == 201 ]] \
+    || { fail_test "admin public file above 24 MiB failed: ${response}"; return 1; }
+  local admin_public_id admin_public_url
+  admin_public_id="$(jq -r '.id' <<<"${response%$'\n'*}")"
+  admin_public_url="$(jq -r '.url' <<<"${response%$'\n'*}")"
+  jq -e '.size_bytes == 25165825' <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "admin public file size was not stored: ${response}"; return 1; }
+  [[ "$(curl -sSI "${API_TEST_BASE_URL%/}${admin_public_url}" | tr -d '\r' \
+    | awk 'tolower($1) == "content-length:" {print $2}')" == 25165825 ]] \
+    || { fail_test 'admin public file could not be read'; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/files/${admin_public_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] || { fail_test "admin public file cleanup failed: ${response}"; return 1; }
   response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/files/${public_file_id}")"
   [[ "${response##*$'\n'}" == 404 ]] || { fail_test "another user deleted public file: ${response}"; return 1; }

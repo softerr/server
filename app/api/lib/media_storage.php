@@ -54,6 +54,26 @@ function mediaStorageWrite(string $kind, string $hash, string $bytes): void
     }
 }
 
+function mediaStorageCommitStaged(string $kind, string $hash, string $temporary): void
+{
+    $path = mediaStoragePath($kind, $hash);
+    $directory = dirname($path);
+    if (!is_dir($directory)) {
+        if (!@mkdir($directory, 02770, true) && !is_dir($directory)) {
+            throw new RuntimeException('Could not create media storage directory');
+        }
+        @chmod($directory, 02770);
+    }
+    if (!@chmod($temporary, 0640)) {
+        throw new RuntimeException('Could not set media file permissions');
+    }
+    if (!@link($temporary, $path)) {
+        if (!is_file($path) || hash_file('sha256', $path) !== $hash) {
+            throw new RuntimeException('Could not save media file');
+        }
+    }
+}
+
 function mediaStorageRead(string $kind, string $hash): string
 {
     $bytes = @file_get_contents(mediaStoragePath($kind, $hash));

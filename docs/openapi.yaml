@@ -2856,14 +2856,14 @@ paths:
                     required: [count, bytes, per_file_bytes]
                     properties:
                       count: {type: integer, example: 1000}
-                      bytes: {type: integer, example: 1073741824}
-                      per_file_bytes: {type: integer, example: 25165824}
+                      bytes: {type: integer, description: '1073741824 for users; 10737418240 for admins.'}
+                      per_file_bytes: {type: integer, description: '25165824 for users; 1073741824 for admins.'}
         '401': {description: Not authenticated.}
     post:
       tags: [Media]
       operationId: uploadPublicFile
       summary: Upload a file and create a public link
-      description: Browser session required. Files must be nonempty and at most 24 MiB; each account has a 1 GiB and 1,000 file limit.
+      description: Browser session required. Files must be nonempty and at most 24 MiB for users or 1 GiB for admins. Each account has a 1,000 file limit and a 1 GiB user or 10 GiB admin storage limit.
       security: [{sessionCookie: []}]
       parameters:
         - name: X-File-Name
@@ -5047,7 +5047,7 @@ components:
       properties:
         id: {type: integer, format: int64, minimum: 1}
         name: {type: string}
-        size_bytes: {type: integer, minimum: 1}
+        size_bytes: {type: integer, minimum: 1, maximum: 1073741824}
         mime_type: {type: string}
         created: {type: string, format: date-time}
         url: {type: string, description: Public path to prefix with the server origin.}

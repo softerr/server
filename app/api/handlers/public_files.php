@@ -1,8 +1,10 @@
 <?php
 declare(strict_types=1);
 
-const PUBLIC_FILE_MAX_BYTES = 25165824;
+const PUBLIC_FILE_USER_MAX_FILE_BYTES = 25165824;
+const PUBLIC_FILE_ADMIN_MAX_FILE_BYTES = 1073741824;
 const PUBLIC_FILE_USER_MAX_BYTES = 1073741824;
+const PUBLIC_FILE_ADMIN_MAX_BYTES = 10737418240;
 const PUBLIC_FILE_USER_MAX_COUNT = 1000;
 
 function publicFileName(string $name): string
@@ -24,18 +26,60 @@ function publicFileResponse(array $row): array
         'url' => '/files/' . trim($row['public_id']) . '/' . rawurlencode($name)];
 }
 
-function publicFileOwner(): int
+function publicFileUser(): array
 {
     $user = currentSessionUser();
     // Public links belong to the signed-in human account. API tokens are not
     // granted permission to publish content on their creator's behalf.
     if (isset($user['api_token_id'])) respond(403, ['error' => 'Browser session required']);
-    return (int) $user['id'];
+    return $user;
+}
+
+function publicFileLimits(array $user): array
+{
+    $admin = $user['role'] === 'admin';
+    return ['count' => PUBLIC_FILE_USER_MAX_COUNT,
+        'bytes' => $admin ? PUBLIC_FILE_ADMIN_MAX_BYTES : PUBLIC_FILE_USER_MAX_BYTES,
+        'per_file_bytes' => $admin ? PUBLIC_FILE_ADMIN_MAX_FILE_BYTES : PUBLIC_FILE_USER_MAX_FILE_BYTES];
+}
+
+function stagePublicFileUpload(int $maxBytes): array
+{
+    if (!is_dir(MEDIA_STORAGE_ROOT . '/files')) {
+        throw new RuntimeException('Public file storage directory is unavailable');
+    }
+    $temporary = @tempnam(MEDIA_STORAGE_ROOT . '/files', '.upload-');
+    if ($temporary === false) throw new RuntimeException('Could not stage public file');
+    register_shutdown_function(static function () use ($temporary): void { @unlink($temporary); });
+    $input = @fopen('php://input', 'rb');
+    $output = @fopen($temporary, 'wb');
+    try {
+        if ($input === false || $output === false) throw new RuntimeException('Could not open public file upload');
+        $size = @stream_copy_to_stream($input, $output, $maxBytes + 1);
+        if ($size === false) throw new RuntimeException('Could not read public file upload');
+        if ($size === 0 || $size > $maxBytes) throw new LengthException('Invalid public file size');
+        if (!@fsync($output)) throw new RuntimeException('Could not sync public file upload');
+    } catch (Throwable $error) {
+        @unlink($temporary);
+        throw $error;
+    } finally {
+        if ($input !== false) fclose($input);
+        if ($output !== false) fclose($output);
+    }
+    $hash = hash_file('sha256', $temporary);
+    if ($hash === false) {
+        @unlink($temporary);
+        throw new RuntimeException('Could not hash public file upload');
+    }
+    $detected = (new finfo(FILEINFO_MIME_TYPE))->file($temporary);
+    $mime = is_string($detected) && strlen($detected) <= 128 ? $detected : 'application/octet-stream';
+    return [$temporary, $size, $hash, $mime];
 }
 
 function handleListPublicFiles(): never
 {
-    $ownerId = publicFileOwner();
+    $user = publicFileUser();
+    $ownerId = (int) $user['id'];
     $db = connectMediaDb();
     $result = @pg_query_params($db,
         'SELECT id, public_id, original_name, mime_type, size_bytes, created
@@ -48,24 +92,32 @@ function handleListPublicFiles(): never
         $bytes += (int) $row['size_bytes'];
     }
     respond(200, ['files' => $files, 'usage' => ['count' => count($files), 'bytes' => $bytes],
-        'limits' => ['count' => PUBLIC_FILE_USER_MAX_COUNT,
-            'bytes' => PUBLIC_FILE_USER_MAX_BYTES, 'per_file_bytes' => PUBLIC_FILE_MAX_BYTES]]);
+        'limits' => publicFileLimits($user)]);
 }
 
 function handleUploadPublicFile(): never
 {
-    $ownerId = publicFileOwner();
+    $user = publicFileUser();
+    $ownerId = (int) $user['id'];
+    $limits = publicFileLimits($user);
     $header = $_SERVER['HTTP_X_FILE_NAME'] ?? null;
     if (!is_string($header) || $header === '') respond(400, ['error' => 'X-File-Name is required']);
     $name = publicFileName(rawurldecode($header));
-    $bytes = file_get_contents('php://input', false, null, 0, PUBLIC_FILE_MAX_BYTES + 1);
-    if ($bytes === false || $bytes === '' || strlen($bytes) > PUBLIC_FILE_MAX_BYTES) {
-        respond(413, ['error' => 'File must be between 1 byte and 24 MiB']);
+    $maxBytes = $limits['per_file_bytes'];
+    $sizeLabel = $user['role'] === 'admin' ? '1 GiB' : '24 MiB';
+    if (isset($_SERVER['CONTENT_LENGTH']) && ctype_digit((string) $_SERVER['CONTENT_LENGTH'])
+        && (int) $_SERVER['CONTENT_LENGTH'] > $maxBytes) {
+        respond(413, ['error' => "File must be between 1 byte and $sizeLabel"]);
     }
-    $size = strlen($bytes);
-    $hash = hash('sha256', $bytes);
-    $detected = (new finfo(FILEINFO_MIME_TYPE))->buffer($bytes);
-    $mime = is_string($detected) && strlen($detected) <= 128 ? $detected : 'application/octet-stream';
+    set_time_limit(0);
+    try {
+        [$temporary, $size, $hash, $mime] = stagePublicFileUpload($maxBytes);
+    } catch (LengthException $error) {
+        respond(413, ['error' => "File must be between 1 byte and $sizeLabel"]);
+    } catch (RuntimeException $error) {
+        error_log($error->getMessage());
+        respond(500, ['error' => 'Could not save file']);
+    }
     $db = connectMediaDb();
     if (@pg_query($db, 'BEGIN') === false
         || @pg_query_params($db, 'SELECT pg_advisory_xact_lock($1)', [$ownerId]) === false) {
@@ -77,12 +129,12 @@ function handleUploadPublicFile(): never
     if ($usage === false || ($totals = pg_fetch_assoc($usage)) === false) {
         respond(500, ['error' => 'Could not check file usage']);
     }
-    if ((int) $totals['count'] >= PUBLIC_FILE_USER_MAX_COUNT
-        || (int) $totals['bytes'] + $size > PUBLIC_FILE_USER_MAX_BYTES) {
+    if ((int) $totals['count'] >= $limits['count']
+        || (int) $totals['bytes'] + $size > $limits['bytes']) {
         respond(413, ['error' => 'Public file storage limit reached']);
     }
     try {
-        mediaStorageWrite('files', $hash, $bytes);
+        mediaStorageCommitStaged('files', $hash, $temporary);
     } catch (RuntimeException $error) {
         error_log($error->getMessage());
         respond(500, ['error' => 'Could not save file']);
@@ -95,12 +147,13 @@ function handleUploadPublicFile(): never
         [$ownerId, bin2hex(random_bytes(16)), $name, $mime, $size, $hash]);
     if ($saved === false || ($row = pg_fetch_assoc($saved)) === false
         || @pg_query($db, 'COMMIT') === false) respond(500, ['error' => 'Could not save file']);
+    @unlink($temporary);
     respond(201, publicFileResponse($row));
 }
 
 function handleDeletePublicFile(int $fileId): never
 {
-    $ownerId = publicFileOwner();
+    $ownerId = (int) publicFileUser()['id'];
     $result = @pg_query_params(connectMediaDb(),
         'DELETE FROM public.public_file WHERE id = $1 AND owner_auth_user_id = $2 RETURNING id',
         [$fileId, $ownerId]);

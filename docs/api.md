@@ -17,7 +17,8 @@ The PHP files are internal to Nginx and are not public API URLs.
 ## Public files
 
 Signed-in users can upload any nonempty file of up to 24 MiB in **Media → Public
-files**. Each account can store up to 1,000 files and 1 GiB. Upload with
+files**. Admins can upload files up to 1 GiB. Each account can store up to
+1,000 files; storage is limited to 1 GiB for users and 10 GiB for admins. Upload with
 `POST /api/media/files`, sending the raw file bytes and a percent-encoded
 filename in `X-File-Name`. The response includes a `url` such as
 `/files/0123456789abcdef0123456789abcdef/report.pdf`. Prefix it with the

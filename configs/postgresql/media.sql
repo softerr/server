@@ -79,10 +79,14 @@ CREATE TABLE IF NOT EXISTS public.public_file (
     public_id CHAR(32) NOT NULL UNIQUE,
     original_name VARCHAR(255) NOT NULL,
     mime_type VARCHAR(128) NOT NULL,
-    size_bytes INTEGER NOT NULL CHECK (size_bytes BETWEEN 1 AND 25165824),
+    size_bytes INTEGER NOT NULL CONSTRAINT public_file_size_bytes_check
+        CHECK (size_bytes BETWEEN 1 AND 1073741824),
     sha256 CHAR(64) NOT NULL,
     created TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE public.public_file DROP CONSTRAINT IF EXISTS public_file_size_bytes_check;
+ALTER TABLE public.public_file ADD CONSTRAINT public_file_size_bytes_check
+    CHECK (size_bytes BETWEEN 1 AND 1073741824);
 CREATE INDEX IF NOT EXISTS public_file_owner_id_idx
     ON public.public_file (owner_auth_user_id, id DESC);
 
