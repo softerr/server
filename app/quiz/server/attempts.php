@@ -119,8 +119,16 @@ function attemptDocument($db, array $row): array
         $score = ['graded' => 0, 'correct' => 0, 'ungraded' => 0];
         foreach ($allQuestions as $index => $snapshot) {
             $saved = $answers[$snapshot['id']] ?? null;
-            $grade = gradeAttemptAnswer($snapshot['template'], json_decode($snapshot['config'], true),
-                is_array($saved) ? $saved : null, (int) $snapshot['id'], $row['randomize_answers'] === 't');
+            $config = json_decode($snapshot['config'], true);
+            $answer = is_array($saved) ? $saved : null;
+            $questionId = (int) $snapshot['id'];
+            $randomizeAnswers = $row['randomize_answers'] === 't';
+            $grade = gradeAttemptAnswer($snapshot['template'], $config, $answer, $questionId, $randomizeAnswers);
+            if ($snapshot['template'] === 'match') {
+                $score['match_total'] = ($score['match_total'] ?? 0) + count($config['pairs']);
+                $score['match_correct'] = ($score['match_correct'] ?? 0)
+                    + countCorrectMatchChoices($config, $answer, $questionId, $randomizeAnswers);
+            }
             if ($grade === null) $score['ungraded']++;
             else {
                 $score['graded']++;

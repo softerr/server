@@ -138,8 +138,11 @@ function dragAssignment(answer, items, targets, capacity) {
   makeDrop(bank)
   area.append(instruction, bank, zones)
   answer.append(area)
+  const correctCount = () => cards.filter((card, index) =>
+    card.parentElement?.dataset.target === String(items[index].target)).length
   return {
-    grade: () => cards.every((card, index) => card.parentElement?.dataset.target === String(items[index].target)),
+    grade: () => correctCount() === cards.length,
+    correctCount,
     finish: () => { locked = true; cards.forEach((card) => { card.disabled = true }) },
     getAnswer: () => {
       const assignments = Array(items.length).fill(null)
@@ -174,6 +177,7 @@ export function buildQuestion(question, index) {
   let finish = () => {}
   let getAnswer = () => ({ viewed: true })
   let restoreAnswer = () => {}
+  let matchScore = null
 
   if (question.template === 'multiple_choice' || question.template === 'one_choice') {
     const options = config.options || []
@@ -289,6 +293,7 @@ export function buildQuestion(question, index) {
       pairs.map((pair) => ({ text: pair.keyword, imageId: pair.keyword_image_id })), 1)
     grade = activity.grade
     finish = activity.finish
+    matchScore = () => ({ correct: activity.correctCount(), total: pairs.length })
     getAnswer = () => {
       const assignments = Array(pairs.length).fill(null)
       activity.getAnswer().assignments.forEach((target, source) => {
@@ -449,6 +454,7 @@ export function buildQuestion(question, index) {
     card,
     getAnswer,
     restoreAnswer,
+    matchScore,
     lock() {
       card.inert = true
       card.querySelectorAll('input, textarea, select, button').forEach((control) => { control.disabled = true })

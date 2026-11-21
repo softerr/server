@@ -80,6 +80,23 @@ function normalizedAttemptText(string $value): string
     return function_exists('mb_strtolower') ? mb_strtolower($normalized, 'UTF-8') : strtolower($normalized);
 }
 
+function countCorrectMatchChoices(array $config, ?array $answer, int $questionId, bool $randomizeAnswers = false): int
+{
+    $values = $answer['assignments'] ?? null;
+    if (!is_array($values)) return 0;
+    $pairs = $config['pairs'];
+    $order = presentationOrder(count($pairs), $questionId, 'match');
+    $keywordOrder = $randomizeAnswers
+        ? presentationOrder(count($pairs), $questionId, 'match-keywords')
+        : array_keys($pairs);
+    $correct = 0;
+    foreach ($keywordOrder as $target => $sourceIndex) {
+        $value = $values[$target] ?? null;
+        if (is_scalar($value) && (string) $value === (string) array_search($sourceIndex, $order, true)) $correct++;
+    }
+    return $correct;
+}
+
 function gradeAttemptAnswer(string $template, array $config, ?array $answer, int $questionId, bool $randomizeAnswers = false): ?bool
 {
     if (in_array($template, ['open', 'show_answer', 'no_answer'], true)) return null;
@@ -111,13 +128,8 @@ function gradeAttemptAnswer(string $template, array $config, ?array $answer, int
     }
     if ($template === 'match') {
         $values = $answer['assignments'] ?? null;
-        $order = presentationOrder(count($config['pairs']), $questionId, 'match');
-        $keywordOrder = $randomizeAnswers
-            ? presentationOrder(count($config['pairs']), $questionId, 'match-keywords')
-            : array_keys($config['pairs']);
-        return is_array($values) && count($values) === count($order)
-            && array_reduce(array_keys($order), static fn (bool $okay, int $target): bool =>
-                $okay && (string) ($values[$target] ?? '') === (string) array_search($keywordOrder[$target], $order, true), true);
+        return is_array($values) && count($values) === count($config['pairs'])
+            && countCorrectMatchChoices($config, $answer, $questionId, $randomizeAnswers) === count($config['pairs']);
     }
     if ($template === 'ordering') {
         $values = $answer['order'] ?? null;

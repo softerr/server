@@ -368,6 +368,7 @@ export function renderQuizAttempt(app, { requestJson, responseError, setStatus }
     summary.append(element('h2', '', attempt.completed ? 'Completed attempt' : 'Unfinished attempt'),
       element('p', '', `${answered} of ${attempt.questions.length} questions answered.`))
     if (score?.graded) summary.append(element('p', '', `${score.correct} of ${score.graded} automatically graded answers correct.`))
+    if (score?.match_total) summary.append(element('p', '', `Match choices: ${score.match_correct} of ${score.match_total} correct.`))
     const action = element('a', 'auth-button auth-button-secondary', attempt.completed ? 'Play again' : 'Continue')
     action.href = `#play?quiz=${quizId}${explore ? '&source=explore' : ''}`
     summary.append(action)
@@ -414,6 +415,9 @@ export function renderQuizResults(app, { requestJson, responseError, setStatus }
         element('p', '', graded
           ? `${correct} of ${graded} automatically graded questions correct.`
           : 'This quiz has no automatically graded questions.'))
+      if (attempt.score?.match_total) {
+        summary.append(element('p', '', `Match choices: ${attempt.score.match_correct} of ${attempt.score.match_total} correct.`))
+      }
       if (ungraded) {
         summary.append(element('p', '', `${ungraded} study or open-answer questions were not graded.`))
       }

@@ -32,8 +32,13 @@ expectAttempt(!isset($visible['pairs'][0]['definition']) && count($visible['defi
 $order = presentationOrder(3, 12, 'match');
 $assignment = array_map(static fn (int $target): string => (string) array_search($target, $order, true), [0, 1, 2]);
 expectAttempt(gradeAttemptAnswer('match', $match, ['assignments' => $assignment], 12) === true, 'Correct match was missed');
+expectAttempt(countCorrectMatchChoices($match, ['assignments' => $assignment], 12) === 3,
+    'Correct match choices were not counted');
 $assignment[0] = null;
 expectAttempt(gradeAttemptAnswer('match', $match, ['assignments' => $assignment], 12) === false, 'Incomplete match passed');
+expectAttempt(countCorrectMatchChoices($match, ['assignments' => $assignment], 12) === 2,
+    'Partial match choices were not counted');
+expectAttempt(countCorrectMatchChoices($match, null, 12) === 0, 'Unanswered match choices were counted');
 $keywordOrder = presentationOrder(3, 12, 'match-keywords');
 $shuffledMatch = playQuestionConfig('match', $match, 12, false, true);
 expectAttempt($shuffledMatch['pairs'][0]['keyword'] === $match['pairs'][$keywordOrder[0]]['keyword'],
@@ -42,6 +47,9 @@ $shuffledAssignment = array_map(static fn (int $source): string => (string) arra
     $keywordOrder);
 expectAttempt(gradeAttemptAnswer('match', $match, ['assignments' => $shuffledAssignment], 12, true) === true,
     'Shuffled match was graded incorrectly');
+$shuffledAssignment[1] = null;
+expectAttempt(countCorrectMatchChoices($match, ['assignments' => $shuffledAssignment], 12, true) === 2,
+    'Shuffled partial match choices were not counted');
 
 $ordering = ['items' => [['text' => 'Wash'], ['text' => 'Cut'], ['text' => 'Cook']]];
 $order = presentationOrder(3, 13, 'ordering');

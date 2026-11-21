@@ -123,12 +123,16 @@ export function openQuizPreview(dialog, quiz, questions) {
     const results = views.map((view) => view.complete())
     const graded = results.filter((result) => result !== null).length
     const correct = results.filter((result) => result === true).length
+    const matchScores = views.flatMap((view) => view.matchScore ? [view.matchScore()] : [])
+    const matchTotal = matchScores.reduce((sum, score) => sum + score.total, 0)
+    const matchCorrect = matchScores.reduce((sum, score) => sum + score.correct, 0)
     const summary = element('section', 'play-results')
     summary.append(element('h2', '', 'Preview complete'),
       element('p', '', graded
         ? `${correct} of ${graded} automatically graded questions correct.`
-        : 'This quiz has no automatically graded questions.'),
-      element('p', '', 'Answers were not saved.'))
+        : 'This quiz has no automatically graded questions.'))
+    if (matchTotal) summary.append(element('p', '', `Match choices: ${matchCorrect} of ${matchTotal} correct.`))
+    summary.append(element('p', '', 'Answers were not saved.'))
     questionArea.replaceChildren(summary)
     progress.hidden = true
     timerArea.hidden = true

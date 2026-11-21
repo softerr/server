@@ -63,8 +63,6 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
         <h2 id="quiz-name-title">Create quiz</h2>
         <form id="quiz-name-form">
           <label class="field"><span>Quiz name</span><input name="name" type="text" maxlength="100" autocomplete="off" required /></label>
-          <label class="field"><span>Play style</span><select name="play_style"><option value="basic">Basic</option><option value="game_show">Game Show</option></select></label>
-          <label class="quiz-review-setting"><input name="show_correct_answers" type="checkbox" /><span>Show correct answers in completed attempt reviews</span></label>
           <p id="quiz-name-status" class="form-status" role="status" aria-live="polite"></p>
           <div class="dialog-actions">
             <button id="cancel-quiz-name" class="auth-button auth-button-secondary" type="button">Cancel</button>
@@ -213,10 +211,7 @@ export function renderLibrary(app, { requestJson, postJson, responseError, setSt
     button.disabled = true
     setStatus(nameStatus, 'Creating quiz…')
     try {
-      const [response, payload] = await postJson('/api/quiz/quizzes', {
-        name, play_style: form.elements.play_style.value,
-        show_correct_answers: form.elements.show_correct_answers.checked,
-      })
+      const [response, payload] = await postJson('/api/quiz/quizzes', { name })
       if (!app.contains(form)) return
       if (!response.ok) {
         setStatus(nameStatus, responseError(response, payload), true)
