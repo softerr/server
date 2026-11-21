@@ -31,6 +31,9 @@ function checkCoreReadiness(): void
 
 function checkMediaReadiness(): void
 {
+    if (!class_exists(DOMDocument::class)) {
+        respond(503, ['status' => 'unavailable', 'error' => 'SVG support is not ready']);
+    }
     if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) {
         respond(503, ['status' => 'unavailable', 'error' => 'Image thumbnail support is not ready']);
     }

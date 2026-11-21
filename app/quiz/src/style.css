@@ -796,6 +796,8 @@
   white-space: nowrap;
 }
 
+[data-paste-tile] .image-library-name { white-space: normal; }
+
 .image-library-choice {
   position: relative;
   display: grid;
@@ -849,7 +851,8 @@
 }
 
 .image-library-choice-empty svg,
-.image-library-choice-upload svg {
+.image-library-choice-upload svg,
+.image-library-choice-paste svg {
   width: 36px;
   height: 36px;
   color: var(--text-grey);

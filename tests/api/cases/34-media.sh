@@ -4,10 +4,11 @@ test_shared_media_across_users_and_quizzes() (
   set -e
   # Earlier login cases may have exhausted the per-IP Nginx bucket.
   sudo -n systemctl restart nginx
-  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file private_file answer_file direct_file folder_file large_file thumbnail_file public_file response status shared_id private_id answer_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id public_attempt_id archive manifest count public_file_id public_file_url
+  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file svg_file private_file answer_file direct_file folder_file large_file thumbnail_file public_file response status shared_id private_id answer_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id public_attempt_id archive manifest count public_file_id public_file_url
   admin_cookie="$(mktemp)"
   user_cookie="$(mktemp)"
   png_file="$(mktemp)"
+  svg_file="$(mktemp)"
   private_file="$(mktemp)"
   answer_file="$(mktemp)"
   direct_file="$(mktemp)"
@@ -16,7 +17,7 @@ test_shared_media_across_users_and_quizzes() (
   thumbnail_file="$(mktemp)"
   public_file="$(mktemp)"
   archive="$(mktemp)"
-  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$private_file" "$answer_file" "$direct_file" "$folder_file" "$large_file" "$thumbnail_file" "$public_file" "$archive"' EXIT
+  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$svg_file" "$private_file" "$answer_file" "$direct_file" "$folder_file" "$large_file" "$thumbnail_file" "$public_file" "$archive"' EXIT
 
   create_test_identity
   admin_email="$TEST_EMAIL"
@@ -539,6 +540,43 @@ test_shared_media_across_users_and_quizzes() (
   response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${large_id}")"
   [[ "${response##*$'\n'}" == 204 ]] || { fail_test "large image cleanup failed: ${response}"; return 1; }
+
+  printf '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10080 5040"><rect width="10080" height="5040" fill="red"/><!-- %s --></svg>\n' \
+    "$API_TEST_RUN_ID" > "$svg_file"
+  response="$(curl -sS -b "$admin_cookie" --data-binary @"$svg_file" \
+    -H "X-Image-Name: api_test_${API_TEST_RUN_ID}.svg" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images")"
+  local svg_id
+  svg_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  [[ "${response##*$'\n'}" == 201 && "$svg_id" =~ ^[1-9][0-9]*$ ]] \
+    || { fail_test "SVG upload failed: ${response}"; return 1; }
+  jq -e '.mime_type == "image/svg+xml" and .width == 300 and .height == 150' \
+    <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "SVG metadata was not preserved: ${response}"; return 1; }
+  status="$(curl -sS -b "$admin_cookie" -D "$archive" -o "$thumbnail_file" -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${svg_id}")"
+  [[ "$status" == 200 ]] && cmp -s "$svg_file" "$thumbnail_file" \
+    || { fail_test 'Saved SVG bytes changed'; return 1; }
+  grep -Eiq '^Content-Type: image/svg\+xml' "$archive" \
+    || { fail_test 'Saved SVG was served with the wrong MIME type'; return 1; }
+  grep -Eiq '^Content-Security-Policy: sandbox;' "$archive" \
+    || { fail_test 'Saved SVG was served without sandbox policy'; return 1; }
+  status="$(curl -sS -b "$admin_cookie" -o "$thumbnail_file" -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${svg_id}/thumbnail")"
+  [[ "$status" == 200 ]] && cmp -s "$svg_file" "$thumbnail_file" \
+    || { fail_test 'SVG thumbnail was rasterized'; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --argjson id "$svg_id" '{image_ids:[$id]}')" \
+    "${API_TEST_BASE_URL%/}/api/media/thumbnails")"
+  jq -e '.images == []' <<<"$response" >/dev/null \
+    || { fail_test "SVG was included in raster thumbnail batch: ${response}"; return 1; }
+  printf '<!DOCTYPE svg><svg xmlns="http://www.w3.org/2000/svg" width="24" height="16"/>' > "$svg_file"
+  status="$(curl -sS -b "$admin_cookie" -o /dev/null -w '%{http_code}' --data-binary @"$svg_file" \
+    -H 'X-Image-Name: invalid.svg' "${API_TEST_BASE_URL%/}/api/media/images")"
+  [[ "$status" == 400 ]] || { fail_test "Unsafe SVG was accepted: HTTP ${status}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${svg_id}")"
+  [[ "${response##*$'\n'}" == 204 ]] || { fail_test "SVG cleanup failed: ${response}"; return 1; }
 )
 
 register_test_case test_shared_media_across_users_and_quizzes

@@ -1,4 +1,4 @@
-import { imageIcon, noImageIcon, removeIcon, uploadImageIcon } from './icons.js'
+import { imageIcon, noImageIcon, pasteImageIcon, removeIcon, uploadImageIcon } from './icons.js'
 import { listMediaImages, mediaImageUrl, mediaThumbnailUrl, uploadMediaImage } from '@softerr/shared/media-client.js'
 import { createMediaThumbnailBatcher } from '@softerr/shared/media-thumbnails.js'
 import { updateImageUsage } from '@softerr/shared/image-usage.js'
@@ -37,11 +37,15 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       <span data-search-label>Search images</span>
       <input type="search" data-image-search placeholder="Search by name" autocomplete="off">
     </label>
-    <input type="file" data-image-upload-input accept="image/png,image/jpeg,image/webp" multiple hidden>
+    <input type="file" data-image-upload-input accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" multiple hidden>
     <div class="image-library-grid">
       <div class="image-library-item" data-upload-tile>
         <button type="button" class="image-library-choice image-library-choice-upload" data-upload aria-label="Upload image" title="Upload image">${uploadImageIcon}</button>
         <span class="image-library-name">Upload image</span>
+      </div>
+      <div class="image-library-item" data-paste-tile>
+        <button type="button" class="image-library-choice image-library-choice-paste" data-paste aria-label="Paste from clipboard" title="Paste from clipboard">${pasteImageIcon}</button>
+        <span class="image-library-name">Paste from clipboard</span>
       </div>
     </div>
     <div class="image-library-multi-actions" hidden>
@@ -54,6 +58,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   const input = dialog.querySelector('[data-image-upload-input]')
   const grid = dialog.querySelector('.image-library-grid')
   const uploadTile = grid.querySelector('[data-upload-tile]')
+  const pasteTile = grid.querySelector('[data-paste-tile]')
   const usage = dialog.querySelector('.image-library-usage')
   const usageBars = usage.querySelector('.image-library-usage-bars')
   const usageMessage = usage.querySelector('.image-library-usage-message')
@@ -63,6 +68,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   const sourceTabs = dialog.querySelectorAll('[data-source-tab]')
   const status = dialog.querySelector('.form-status')
   const upload = dialog.querySelector('[data-upload]')
+  const paste = dialog.querySelector('[data-paste]')
   const multiActions = dialog.querySelector('.image-library-multi-actions')
   const addSelected = dialog.querySelector('[data-add-selected]')
   let images = []
@@ -78,6 +84,8 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   let onlineResults = []
   let onlineSearchTimer = null
   let onlineSearchController = null
+  let uploading = false
+  let dialogVersion = 0
   const batcher = createMediaThumbnailBatcher({
     isActive: () => dialog.open,
     onResult(id, url) {
@@ -234,6 +242,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   }
 
   async function openLibrary(picker = null, callback = null) {
+    dialogVersion++
     active = picker
     onChooseMany = callback
     selectedIds.clear()
@@ -348,9 +357,9 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     emptyName.className = 'image-library-name'
     emptyName.textContent = 'No image'
     emptyTile.append(emptyChoice, emptyName)
-    grid.replaceChildren(emptyTile, uploadTile)
+    grid.replaceChildren(emptyTile, uploadTile, pasteTile)
     emptyTile.hidden = Boolean(onChooseMany)
-    for (const scope of ['shared', 'personal']) {
+    for (const scope of ['personal', 'shared']) {
       const group = visibleImages.filter((image) => image.scope === scope)
       if (!group.length) continue
       const heading = document.createElement('h3')
@@ -465,7 +474,10 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
         setStatus(status, responseError(response, payload), true)
         return
       }
-      images = payload.images
+      images = [...payload.images].sort((a, b) => {
+        if (a.scope !== b.scope) return a.scope === 'personal' ? -1 : 1
+        return a.scope === 'personal' ? b.id - a.id : 0
+      })
       for (const id of selectedIds) if (!images.some((image) => image.id === id)) selectedIds.delete(id)
       updateImageUsage(usage, payload)
       usageBars.hidden = false
@@ -491,24 +503,29 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   for (const tab of sourceTabs) {
     tab.addEventListener('click', () => setSourceMode(tab.dataset.sourceTab))
   }
-  input.addEventListener('change', async () => {
-    const files = Array.from(input.files || [])
-    input.value = ''
-    if (!files.length) return
+  async function uploadFiles(files) {
+    if (!files.length || uploading) return
+    const version = dialogVersion
+    uploading = true
     upload.disabled = true
     const uploaded = []
     const failures = []
     try {
       for (const [index, file] of files.entries()) {
-        setStatus(status, `Uploading ${index + 1} of ${files.length}…`)
+        const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/svg+xml': 'svg' }[file.type] || 'png'
+        const name = file.name || `Pasted image ${index + 1}.${extension}`
+        if (dialog.open && version === dialogVersion) setStatus(status, `Uploading ${index + 1} of ${files.length}…`)
         try {
-          const [response, payload] = await uploadMediaImage(file)
+          const [response, payload] = await uploadMediaImage(file, name)
           if (response.ok && Number.isInteger(payload?.id)) uploaded.push(payload.id)
-          else failures.push(`${file.name}: ${responseError(response, payload)}`)
+          else failures.push(`${name}: ${responseError(response, payload)}`)
         } catch (error) {
-          failures.push(`${file.name}: ${error instanceof RangeError ? error.message : 'could not upload'}`)
+          failures.push(`${name}: ${error instanceof RangeError ? error.message : 'could not upload'}`)
         }
       }
+      if (!dialog.open || version !== dialogVersion) return
+      if (uploaded.length && sourceMode !== 'local') setSourceMode('local')
+      else if (uploaded.length) search.value = ''
       if (!await refresh()) return
       if (onChooseMany) {
         for (const id of uploaded) selectedIds.add(id)
@@ -521,9 +538,84 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
         setStatus(status, failures.slice(0, 3).join('; '), true)
       }
     } catch {
-      setStatus(status, 'Could not upload images.', true)
+      if (dialog.open && version === dialogVersion) setStatus(status, 'Could not upload images.', true)
     } finally {
+      uploading = false
       upload.disabled = false
+    }
+  }
+  paste.addEventListener('click', async () => {
+    if (uploading) {
+      setStatus(status, 'An image upload is already in progress.')
+      return
+    }
+    if (!navigator.clipboard?.read) {
+      setStatus(status, 'Clipboard access is unavailable. Use Ctrl+V or ⌘V in this picker.', true)
+      return
+    }
+    const version = dialogVersion
+    paste.disabled = true
+    setStatus(status, 'Reading clipboard…')
+    try {
+      const items = await navigator.clipboard.read()
+      const files = []
+      for (const item of items) {
+        const type = ['image/svg+xml', 'image/png', 'image/jpeg', 'image/webp'].find((format) => item.types.includes(format))
+        if (type) files.push(await item.getType(type))
+      }
+      if (!dialog.open || version !== dialogVersion) return
+      if (!files.length) {
+        setStatus(status, 'Clipboard has no PNG, JPEG, WebP, or SVG image.', true)
+      } else if (uploading) {
+        setStatus(status, 'An image upload is already in progress.')
+      } else {
+        await uploadFiles(files)
+      }
+    } catch (error) {
+      if (dialog.open && version === dialogVersion) {
+        setStatus(status, error?.name === 'NotAllowedError'
+          ? 'Clipboard access was denied. Use Ctrl+V or ⌘V in this picker.'
+          : 'Could not read an image from the clipboard.', true)
+      }
+    } finally {
+      paste.disabled = false
+    }
+  })
+  input.addEventListener('change', () => {
+    const files = Array.from(input.files || [])
+    input.value = ''
+    void uploadFiles(files)
+  })
+  dialog.addEventListener('paste', (event) => {
+    const clipboardItems = Array.from(event.clipboardData?.items || [])
+    const itemFiles = clipboardItems
+      .filter((item) => item.kind === 'file')
+      .map((item) => item.getAsFile())
+      .filter(Boolean)
+    const files = itemFiles.length ? itemFiles : Array.from(event.clipboardData?.files || [])
+    const images = files.filter((file) => file.type.startsWith('image/'))
+    const svgText = clipboardItems.find((item) => item.kind === 'string' && item.type === 'image/svg+xml')
+    if (!images.length && !svgText) return
+    event.preventDefault()
+    const supported = images.filter((file) => /^image\/(png|jpeg|webp|svg\+xml)$/.test(file.type))
+    if (!supported.length && !svgText) {
+      setStatus(status, 'Paste a PNG, JPEG, WebP, or SVG image.', true)
+      return
+    }
+    if (uploading) {
+      setStatus(status, 'An image upload is already in progress.')
+      return
+    }
+    const svgFiles = supported.filter((file) => file.type === 'image/svg+xml')
+    if (svgFiles.length) {
+      void uploadFiles(svgFiles)
+    } else if (svgText) {
+      svgText.getAsString((source) => {
+        if (source) void uploadFiles([new File([source], 'Pasted image.svg', { type: 'image/svg+xml' })])
+        else setStatus(status, 'Could not read SVG from the clipboard.', true)
+      })
+    } else {
+      void uploadFiles(supported)
     }
   })
   addSelected.addEventListener('click', () => {

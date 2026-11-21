@@ -3033,7 +3033,7 @@ paths:
       tags: [Media]
       operationId: getMediaThumbnails
       summary: Load up to 32 personal or shared thumbnails in one request
-      description: Returns only images visible in the caller's media library. Unavailable IDs are omitted. Each data field is base64-encoded image bytes.
+      description: Returns raster thumbnails visible in the caller's media library. Unavailable IDs and SVG images are omitted; request an SVG preview from the individual thumbnail endpoint. Each data field is base64-encoded image bytes.
       security:
         - sessionCookie: []
         - apiBearer: []
@@ -3121,7 +3121,7 @@ paths:
       tags: [Media]
       operationId: uploadImage
       summary: Upload or reuse a personal image
-      description: PNG, JPEG, or WebP, at most 6 MiB and 4096 pixels per side. A mobile access token can upload to its owner's personal library. An API token with app edit access and media:write can set `for=musico` or `for=mdb` to upload into its creator's library. A selected-resource grant also requires resource_id. If identical bytes exist in the shared library, returns the shared entry without charging personal quota. Otherwise personal storage is limited to 1024 images and 64 MiB across apps.
+      description: PNG, JPEG, WebP, or SVG, at most 6 MiB and 4096 pixels per side. SVG files are stored and served as SVG; viewBox coordinates are not treated as pixel dimensions. A mobile access token can upload to its owner's personal library. An API token with app edit access and media:write can set `for=musico` or `for=mdb` to upload into its creator's library. A selected-resource grant also requires resource_id. If identical bytes exist in the shared library, returns the shared entry without charging personal quota. Otherwise personal storage is limited to 1024 images and 64 MiB across apps.
       security:
         - sessionCookie: []
         - apiBearer: []
@@ -3686,7 +3686,7 @@ paths:
       tags: [Media]
       operationId: getImageThumbnail
       summary: Read a thumbnail of a personal, shared, or accessible quiz image
-      description: Uses the same access rules as the original image. The preview is at most 320 pixels per side; small images may be returned unchanged.
+      description: Uses the same access rules as the original image. Raster previews are at most 320 pixels per side; small raster images and SVG files are returned unchanged.
       security:
         - sessionCookie: []
         - apiBearer: []
@@ -3700,6 +3700,8 @@ paths:
             image/jpeg:
               schema: {type: string, format: binary}
             image/webp:
+              schema: {type: string, format: binary}
+            image/svg+xml:
               schema: {type: string, format: binary}
         '401':
           description: No active session.
@@ -3732,6 +3734,8 @@ paths:
             image/jpeg:
               schema: {type: string, format: binary}
             image/webp:
+              schema: {type: string, format: binary}
+            image/svg+xml:
               schema: {type: string, format: binary}
         '401':
           description: No active session.
@@ -5305,7 +5309,7 @@ components:
           description: Image filename, initially the uploaded filename.
         mime_type:
           type: string
-          enum: [image/png, image/jpeg, image/webp]
+          enum: [image/png, image/jpeg, image/webp, image/svg+xml]
         width:
           type: integer
         height:

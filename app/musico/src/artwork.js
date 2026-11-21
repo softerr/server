@@ -8,7 +8,7 @@ export function mountArtworkPicker(page, { requestJson, responseError }) {
     <div class="musico-art-heading"><h2>Choose album art</h2><button type="button" data-close aria-label="Close image picker">×</button></div>
     <input data-search type="search" placeholder="Search images" aria-label="Search images">
     <div data-grid class="musico-art-grid"></div>
-    <label class="auth-button auth-button-secondary musico-upload">Upload image<input data-upload type="file" accept="image/png,image/jpeg,image/webp" hidden></label>
+    <label class="auth-button auth-button-secondary musico-upload">Upload image<input data-upload type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden></label>
     <p data-status class="form-status" role="status" aria-live="polite"></p>
   `
   page.append(dialog)

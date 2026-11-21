@@ -17,6 +17,7 @@ function musicoArtworkFilename(string $artist, string $album, string $title, str
     $extension = match ($mime) {
         'image/png' => 'png',
         'image/webp' => 'webp',
+        'image/svg+xml' => 'svg',
         default => 'jpg',
     };
     return rtrim($truncated) . '.' . $extension;
@@ -29,7 +30,7 @@ function renameGenericMusicoArtwork($mediaDb, int $imageId, int $ownerId,
         'SELECT i.original_name, b.mime_type FROM public.image i
          JOIN public.image_blob b ON b.id = i.blob_id
          WHERE i.id = $1 AND i.owner_auth_user_id = $2 AND i.shared = FALSE
-           AND lower(i.original_name) IN (\'album-art.png\', \'album-art.jpg\', \'album-art.jpeg\', \'album-art.webp\')',
+           AND lower(i.original_name) IN (\'album-art.png\', \'album-art.jpg\', \'album-art.jpeg\', \'album-art.webp\', \'album-art.svg\')',
         [$imageId, $ownerId]);
     if ($result === false) throw new RuntimeException('Could not check album artwork name');
     $row = pg_fetch_assoc($result);

@@ -118,11 +118,18 @@ if [[ ! "${socket}" =~ ^/run/php/php([0-9.]+)-fpm\.sock$ ]]; then
   exit 1
 fi
 php_version="${BASH_REMATCH[1]}"
+missing_php_modules=()
 if ! "php${php_version}" -m | grep -Fxiq gd; then
+  missing_php_modules+=("php${php_version}-gd")
+fi
+if ! "php${php_version}" -m | grep -Fxiq dom; then
+  missing_php_modules+=("php${php_version}-xml")
+fi
+if (( ${#missing_php_modules[@]} > 0 )); then
   wait_for_apt_locks
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
-  apt-get install -y "php${php_version}-gd"
+  apt-get install -y "${missing_php_modules[@]}"
 fi
 
 echo "Deploying API from: ${SOURCE_DIR}"

@@ -3,5 +3,6 @@ export const attemptsIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="curren
 export const moveUpIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 15 7-7 7 7" /></svg>'
 export const moveDownIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 9 7 7 7-7" /></svg>'
 export { noImageIcon, uploadImageIcon } from '@softerr/shared/icons.js'
+export const pasteImageIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="18" rx="2"/><path d="M9 4V2h6v2M7 18l4-4 2 2 2-3 2 5M9 10h.01"/></svg>'
 export const addImagesIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="11" height="11" rx="1"/><path d="m3 13 3-3 2 2 2-2 3 3M16 4h5v8h-5m1 6h6m-3-3v6"/></svg>'
 export const swapSidesIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h17m-4-4 4 4-4 4M21 16H4m4-4-4 4 4 4"/></svg>'

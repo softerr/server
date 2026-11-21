@@ -141,7 +141,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         <button id="mdb-image-close" type="button" aria-label="Close image picker" title="Close">${removeIcon}</button>
       </div>
       <input id="mdb-image-search" type="search" aria-label="Search images" placeholder="Search images" autocomplete="off" />
-      <input id="mdb-image-upload" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+      <input id="mdb-image-upload" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden />
       <div id="mdb-image-grid" class="mdb-image-grid"></div>
       <p id="mdb-image-status" class="form-status" role="status" aria-live="polite"></p>
     </dialog>

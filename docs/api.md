@@ -504,7 +504,7 @@ key to its local user. The API creates the local user on the first quiz create.
   `PATCH /api/media/images/{imageId}/group` and
   `{ "group_id": 12 }`. Send `null` to ungroup it. Image IDs and quiz references
   do not change when images move.
-- `POST /api/media/images` accepts raw PNG, JPEG, or WebP bytes and returns image
+- `POST /api/media/images` accepts raw PNG, JPEG, WebP, or SVG bytes and returns image
   metadata with HTTP `201`. Each image is limited to 6 MiB and 4096 pixels per
   side. Send the original filename in the required `X-Image-Name` header, encoded
   with `encodeURIComponent` or equivalent. Names may be up to 255 UTF-8 bytes and
@@ -512,6 +512,8 @@ key to its local user. The API creates the local user on the first quiz create.
   to 1024 images and 64 MiB across apps. Uploading identical bytes again returns
   an existing personal or shared image ID and its first uploaded name. A shared
   match does not consume personal storage.
+  SVG uploads retain their original bytes and MIME type, including when served as thumbnails.
+  An SVG `viewBox` describes scalable coordinates, so its values do not count as pixel dimensions.
 - `POST /api/media/images/{imageId}/publish` requires an admin session and an
   image in that admin's personal library. It makes the image available to all
   authenticated users while keeping its ID and original uploader. The image

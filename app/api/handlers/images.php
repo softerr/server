@@ -16,12 +16,83 @@ function validMediaImage(string $bytes): array
     }
     $info = @getimagesizefromstring($bytes);
     $mime = $info['mime'] ?? null;
-    if (!in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)
-        || ($info[0] ?? 0) < 1 || ($info[0] ?? 0) > 4096
-        || ($info[1] ?? 0) < 1 || ($info[1] ?? 0) > 4096) {
-        respond(400, ['error' => 'Choose a PNG, JPEG, or WebP image up to 4096 pixels per side']);
+    if (in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)
+        && ($info[0] ?? 0) >= 1 && ($info[0] ?? 0) <= 4096
+        && ($info[1] ?? 0) >= 1 && ($info[1] ?? 0) <= 4096) {
+        return [$mime, $info[0], $info[1]];
     }
-    return [$mime, $info[0], $info[1]];
+    if (str_contains($bytes, '<svg')
+        || preg_match('/<[A-Za-z_][A-Za-z0-9_.-]*:svg(?:\s|>)/', $bytes)) {
+        return validMediaSvg($bytes);
+    }
+    respond(400, ['error' => 'Choose a PNG, JPEG, WebP, or SVG image up to 4096 pixels per side']);
+}
+
+function validMediaSvg(string $bytes): array
+{
+    if (!class_exists(DOMDocument::class)) {
+        respond(500, ['error' => 'SVG support is unavailable']);
+    }
+    if (preg_match('/<!DOCTYPE|<!ENTITY/i', $bytes)) {
+        respond(400, ['error' => 'Invalid SVG image']);
+    }
+    $previous = libxml_use_internal_errors(true);
+    try {
+        $document = new DOMDocument();
+        $valid = $document->loadXML($bytes, LIBXML_NONET);
+    } finally {
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+    }
+    $svg = $document->documentElement;
+    if (!$valid || $svg === null || $svg->localName !== 'svg'
+        || $svg->namespaceURI !== 'http://www.w3.org/2000/svg') {
+        respond(400, ['error' => 'Invalid SVG image']);
+    }
+    foreach ($document->getElementsByTagName('*') as $element) {
+        if (in_array($element->localName, ['script', 'foreignObject'], true)) {
+            respond(400, ['error' => 'SVG image contains unsupported content']);
+        }
+        foreach ($element->attributes as $attribute) {
+            if (str_starts_with(strtolower($attribute->localName), 'on')
+                || ($attribute->localName === 'href'
+                    && !str_starts_with($attribute->value, '#')
+                    && !preg_match('~^data:image/(?:png|jpeg|webp);base64,~i', $attribute->value))) {
+                respond(400, ['error' => 'SVG image contains unsupported content']);
+            }
+        }
+    }
+    $viewBox = preg_split('/[\s,]+/', trim($svg->getAttribute('viewBox')));
+    $viewWidth = count($viewBox) === 4 && is_numeric($viewBox[2]) ? (float) $viewBox[2] : 0;
+    $viewHeight = count($viewBox) === 4 && is_numeric($viewBox[3]) ? (float) $viewBox[3] : 0;
+    $dimension = static function (string $value): float {
+        return preg_match('/^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?(?:px)?$/', $value)
+            ? (float) $value : 0;
+    };
+    $width = $dimension(trim($svg->getAttribute('width')));
+    $height = $dimension(trim($svg->getAttribute('height')));
+    if ($width <= 0 && $height <= 0) {
+        // A viewBox uses scalable coordinates, not pixels. Fit its ratio into
+        // the default 300x150 image size when no pixel dimensions are given.
+        if ($viewWidth > 0 && $viewHeight > 0) {
+            $scale = min(300 / $viewWidth, 150 / $viewHeight);
+            $width = $viewWidth * $scale;
+            $height = $viewHeight * $scale;
+        } else {
+            $width = 300;
+            $height = 150;
+        }
+    } elseif ($viewWidth > 0 && $viewHeight > 0) {
+        if ($width <= 0) $width = $height * $viewWidth / $viewHeight;
+        if ($height <= 0) $height = $width * $viewHeight / $viewWidth;
+    }
+    if ($width <= 0) $width = 300;
+    if ($height <= 0) $height = 150;
+    if (!is_finite($width) || !is_finite($height)
+        || $width < 1 || $width > 4096 || $height < 1 || $height > 4096) {
+        respond(400, ['error' => 'SVG image must be at most 4096 pixels per side']);
+    }
+    return ['image/svg+xml', (int) ceil($width), (int) ceil($height)];
 }
 
 function validMediaImageName(string $name): string
@@ -153,8 +224,8 @@ function mediaBlobId($db, string $hash, string $bytes, string $mime, int $width,
 
 function mediaThumbnail(string $bytes, string $mime, int $width, int $height): array
 {
-    if ($width <= MEDIA_THUMBNAIL_MAX_SIDE && $height <= MEDIA_THUMBNAIL_MAX_SIDE
-        && strlen($bytes) <= 32768) {
+    if ($mime === 'image/svg+xml' || ($width <= MEDIA_THUMBNAIL_MAX_SIDE && $height <= MEDIA_THUMBNAIL_MAX_SIDE
+        && strlen($bytes) <= 32768)) {
         return [$mime, $bytes];
     }
     if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) {
@@ -476,8 +547,9 @@ function storedMediaThumbnail($db, array $row): array
             if ($row['thumbnail_mime_type'] !== null) {
                 return [$row['thumbnail_mime_type'], $stored];
             }
-            $mime = @getimagesizefromstring($stored)['mime'] ?? null;
-            if (in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)) {
+            $mime = $row['mime_type'] === 'image/svg+xml'
+                ? 'image/svg+xml' : (@getimagesizefromstring($stored)['mime'] ?? null);
+            if (in_array($mime, ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'], true)) {
                 $bytes = $stored;
             } else {
                 throw new RuntimeException('Stored image thumbnail is invalid');
@@ -546,6 +618,9 @@ function handleGetImage(int $imageId, bool $thumbnail = false): never
     }
     header('Content-Type: ' . $mime);
     header('X-Content-Type-Options: nosniff');
+    if ($mime === 'image/svg+xml') {
+        header("Content-Security-Policy: sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:");
+    }
     header('Cache-Control: private, no-store');
     echo $bytes;
     exit;
@@ -575,6 +650,7 @@ function handleGetMediaThumbnails(): never
     if ($result === false) respond(500, ['error' => 'Failed to load thumbnails']);
     $images = [];
     while (($row = pg_fetch_assoc($result)) !== false) {
+        if ($row['mime_type'] === 'image/svg+xml') continue;
         [$mime, $bytes] = storedMediaThumbnail($db, $row);
         $images[] = ['id' => (int) $row['id'], 'mime_type' => $mime,
             'data' => base64_encode($bytes)];
@@ -591,7 +667,7 @@ function handleGetMediaThumbnails(): never
                 [$id, $user['service_owner_id']]);
             if ($ownerImage === false) respond(500, ['error' => 'Failed to load thumbnails']);
             $row = pg_fetch_assoc($ownerImage);
-            if ($row === false) continue;
+            if ($row === false || $row['mime_type'] === 'image/svg+xml') continue;
             [$mime, $bytes] = storedMediaThumbnail($db, $row);
             $images[] = ['id' => $id, 'mime_type' => $mime, 'data' => base64_encode($bytes)];
         }
@@ -606,6 +682,7 @@ function handleGetMediaThumbnails(): never
              WHERE i.id = ANY($1::bigint[])', ['{' . implode(',', $sharedIds) . '}']);
         if ($sharedImages === false) respond(500, ['error' => 'Failed to load thumbnails']);
         while (($row = pg_fetch_assoc($sharedImages)) !== false) {
+            if ($row['mime_type'] === 'image/svg+xml') continue;
             [$mime, $bytes] = storedMediaThumbnail($db, $row);
             $images[] = ['id' => (int) $row['id'], 'mime_type' => $mime,
                 'data' => base64_encode($bytes)];
