@@ -7,6 +7,10 @@ export function listMediaImages(requestJson) {
   return requestJson('GET', '/api/media/images')
 }
 
+export function listMediaGroups(requestJson) {
+  return requestJson('GET', '/api/media/groups')
+}
+
 export async function uploadMediaImage(file, name = file.name, path = '/api/media/images') {
   if (file.size > MAX_IMAGE_BYTES) throw new RangeError(`Image must be at most ${MAX_IMAGE_SIZE_LABEL}.`)
   const response = await fetch(path, {

@@ -1,4 +1,5 @@
-import { listMediaImages, uploadMediaImage } from '@softerr/shared/media-client.js'
+import { listMediaGroups, listMediaImages, uploadMediaImage } from '@softerr/shared/media-client.js'
+import { matchesMediaFolder, updateMediaFolderOptions } from '@softerr/shared/media-folder-filter.js'
 import { createMediaThumbnailBatcher } from '@softerr/shared/media-thumbnails.js'
 
 export function mountArtworkPicker(page, { requestJson, responseError }) {
@@ -6,7 +7,10 @@ export function mountArtworkPicker(page, { requestJson, responseError }) {
   dialog.className = 'musico-dialog musico-art-dialog'
   dialog.innerHTML = `
     <div class="musico-art-heading"><h2>Choose album art</h2><button type="button" data-close aria-label="Close image picker">×</button></div>
-    <input data-search type="search" placeholder="Search images" aria-label="Search images">
+    <div class="musico-art-filters">
+      <input data-search type="search" placeholder="Search images" aria-label="Search images">
+      <select data-folder aria-label="Filter images by folder"><option value="all">All images</option></select>
+    </div>
     <div data-grid class="musico-art-grid"></div>
     <label class="auth-button auth-button-secondary musico-upload">Upload image<input data-upload type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden></label>
     <p data-status class="form-status" role="status" aria-live="polite"></p>
@@ -14,6 +18,7 @@ export function mountArtworkPicker(page, { requestJson, responseError }) {
   page.append(dialog)
   const grid = dialog.querySelector('[data-grid]')
   const search = dialog.querySelector('[data-search]')
+  const folder = dialog.querySelector('[data-folder]')
   const message = dialog.querySelector('[data-status]')
   let images = []
   let resolveChoice = null
@@ -45,7 +50,8 @@ export function mountArtworkPicker(page, { requestJson, responseError }) {
 
   function draw() {
     const query = search.value.toLocaleLowerCase().trim()
-    const visible = images.filter((item) => item.name.toLocaleLowerCase().includes(query))
+    const visible = images.filter((item) => matchesMediaFolder(item, folder.value)
+      && item.name.toLocaleLowerCase().includes(query))
     observer?.disconnect()
     batcher.retain(visible.map((image) => image.id))
     grid.replaceChildren()
@@ -76,15 +82,21 @@ export function mountArtworkPicker(page, { requestJson, responseError }) {
   }
 
   async function reload() {
-    const [response, payload] = await listMediaImages(requestJson)
+    const [[response, payload], [groupResponse, groupPayload]] = await Promise.all([
+      listMediaImages(requestJson), listMediaGroups(requestJson).catch(() => [null, null]),
+    ])
     if (!response.ok) throw new Error(responseError(response, payload))
     images = payload.images ?? []
+    if (groupResponse.ok && Array.isArray(groupPayload?.groups)) {
+      updateMediaFolderOptions(folder, groupPayload.groups)
+    }
     draw()
   }
 
   dialog.querySelector('[data-close]').addEventListener('click', () => choose(undefined))
   dialog.addEventListener('cancel', (event) => { event.preventDefault(); choose(undefined) })
   search.addEventListener('input', draw)
+  folder.addEventListener('change', draw)
   dialog.querySelector('[data-upload]').addEventListener('change', async (event) => {
     const input = event.currentTarget
     const file = input.files?.[0]
@@ -103,6 +115,7 @@ export function mountArtworkPicker(page, { requestJson, responseError }) {
   return {
     async open() {
       search.value = ''
+      folder.value = 'all'
       message.textContent = 'Loading images…'
       dialog.showModal()
       const selected = new Promise((resolve) => { resolveChoice = resolve })

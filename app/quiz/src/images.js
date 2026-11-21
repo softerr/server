@@ -1,5 +1,6 @@
 import { imageIcon, noImageIcon, pasteImageIcon, removeIcon, uploadImageIcon } from './icons.js'
-import { listMediaImages, mediaImageUrl, mediaThumbnailUrl, uploadMediaImage } from '@softerr/shared/media-client.js'
+import { listMediaGroups, listMediaImages, mediaImageUrl, mediaThumbnailUrl, uploadMediaImage } from '@softerr/shared/media-client.js'
+import { matchesMediaFolder, updateMediaFolderOptions } from '@softerr/shared/media-folder-filter.js'
 import { createMediaThumbnailBatcher } from '@softerr/shared/media-thumbnails.js'
 import { updateImageUsage } from '@softerr/shared/image-usage.js'
 
@@ -33,10 +34,16 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       <button type="button" data-source-tab="local" aria-pressed="true">My library</button>
       <button type="button" data-source-tab="online" aria-pressed="false">Online</button>
     </div>
-    <label class="field image-library-search">
-      <span data-search-label>Search images</span>
-      <input type="search" data-image-search placeholder="Search by name" autocomplete="off">
-    </label>
+    <div class="image-library-filters">
+      <label class="field image-library-search">
+        <span data-search-label>Search images</span>
+        <input type="search" data-image-search placeholder="Search by name" autocomplete="off">
+      </label>
+      <label class="field image-library-folder-filter">
+        <span>Folder</span>
+        <select data-image-folder aria-label="Filter images by folder"><option value="all">All images</option></select>
+      </label>
+    </div>
     <input type="file" data-image-upload-input accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" multiple hidden>
     <div class="image-library-grid">
       <div class="image-library-item" data-upload-tile>
@@ -63,6 +70,9 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   const usageBars = usage.querySelector('.image-library-usage-bars')
   const usageMessage = usage.querySelector('.image-library-usage-message')
   const search = dialog.querySelector('[data-image-search]')
+  const filters = dialog.querySelector('.image-library-filters')
+  const folderFilter = dialog.querySelector('.image-library-folder-filter')
+  const folderSelect = dialog.querySelector('[data-image-folder]')
   const searchLabel = dialog.querySelector('[data-search-label]')
   const description = dialog.querySelector('[data-library-description]')
   const sourceTabs = dialog.querySelectorAll('[data-source-tab]')
@@ -127,6 +137,8 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     sourceMode = mode
     onlineResults = []
     search.value = ''
+    folderFilter.hidden = mode === 'online'
+    filters.classList.toggle('is-online', mode === 'online')
     searchLabel.textContent = mode === 'online' ? 'Search Wikimedia Commons' : 'Search images'
     search.placeholder = mode === 'online' ? 'Enter at least two characters' : 'Search by name'
     description.textContent = mode === 'online'
@@ -247,6 +259,7 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
     onChooseMany = callback
     selectedIds.clear()
     selectionAnchor = null
+    folderSelect.value = 'all'
     multiActions.hidden = !callback
     input.multiple = Boolean(callback)
     upload.setAttribute('aria-label', callback ? 'Upload images' : 'Upload image')
@@ -329,9 +342,8 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       return
     }
     const query = search.value.trim().toLocaleLowerCase()
-    const visibleImages = query
-      ? images.filter((image) => image.name.toLocaleLowerCase().includes(query))
-      : images
+    const visibleImages = images.filter((image) => matchesMediaFolder(image, folderSelect.value)
+      && (!query || image.name.toLocaleLowerCase().includes(query)))
     const visibleIds = new Set(visibleImages.map((image) => image.id))
     clearTimeout(loadTimer)
     imageObserver.disconnect()
@@ -446,10 +458,11 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
       grid.append(tile)
       }
     }
-    if (query && !visibleImages.length) {
+    if (!visibleImages.length) {
       const noResults = document.createElement('p')
       noResults.className = 'image-library-no-results'
-      noResults.textContent = 'No images match your search.'
+      noResults.textContent = query ? 'No images match your search.'
+        : folderSelect.value === 'all' ? 'No images available.' : 'No images in this folder.'
       grid.append(noResults)
     }
     updateMultiSelection()
@@ -466,7 +479,9 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
 
   async function refresh() {
     try {
-      const [response, payload] = await listMediaImages(requestJson)
+      const [[response, payload], [groupResponse, groupPayload]] = await Promise.all([
+        listMediaImages(requestJson), listMediaGroups(requestJson).catch(() => [null, null]),
+      ])
       if (!response.ok) {
         usageBars.hidden = true
         usageMessage.hidden = false
@@ -478,6 +493,9 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
         if (a.scope !== b.scope) return a.scope === 'personal' ? -1 : 1
         return a.scope === 'personal' ? b.id - a.id : 0
       })
+      if (groupResponse.ok && Array.isArray(groupPayload?.groups)) {
+        updateMediaFolderOptions(folderSelect, groupPayload.groups)
+      }
       for (const id of selectedIds) if (!images.some((image) => image.id === id)) selectedIds.delete(id)
       updateImageUsage(usage, payload)
       usageBars.hidden = false
@@ -499,6 +517,10 @@ export function mountImageLibrary(section, { requestJson, responseError, setStat
   search.addEventListener('input', () => {
     if (sourceMode === 'online') searchOnline()
     else render(true)
+  })
+  folderSelect.addEventListener('change', () => {
+    selectionAnchor = null
+    render()
   })
   for (const tab of sourceTabs) {
     tab.addEventListener('click', () => setSourceMode(tab.dataset.sourceTab))

@@ -39,7 +39,9 @@
 .musico-art-dialog { width: min(100% - 32px, 780px); max-height: 80vh; overflow: auto; }
 .musico-art-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .musico-art-heading button { border: 0; background: none; color: var(--text-h); font-size: 28px; cursor: pointer; }
-.musico-art-dialog [data-search] { width: 100%; box-sizing: border-box; margin-bottom: 16px; padding: 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--field); color: var(--text); }
+.musico-art-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 220px); gap: 10px; margin-bottom: 16px; }
+.musico-art-dialog [data-search], .musico-art-dialog [data-folder] { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--field); color: var(--text); font: inherit; }
+@media (max-width: 560px) { .musico-art-filters { grid-template-columns: minmax(0, 1fr); } }
 .musico-art-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; max-height: 50vh; overflow-y: auto; margin-bottom: 16px; }
 .musico-art-choice { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--field); color: var(--text); cursor: pointer; }
 .musico-art-choice:hover { border-color: var(--accent); }

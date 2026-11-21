@@ -303,12 +303,17 @@
 }
 #mdb-image-close svg { width: 20px; height: 20px; }
 #mdb-image-close:hover, #mdb-image-close:focus-visible { color: var(--accent); }
-#mdb-image-search {
-  box-sizing: border-box; width: 100%; margin-bottom: 14px; padding: 10px 12px;
+.mdb-image-filters {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 220px);
+  gap: 10px; margin-bottom: 14px;
+}
+#mdb-image-search, #mdb-image-folder {
+  box-sizing: border-box; width: 100%; padding: 10px 12px;
   border: 1px solid var(--border); border-radius: 4px;
   background: var(--field); color: var(--text-h); font: inherit;
 }
-#mdb-image-search:focus-visible { border-color: var(--accent); outline: 1px solid var(--accent); }
+#mdb-image-search:focus-visible, #mdb-image-folder:focus-visible { border-color: var(--accent); outline: 1px solid var(--accent); }
+@media (max-width: 540px) { .mdb-image-filters { grid-template-columns: minmax(0, 1fr); } }
 .mdb-image-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px;
   min-height: 130px; max-height: 55vh; overflow-y: auto;

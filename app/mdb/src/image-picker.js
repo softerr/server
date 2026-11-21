@@ -1,10 +1,12 @@
 import { imageIcon, noImageIcon, uploadImageIcon } from '@softerr/shared/icons.js'
-import { listMediaImages, uploadMediaImage } from '@softerr/shared/media-client.js'
+import { listMediaGroups, listMediaImages, uploadMediaImage } from '@softerr/shared/media-client.js'
+import { matchesMediaFolder, updateMediaFolderOptions } from '@softerr/shared/media-folder-filter.js'
 import { createMediaThumbnailBatcher } from '@softerr/shared/media-thumbnails.js'
 
 export function createImagePicker({ page, requestJson, responseError, setStatus, notice, saveCell }) {
   const imageDialog = page.querySelector('#mdb-image-dialog')
   const imageSearch = page.querySelector('#mdb-image-search')
+  const imageFolder = page.querySelector('#mdb-image-folder')
   const imageGrid = page.querySelector('#mdb-image-grid')
   const imageUpload = page.querySelector('#mdb-image-upload')
   const imageStatus = page.querySelector('#mdb-image-status')
@@ -53,7 +55,8 @@ export function createImagePicker({ page, requestJson, responseError, setStatus,
     tile('Upload image', uploadImageIcon, () => imageUpload.click())
     const query = imageSearch.value.trim().toLocaleLowerCase()
     for (const image of imageChoices) {
-      if (query && !image.name.toLocaleLowerCase().includes(query)) continue
+      if (!matchesMediaFolder(image, imageFolder.value)
+        || (query && !image.name.toLocaleLowerCase().includes(query))) continue
       const button = tile(image.name, imageIcon, () => chooseImage(image.id))
       button.title = image.name
       button.classList.toggle('is-selected', image.id === imageCell?.value)
@@ -74,17 +77,23 @@ export function createImagePicker({ page, requestJson, responseError, setStatus,
   async function openImageDialog(cell) {
     imageCell = cell
     imageSearch.value = ''
+    imageFolder.value = 'all'
     imageChoices = []
     renderImageChoices()
     setStatus(imageStatus, 'Loading images…')
     imageDialog.showModal()
     const generation = ++imageLoadGeneration
     try {
-      const [response, payload] = await listMediaImages(requestJson)
+      const [[response, payload], [groupResponse, groupPayload]] = await Promise.all([
+        listMediaImages(requestJson), listMediaGroups(requestJson).catch(() => [null, null]),
+      ])
       if (!imageDialog.open || generation !== imageLoadGeneration) return
       if (!response.ok) throw new Error(responseError(response, payload))
       if (!Array.isArray(payload?.images)) throw new Error('Could not load images.')
       imageChoices = payload.images
+      if (groupResponse.ok && Array.isArray(groupPayload?.groups)) {
+        updateMediaFolderOptions(imageFolder, groupPayload.groups)
+      }
       renderImageChoices()
       setStatus(imageStatus, '')
     } catch (error) {
@@ -109,6 +118,7 @@ export function createImagePicker({ page, requestJson, responseError, setStatus,
   }
 
   imageSearch.addEventListener('input', renderImageChoices)
+  imageFolder.addEventListener('change', renderImageChoices)
   page.querySelector('#mdb-image-close').addEventListener('click', () => imageDialog.close())
   imageDialog.addEventListener('close', () => {
     imageLoadGeneration++

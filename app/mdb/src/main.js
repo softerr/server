@@ -140,7 +140,10 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         <h2 id="mdb-image-title">Choose image</h2>
         <button id="mdb-image-close" type="button" aria-label="Close image picker" title="Close">${removeIcon}</button>
       </div>
-      <input id="mdb-image-search" type="search" aria-label="Search images" placeholder="Search images" autocomplete="off" />
+      <div class="mdb-image-filters">
+        <input id="mdb-image-search" type="search" aria-label="Search images" placeholder="Search images" autocomplete="off" />
+        <select id="mdb-image-folder" aria-label="Filter images by folder"><option value="all">All images</option></select>
+      </div>
       <input id="mdb-image-upload" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden />
       <div id="mdb-image-grid" class="mdb-image-grid"></div>
       <p id="mdb-image-status" class="form-status" role="status" aria-live="polite"></p>

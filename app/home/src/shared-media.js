@@ -52,7 +52,6 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
   let groups = []
   let images = []
   let activeGroupId = null
-  let searchReturnGroupId = null
   let searchQuery = ''
   let editingGroupId = null
   let busy = false
@@ -120,7 +119,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
         if (admin) card.append(folderActions(group))
         folderGrid.append(card)
       }
-    } else if (!searchQuery) {
+    } else if (activeGroup) {
       const back = document.createElement('button')
       back.type = 'button'
       back.className = 'text-button'
@@ -132,9 +131,12 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
     }
     for (const preview of imageGrid.querySelectorAll('img')) preview.removeAttribute('src')
     imageGrid.replaceChildren()
-    const visible = searchQuery
-      ? images.filter((image) => image.name.toLocaleLowerCase().includes(searchQuery))
-      : images.filter((image) => image.group_id === activeGroupId)
+    const visible = images.filter((image) => {
+      const inFolder = activeGroupId === null
+        ? Boolean(searchQuery) || image.group_id === null
+        : image.group_id === activeGroupId
+      return inFolder && (!searchQuery || image.name.toLocaleLowerCase().includes(searchQuery))
+    })
     if (!visible.length && (activeGroupId !== null || searchQuery)) {
       const empty = document.createElement('p')
       empty.className = 'media-empty'
@@ -246,13 +248,6 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
   function setSearch(value) {
     const next = value.trim().toLocaleLowerCase()
     if (next === searchQuery) return
-    if (!searchQuery && next) {
-      searchReturnGroupId = activeGroupId
-      activeGroupId = null
-    } else if (searchQuery && !next) {
-      activeGroupId = searchReturnGroupId
-      searchReturnGroupId = null
-    }
     searchQuery = next
     selected.clear()
     selectionAnchor.id = null
