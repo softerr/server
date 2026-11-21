@@ -207,6 +207,16 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
         setStatus(status, 'Choose at least one correct answer.', true)
         return null
       }
+      if (template === 'labeled_diagram') {
+        if (!config.diagram_image_id) {
+          setStatus(status, 'Choose a diagram image.', true)
+          return null
+        }
+        if (config.labels.some((label) => label.x === null || label.y === null)) {
+          setStatus(status, 'Place every label on the diagram.', true)
+          return null
+        }
+      }
       const timeLimit = form.querySelector('[data-time-limit]').value
       return { template, prompt, config, time_limit_seconds: timeLimit === '' ? null : Number(timeLimit) }
     }

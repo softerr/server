@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS public.question (
     template VARCHAR(32) NOT NULL CONSTRAINT question_template_check CHECK (template IN (
         'multiple_choice', 'one_choice', 'number', 'short_answer', 'open',
         'true_false', 'yes_no', 'show_answer', 'no_answer', 'match',
-        'ordering', 'fill_blanks', 'categorize'
+        'ordering', 'fill_blanks', 'categorize', 'labeled_diagram'
     )),
     prompt VARCHAR(500) NOT NULL,
     config JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -47,6 +47,22 @@ CREATE TABLE IF NOT EXISTS public.question (
 );
 CREATE INDEX IF NOT EXISTS question_quiz_id_position_id_idx
     ON public.question (quiz_id, position, id);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'public.question'::regclass AND conname = 'question_template_check'
+          AND pg_get_constraintdef(oid) LIKE '%labeled_diagram%'
+    ) THEN
+        ALTER TABLE public.question DROP CONSTRAINT IF EXISTS question_template_check;
+        ALTER TABLE public.question ADD CONSTRAINT question_template_check CHECK (template IN (
+            'multiple_choice', 'one_choice', 'number', 'short_answer', 'open',
+            'true_false', 'yes_no', 'show_answer', 'no_answer', 'match',
+            'ordering', 'fill_blanks', 'categorize', 'labeled_diagram'
+        ));
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.quiz_attempt (
     id BIGSERIAL PRIMARY KEY,

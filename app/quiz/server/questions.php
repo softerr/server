@@ -80,7 +80,7 @@ function readQuestionFields(?array $payload): array
     if (!is_string($template) || !in_array($template, [
         'multiple_choice', 'one_choice', 'number', 'short_answer', 'open',
         'true_false', 'yes_no', 'show_answer', 'no_answer', 'match',
-        'ordering', 'fill_blanks', 'categorize',
+        'ordering', 'fill_blanks', 'categorize', 'labeled_diagram',
     ], true) || !is_array($config)) {
         respond(400, ['error' => 'Invalid question template or config']);
     }
@@ -155,6 +155,32 @@ function readQuestionFields(?array $payload): array
             if ($keywordImageId !== null) $entry['keyword_image_id'] = $keywordImageId;
             if ($definitionImageId !== null) $entry['definition_image_id'] = $definitionImageId;
             $normalized['pairs'][] = $entry;
+        }
+    } elseif ($template === 'labeled_diagram') {
+        $diagramImageId = optionalQuestionImageId($config['diagram_image_id'] ?? null);
+        if ($diagramImageId === null) respond(400, ['error' => 'Choose a diagram image']);
+        $labels = $config['labels'] ?? null;
+        if (!is_array($labels) || !array_is_list($labels) || count($labels) < 2 || count($labels) > 30) {
+            respond(400, ['error' => 'A labeled diagram needs 2 to 30 labels']);
+        }
+        $normalized['diagram_image_id'] = $diagramImageId;
+        $normalized['labels'] = [];
+        $names = [];
+        foreach ($labels as $label) {
+            if (!is_array($label)) respond(400, ['error' => 'Invalid diagram label']);
+            $text = questionText($label['text'] ?? null, 150, 'diagram label');
+            $x = $label['x'] ?? null;
+            $y = $label['y'] ?? null;
+            if ((!is_int($x) && !is_float($x)) || (!is_int($y) && !is_float($y))
+                || !is_finite((float) $x) || !is_finite((float) $y)
+                || $x < 0 || $x > 100 || $y < 0 || $y > 100) {
+                respond(400, ['error' => 'Place every label on the diagram']);
+            }
+            $normalized['labels'][] = ['text' => $text, 'x' => $x, 'y' => $y];
+            $names[] = $text;
+        }
+        if (count(array_unique($names)) !== count($names)) {
+            respond(400, ['error' => 'Diagram labels must be distinct']);
         }
     } elseif ($template === 'ordering') {
         $items = questionTextList($config['items'] ?? null, 2, 150, 'ordering item');

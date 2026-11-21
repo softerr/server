@@ -1,4 +1,5 @@
 import { addImagesIcon, imageIcon, moveDownIcon, moveUpIcon, removeIcon, swapSidesIcon } from './icons.js'
+import { collectDiagramConfig, disposeDiagramConfig, renderDiagramConfig } from './labeled-diagram.js'
 
 function textField(labelText, value = '', maxLength = 150) {
   const label = document.createElement('label')
@@ -89,6 +90,7 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
   const fields = form.querySelector('[data-config-fields]')
   const answerImage = form.querySelector('[data-answer-image]')
   form.querySelector('[data-card-status]').before(answerImage)
+  disposeDiagramConfig(form)
   fields.replaceChildren()
   answerImage.hidden = true
   function addAnswerField(control) {
@@ -149,6 +151,10 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
     body.append(field.label, imageButton)
     placeholder.append(body)
     return placeholder
+  }
+  if (template === 'labeled_diagram') {
+    renderDiagramConfig(fields, form, config, imageLibrary)
+    return
   }
   if (template === 'multiple_choice' || template === 'one_choice' || template === 'match') {
     const heading = document.createElement('div')
@@ -610,6 +616,8 @@ export function collectConfig(form, template) {
       ...(row.querySelector('[data-definition-image] [data-image-id]').value
         ? { definition_image_id: Number(row.querySelector('[data-definition-image] [data-image-id]').value) } : {}),
     })) }
+  } else if (template === 'labeled_diagram') {
+    config = collectDiagramConfig(fields)
   } else if (template === 'ordering') {
     config = { items: [...fields.querySelectorAll('.question-config-row')].map((row) =>
       imageText(row, '[data-order-item]')) }

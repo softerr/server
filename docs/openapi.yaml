@@ -4476,7 +4476,7 @@ paths:
       description: |
         The JSON body is limited to 32768 bytes. The answer is a template-specific
         object: `selected` for choices and booleans, `text` for number, short and
-        open answers, `assignments` for match and categorize, `order` for ordering,
+        open answers, `assignments` for match, categorize, and labeled diagrams, `order` for ordering,
         `values` for blanks, `revealed` for show-answer, or `viewed` for no-answer.
       security:
         - sessionCookie: []
@@ -5374,7 +5374,7 @@ components:
       properties:
         template:
           type: string
-          enum: [multiple_choice, one_choice, number, short_answer, open, true_false, yes_no, show_answer, no_answer, match, ordering, fill_blanks, categorize]
+          enum: [multiple_choice, one_choice, number, short_answer, open, true_false, yes_no, show_answer, no_answer, match, ordering, fill_blanks, categorize, labeled_diagram]
         prompt:
           type: string
           minLength: 1

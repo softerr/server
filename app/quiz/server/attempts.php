@@ -75,6 +75,8 @@ function attemptDocument($db, array $row): array
                 $config['_keyword_order'] = $row['randomize_answers'] === 't'
                     ? presentationOrder(count($config['pairs']), (int) $snapshot['id'], 'match-keywords')
                     : array_keys($config['pairs']);
+            } elseif ($snapshot['template'] === 'labeled_diagram') {
+                $config['_display_order'] = diagramLabelOrder(count($config['labels']), (int) $snapshot['id']);
             } elseif ($snapshot['template'] === 'ordering') {
                 $config['_display_order'] = presentationOrder(count($config['items']), (int) $snapshot['id'], 'ordering');
             } elseif ($snapshot['template'] === 'categorize') {
@@ -128,6 +130,10 @@ function attemptDocument($db, array $row): array
                 $score['match_total'] = ($score['match_total'] ?? 0) + count($config['pairs']);
                 $score['match_correct'] = ($score['match_correct'] ?? 0)
                     + countCorrectMatchChoices($config, $answer, $questionId, $randomizeAnswers);
+            } elseif ($snapshot['template'] === 'labeled_diagram') {
+                $score['diagram_total'] = ($score['diagram_total'] ?? 0) + count($config['labels']);
+                $score['diagram_correct'] = ($score['diagram_correct'] ?? 0)
+                    + countCorrectDiagramLabels($config, $answer, $questionId);
             }
             if ($grade === null) $score['ungraded']++;
             else {

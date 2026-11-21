@@ -14,6 +14,15 @@ function presentationOrder(int $count, int $questionId, string $purpose): array
     return $order;
 }
 
+function diagramLabelOrder(int $count, int $questionId): array
+{
+    $order = presentationOrder($count, $questionId, 'diagram-labels');
+    if ($count > 1 && $order === range(0, $count - 1)) {
+        [$order[0], $order[1]] = [$order[1], $order[0]];
+    }
+    return $order;
+}
+
 function playQuestionConfig(string $template, array $config, int $questionId, bool $showSolution, bool $randomizeAnswers = false): array
 {
     if ($showSolution) return $config;
@@ -40,6 +49,13 @@ function playQuestionConfig(string $template, array $config, int $questionId, bo
                 : $pairs);
         $config['definitions'] = array_map(static fn (int $index): array =>
             array_intersect_key($pairs[$index], array_flip(['definition', 'definition_image_id'])), $order);
+    } elseif ($template === 'labeled_diagram') {
+        $labels = $config['labels'];
+        $config['points'] = array_map(static fn (array $label): array =>
+            ['x' => $label['x'], 'y' => $label['y']], $labels);
+        $config['choices'] = array_map(static fn (int $index): string => $labels[$index]['text'],
+            diagramLabelOrder(count($labels), $questionId));
+        unset($config['labels']);
     } elseif ($template === 'ordering') {
         $items = $config['items'];
         $config['items'] = array_map(static fn (int $index): array => $items[$index],
@@ -97,6 +113,19 @@ function countCorrectMatchChoices(array $config, ?array $answer, int $questionId
     return $correct;
 }
 
+function countCorrectDiagramLabels(array $config, ?array $answer, int $questionId): int
+{
+    $values = $answer['assignments'] ?? null;
+    if (!is_array($values)) return 0;
+    $order = diagramLabelOrder(count($config['labels']), $questionId);
+    $correct = 0;
+    foreach ($config['labels'] as $point => $_) {
+        $value = $values[$point] ?? null;
+        if (is_scalar($value) && (string) $value === (string) array_search($point, $order, true)) $correct++;
+    }
+    return $correct;
+}
+
 function gradeAttemptAnswer(string $template, array $config, ?array $answer, int $questionId, bool $randomizeAnswers = false): ?bool
 {
     if (in_array($template, ['open', 'show_answer', 'no_answer'], true)) return null;
@@ -130,6 +159,11 @@ function gradeAttemptAnswer(string $template, array $config, ?array $answer, int
         $values = $answer['assignments'] ?? null;
         return is_array($values) && count($values) === count($config['pairs'])
             && countCorrectMatchChoices($config, $answer, $questionId, $randomizeAnswers) === count($config['pairs']);
+    }
+    if ($template === 'labeled_diagram') {
+        $values = $answer['assignments'] ?? null;
+        return is_array($values) && count($values) === count($config['labels'])
+            && countCorrectDiagramLabels($config, $answer, $questionId) === count($config['labels']);
     }
     if ($template === 'ordering') {
         $values = $answer['order'] ?? null;

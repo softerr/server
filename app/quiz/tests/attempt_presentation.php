@@ -51,6 +51,26 @@ $shuffledAssignment[1] = null;
 expectAttempt(countCorrectMatchChoices($match, ['assignments' => $shuffledAssignment], 12, true) === 2,
     'Shuffled partial match choices were not counted');
 
+$diagram = ['diagram_image_id' => 25, 'labels' => [
+    ['text' => 'Heart', 'x' => 42.5, 'y' => 30],
+    ['text' => 'Lung', 'x' => 65, 'y' => 45],
+    ['text' => 'Liver', 'x' => 55, 'y' => 72],
+]];
+$visible = playQuestionConfig('labeled_diagram', $diagram, 20, false);
+expectAttempt(!isset($visible['labels']) && count($visible['points']) === 3
+    && $visible['points'][0] === ['x' => 42.5, 'y' => 30], 'Diagram labels leaked into points');
+$order = diagramLabelOrder(3, 20);
+expectAttempt($visible['choices'] === array_map(static fn (int $index): string => $diagram['labels'][$index]['text'], $order),
+    'Diagram labels were not presented in stable shuffled order');
+$assignment = array_map(static fn (int $point): string => (string) array_search($point, $order, true), [0, 1, 2]);
+expectAttempt(gradeAttemptAnswer('labeled_diagram', $diagram, ['assignments' => $assignment], 20) === true,
+    'Correct diagram labels were missed');
+$assignment[1] = null;
+expectAttempt(gradeAttemptAnswer('labeled_diagram', $diagram, ['assignments' => $assignment], 20) === false
+    && countCorrectDiagramLabels($diagram, ['assignments' => $assignment], 20) === 2,
+    'Partial diagram labels were graded incorrectly');
+expectAttempt(countCorrectDiagramLabels($diagram, null, 20) === 0, 'Unanswered diagram labels were counted');
+
 $ordering = ['items' => [['text' => 'Wash'], ['text' => 'Cut'], ['text' => 'Cook']]];
 $order = presentationOrder(3, 13, 'ordering');
 $visible = playQuestionConfig('ordering', $ordering, 13, false);

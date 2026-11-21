@@ -575,14 +575,16 @@ Each returned question has
 | `show_answer` | `{"answer":"The answer"}` | Nonempty answer to reveal, up to 1000 bytes. |
 | `no_answer` | `{}` | Question only. |
 | `match` | `{"pairs":[{"keyword":"France","definition":"Paris"},{"keyword":"Italy","definition":"Rome"}]}` | At least 2 pairs. |
+| `labeled_diagram` | `{"diagram_image_id":12,"labels":[{"text":"Heart","x":42.5,"y":30},{"text":"Lung","x":65,"y":45}]}` | Diagram image and 2 to 30 distinct labels; point coordinates are percentages from 0 to 100. |
 | `ordering` | `{"items":[{"text":"Wash"},{"text":"Cut"},{"text":"Cook"}]}` | At least 2 distinct items, listed in the correct order. |
 | `fill_blanks` | `{"answers":[{"text":"Paris"},{"text":"Rome"}]}` | Put `{{1}}`, `{{2}}`, etc. in `prompt`, each exactly once. The answer array follows marker order; at least 1 blank. |
 | `categorize` | `{"categories":[{"name":"Mammals","items":[{"text":"Dog"}]},{"name":"Birds","items":[{"text":"Eagle"}]}]}` | At least 2 distinct categories, each with at least 1 item; all items must be distinct. |
 
 Any question may include `image_id` for the prompt and `answer_image_id` for
 the answer in `config`. Choice options may include their own `image_id`.
-Match pairs may include `keyword_image_id` and `definition_image_id`, and
-categories may include `name_image_id`. Ordering items, blank answers, and
+Match pairs may include `keyword_image_id` and `definition_image_id`, categories
+may include `name_image_id`, and labeled diagrams require `diagram_image_id`.
+Ordering items, blank answers, and
 category items are objects such as
 `{"text":"Dog","image_id":12}`. A field with its own image may have empty
 text. Image IDs must belong to the current account; the same ID may be used

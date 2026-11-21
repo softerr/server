@@ -129,6 +129,19 @@ function markReviewedMatch(card, question, savedAnswer) {
   })
 }
 
+function markReviewedDiagram(card, question, savedAnswer) {
+  const labels = question.solution?.labels || []
+  const order = question.solution?._display_order || labels.map((_, index) => index)
+  card.querySelectorAll('.play-diagram-point').forEach((point, index) => {
+    const correct = String(savedAnswer?.assignments?.[index]) === String(order.indexOf(index))
+    point.classList.add(correct ? 'is-review-correct' : 'is-review-incorrect')
+    point.setAttribute('aria-description', correct ? 'Correct label' : 'Incorrect label')
+    if (!correct && labels[index]) {
+      point.append(element('span', 'review-diagram-correction', `Correct: ${labels[index].text}`))
+    }
+  })
+}
+
 function markReviewedCategories(card, question, savedAnswer) {
   const categories = question.solution?.categories || []
   const categoryOrder = question.solution?._category_order || categories.map((_, index) => index)
@@ -348,6 +361,8 @@ export function renderQuizAttempt(app, { requestJson, responseError, setStatus }
           markReviewedChoices(view.card, question)
         } else if (question.template === 'match') {
           markReviewedMatch(view.card, question, attempt.answers?.[question.id])
+        } else if (question.template === 'labeled_diagram') {
+          markReviewedDiagram(view.card, question, attempt.answers?.[question.id])
         } else if (question.template === 'categorize') {
           markReviewedCategories(view.card, question, attempt.answers?.[question.id])
         } else if (question.template === 'fill_blanks') {
@@ -369,6 +384,7 @@ export function renderQuizAttempt(app, { requestJson, responseError, setStatus }
       element('p', '', `${answered} of ${attempt.questions.length} questions answered.`))
     if (score?.graded) summary.append(element('p', '', `${score.correct} of ${score.graded} automatically graded answers correct.`))
     if (score?.match_total) summary.append(element('p', '', `Match choices: ${score.match_correct} of ${score.match_total} correct.`))
+    if (score?.diagram_total) summary.append(element('p', '', `Diagram labels: ${score.diagram_correct} of ${score.diagram_total} correct.`))
     const action = element('a', 'auth-button auth-button-secondary', attempt.completed ? 'Play again' : 'Continue')
     action.href = `#play?quiz=${quizId}${explore ? '&source=explore' : ''}`
     summary.append(action)
@@ -417,6 +433,9 @@ export function renderQuizResults(app, { requestJson, responseError, setStatus }
           : 'This quiz has no automatically graded questions.'))
       if (attempt.score?.match_total) {
         summary.append(element('p', '', `Match choices: ${attempt.score.match_correct} of ${attempt.score.match_total} correct.`))
+      }
+      if (attempt.score?.diagram_total) {
+        summary.append(element('p', '', `Diagram labels: ${attempt.score.diagram_correct} of ${attempt.score.diagram_total} correct.`))
       }
       if (ungraded) {
         summary.append(element('p', '', `${ungraded} study or open-answer questions were not graded.`))

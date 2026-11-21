@@ -9,7 +9,7 @@ const templateNames = {
   short_answer: 'Short answer', open: 'Open answer', true_false: 'True/false',
   yes_no: 'Yes/no', show_answer: 'Show answer', no_answer: 'No answer',
   match: 'Match', ordering: 'Ordering', fill_blanks: 'Fill in the blanks',
-  categorize: 'Categorize',
+  categorize: 'Categorize', labeled_diagram: 'Labeled diagram',
 }
 
 const imageUrl = mediaImageUrl
@@ -157,6 +157,115 @@ function dragAssignment(answer, items, targets, capacity) {
         const zone = zones.querySelector(`[data-target="${target}"]`)
         const card = bySource.get(source)
         if (zone && card && (capacity !== 1 || !zone.querySelector('.play-drag-card'))) zone.append(card)
+      })
+    },
+  }
+}
+
+function diagramAssignment(answer, config) {
+  const labels = config.labels || []
+  const points = config.points || labels
+  const order = config.choices ? config.choices.map((_, index) => index) : shuffledIndexes(labels.length)
+  const items = order.map((index) => ({
+    text: config.choices ? config.choices[index] : labels[index].text,
+    target: config.choices ? null : index,
+  }))
+  const area = element('div', 'play-diagram-activity')
+  const instruction = element('p', 'play-instruction', 'Drag a label to a numbered point, or select a label and then a point.')
+  const bank = element('div', 'play-drag-bank')
+  bank.setAttribute('aria-label', 'Diagram labels')
+  const canvas = element('div', 'play-diagram-canvas')
+  const image = element('img', 'play-diagram-image')
+  showMissingImageWhenUnavailable(image)
+  image.src = imageUrl(config.diagram_image_id)
+  image.alt = 'Diagram to label'
+  image.draggable = false
+  const markers = element('div', 'play-diagram-markers')
+  canvas.append(image, markers)
+  let selected = null
+  let locked = false
+  function choose(card) {
+    if (locked) return
+    selected?.classList.remove('is-selected')
+    selected = selected === card ? null : card
+    selected?.classList.add('is-selected')
+  }
+  function place(card, target) {
+    if (locked || !card) return
+    if (target !== bank) {
+      const existing = target.querySelector('.play-drag-card')
+      if (existing && existing !== card) bank.append(existing)
+    }
+    target.append(card)
+    selected?.classList.remove('is-selected')
+    selected = null
+    area.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  const cards = items.map((item, index) => {
+    const card = element('button', 'play-drag-card', item.text)
+    card.type = 'button'
+    card.dataset.source = String(index)
+    bank.append(card)
+    card.addEventListener('click', () => {
+      if (card.parentElement !== bank && selected !== card) {
+        bank.append(card)
+        choose(null)
+        area.dispatchEvent(new Event('change', { bubbles: true }))
+      } else choose(card)
+    })
+    makeScrollableDrag(card, {
+      canDrag: () => !locked,
+      targetAt: (x, y) => {
+        const target = document.elementFromPoint(x, y)?.closest('.play-diagram-point, .play-drag-bank')
+        return area.contains(target) ? target : null
+      },
+      drop: (target) => place(card, target),
+    })
+    return card
+  })
+  const zones = points.map((point, index) => {
+    const zone = element('div', 'play-diagram-point')
+    zone.dataset.point = String(index)
+    zone.style.left = `${point.x}%`
+    zone.style.top = `${point.y}%`
+    if (point.x < 25) zone.classList.add('is-left-edge')
+    if (point.x > 75) zone.classList.add('is-right-edge')
+    zone.tabIndex = 0
+    zone.setAttribute('role', 'button')
+    zone.setAttribute('aria-label', `Place label at point ${index + 1}`)
+    zone.append(element('span', 'play-diagram-number', String(index + 1)))
+    zone.addEventListener('click', (event) => {
+      if (!event.target.closest('.play-drag-card')) place(selected, zone)
+    })
+    zone.addEventListener('keydown', (event) => {
+      if (event.target === zone && (event.key === 'Enter' || event.key === ' ') && selected) {
+        event.preventDefault()
+        place(selected, zone)
+      }
+    })
+    markers.append(zone)
+    return zone
+  })
+  bank.addEventListener('click', (event) => {
+    if (!event.target.closest('.play-drag-card')) place(selected, bank)
+  })
+  area.append(instruction, bank, canvas)
+  answer.append(area)
+  return {
+    grade: () => config.choices ? null : items.every((item, index) =>
+      cards[index].parentElement?.dataset.point === String(item.target)),
+    finish: () => { locked = true; cards.forEach((card) => { card.disabled = true }) },
+    getAnswer: () => ({ assignments: zones.map((zone) => {
+      const source = zone.querySelector('.play-drag-card')?.dataset.source
+      return source === undefined ? null : source
+    }) }),
+    restoreAnswer: (saved) => {
+      cards.forEach((card) => bank.append(card))
+      if (!Array.isArray(saved?.assignments)) return
+      saved.assignments.forEach((source, point) => {
+        if (source === null || !/^(0|[1-9][0-9]*)$/.test(String(source))) return
+        const card = cards[Number(source)]
+        if (zones[point] && card && card.parentElement === bank) zones[point].append(card)
       })
     },
   }
@@ -313,6 +422,12 @@ export function buildQuestion(question, index) {
       }
       activity.restoreAnswer({ assignments: byDefinition })
     }
+  } else if (question.template === 'labeled_diagram') {
+    const activity = diagramAssignment(answer, config)
+    grade = activity.grade
+    finish = activity.finish
+    getAnswer = activity.getAnswer
+    restoreAnswer = activity.restoreAnswer
   } else if (question.template === 'ordering') {
     const items = config.items || []
     const order = config._ordered_for_play ? items.map((_, index) => index) : shuffledIndexes(items.length)
