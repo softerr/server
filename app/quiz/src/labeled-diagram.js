@@ -44,6 +44,11 @@ export function renderDiagramConfig(fields, form, config, imageLibrary) {
   let selected = null
   let shownImageId = null
 
+  function toggleSelection(row) {
+    selected = selected === row ? null : row
+    render()
+  }
+
   function render() {
     const all = [...rows.children]
     add.disabled = all.length >= MAX_LABELS
@@ -54,6 +59,7 @@ export function renderDiagramConfig(fields, form, config, imageLibrary) {
       row.querySelector('[data-select-point]').textContent = active ? 'Selected' : 'Place point'
       row.querySelector('[data-select-point]').setAttribute('aria-pressed', String(active))
       row.querySelector('[data-label-number]').textContent = `${index + 1}.`
+      row.querySelector('[data-diagram-label]').setAttribute('aria-label', `Diagram label ${index + 1}`)
       row.querySelector('[data-move-up]').disabled = index === 0
       row.querySelector('[data-move-down]').disabled = index === all.length - 1
       row.querySelector('[data-remove-label]').disabled = all.length <= 2
@@ -61,9 +67,11 @@ export function renderDiagramConfig(fields, form, config, imageLibrary) {
       const y = Number(row.querySelector('[data-point-y]').value)
       if (!row.querySelector('[data-point-x]').value || !row.querySelector('[data-point-y]').value) {
         row.querySelector('[data-point-status]').textContent = 'Point not placed'
+        row.querySelector('[data-point-status]').hidden = false
         return
       }
-      row.querySelector('[data-point-status]').textContent = 'Point placed'
+      row.querySelector('[data-point-status]').textContent = ''
+      row.querySelector('[data-point-status]').hidden = true
       const marker = document.createElement('button')
       marker.type = 'button'
       marker.className = 'diagram-editor-marker'
@@ -71,9 +79,9 @@ export function renderDiagramConfig(fields, form, config, imageLibrary) {
       marker.style.left = `${x}%`
       marker.style.top = `${y}%`
       marker.textContent = String(index + 1)
-      marker.title = row.querySelector('[data-diagram-label]').value.trim() || `Label ${index + 1}`
-      marker.setAttribute('aria-label', `Select point ${index + 1}`)
-      marker.addEventListener('click', () => { selected = row; render() })
+      marker.title = row.querySelector('[data-diagram-label]').value.trim() || `Point ${index + 1}`
+      marker.setAttribute('aria-label', `${active ? 'Unselect' : 'Select'} point ${index + 1}`)
+      marker.addEventListener('click', () => toggleSelection(row))
       markers.append(marker)
     })
   }
@@ -85,15 +93,13 @@ export function renderDiagramConfig(fields, form, config, imageLibrary) {
     number.dataset.labelNumber = ''
     const label = document.createElement('label')
     label.className = 'field'
-    const title = document.createElement('span')
-    title.textContent = 'Label'
     const input = document.createElement('input')
     input.type = 'text'
     input.maxLength = 150
     input.required = true
     input.value = value.text ?? ''
     input.dataset.diagramLabel = ''
-    label.append(title, input)
+    label.append(input)
     const x = document.createElement('input')
     x.type = 'hidden'
     x.dataset.pointX = ''
@@ -105,7 +111,7 @@ export function renderDiagramConfig(fields, form, config, imageLibrary) {
     const select = document.createElement('button')
     select.type = 'button'
     select.dataset.selectPoint = ''
-    select.addEventListener('click', () => { selected = row; render() })
+    select.addEventListener('click', () => toggleSelection(row))
     const status = document.createElement('span')
     status.className = 'diagram-editor-point-status'
     status.dataset.pointStatus = ''
