@@ -227,7 +227,7 @@
 }
 
 .quiz-preview-dialog {
-  width: min(1360px, calc(100vw - 32px));
+  width: min(1600px, calc(100vw - 32px));
   max-width: none;
   max-height: calc(100vh - 32px);
   padding: 0;
@@ -934,7 +934,7 @@
 }
 
 .quiz-play-page {
-  width: min(100%, 1360px);
+  width: min(100%, 1600px);
   margin: 0 auto;
   padding: 48px 24px;
   box-sizing: border-box;
@@ -1571,6 +1571,18 @@
   cursor: grab;
 }
 .play-drag-card:active { cursor: grabbing; }
+.play-drag-card,
+.play-order-row.is-draggable { touch-action: none; user-select: none; }
+.is-pointer-dragging { opacity: .45; }
+.play-drag-ghost {
+  position: fixed;
+  z-index: 10;
+  box-sizing: border-box;
+  margin: 0;
+  pointer-events: none;
+  opacity: .9;
+  box-shadow: 0 8px 24px #0006;
+}
 .play-drag-card.is-selected,
 .play-drag-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .play-drop-list { display: grid; gap: 10px; }
@@ -1597,6 +1609,44 @@
 }
 .play-drag-activity.is-match .play-drop-zone {
   min-width: 0;
+}
+.quiz-play-page:not(.quiz-review-page) .play-drag-activity.is-match .play-drag-card {
+  flex: none;
+  width: max-content;
+  max-width: var(--match-choice-width);
+  box-sizing: border-box;
+  padding: 7px 10px;
+  line-height: 1.3;
+}
+.is-game-show .play-drag-activity.is-match .play-drag-card {
+  min-height: 44px;
+  font-size: 16px;
+}
+.quiz-play-page:not(.quiz-review-page) .play-drag-activity.is-match {
+  --match-choice-width: 136px;
+  grid-template-columns: minmax(300px, 30%) minmax(0, 1fr);
+  align-items: start;
+}
+.quiz-play-page:not(.quiz-review-page) .play-drag-activity.is-match > .play-instruction {
+  grid-column: 1 / -1;
+}
+.quiz-play-page:not(.quiz-review-page) .play-drag-activity.is-match > .play-drag-bank {
+  position: sticky;
+  top: var(--match-bank-top, 20px);
+  align-items: flex-start;
+  align-content: flex-start;
+  align-self: start;
+  min-width: 0;
+  min-height: 52px;
+  max-height: calc(100vh - var(--match-bank-height-offset, 40px));
+  box-sizing: border-box;
+  gap: 6px;
+  padding: 8px;
+  overflow-y: auto;
+}
+.quiz-preview-dialog {
+  --match-bank-top: 64px;
+  --match-bank-height-offset: 112px;
 }
 .play-drop-zone {
   display: flex;
@@ -1749,6 +1799,16 @@
 @media (max-width: 680px) {
   .is-game-show .play-choice-list { grid-template-columns: minmax(0, 1fr); }
   .is-game-show .play-choice { min-height: 84px; }
+}
+@media (max-width: 760px) {
+  .quiz-play-page:not(.quiz-review-page) .play-drag-activity.is-match {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .quiz-play-page:not(.quiz-review-page) .play-drag-activity.is-match > .play-drag-bank {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .is-game-show .play-choice { transition: none; }

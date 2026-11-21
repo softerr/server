@@ -2,6 +2,7 @@ import { moveDownIcon, moveUpIcon } from './icons.js'
 import { submitAttempt } from './submit-attempt.js'
 import { showMissingImageWhenUnavailable } from './missing-image.js'
 import { mediaImageUrl } from '@softerr/shared/media-client.js'
+import { makeScrollableDrag } from './pointer-drag.js'
 
 const templateNames = {
   multiple_choice: 'Multiple choice', one_choice: 'One choice', number: 'Number',
@@ -28,6 +29,7 @@ function rich(text, imageId) {
     image.src = imageUrl(imageId)
     image.alt = text ? '' : 'Image'
     image.loading = 'lazy'
+    image.draggable = false
     content.append(image)
   }
   if (text) content.append(element('span', '', text))
@@ -66,9 +68,7 @@ function dragAssignment(answer, items, targets, capacity) {
   const cards = items.map((item, itemIndex) => {
     const card = element('button', 'play-drag-card')
     card.type = 'button'
-    card.draggable = true
     card.classList.add(`play-tone-${itemIndex % 4}`)
-    card.dataset.item = String(itemIndex)
     card.dataset.source = String(item.source)
     card.append(rich(item.text, item.imageId))
     bank.append(card)
@@ -94,12 +94,6 @@ function dragAssignment(answer, items, targets, capacity) {
     area.dispatchEvent(new Event('change', { bubbles: true }))
   }
   function makeDrop(target) {
-    target.addEventListener('dragover', (event) => { if (!locked) event.preventDefault() })
-    target.addEventListener('drop', (event) => {
-      event.preventDefault()
-      const item = event.dataTransfer.getData('text/plain')
-      if (/^(0|[1-9][0-9]*)$/.test(item)) place(cards[Number(item)], target)
-    })
     target.addEventListener('click', (event) => {
       if (event.target.closest('.play-drag-card')) return
       place(selected, target)
@@ -119,9 +113,13 @@ function dragAssignment(answer, items, targets, capacity) {
       }
       else choose(card)
     })
-    card.addEventListener('dragstart', (event) => {
-      event.dataTransfer.setData('text/plain', card.dataset.item)
-      event.dataTransfer.effectAllowed = 'move'
+    makeScrollableDrag(card, {
+      canDrag: () => !locked,
+      targetAt: (x, y) => {
+        const target = document.elementFromPoint(x, y)?.closest('.play-drop-zone, .play-drag-bank')
+        return area.contains(target) ? target : null
+      },
+      drop: (target) => place(card, target),
     })
   })
   targets.forEach((target, targetIndex) => {
@@ -142,7 +140,7 @@ function dragAssignment(answer, items, targets, capacity) {
   answer.append(area)
   return {
     grade: () => cards.every((card, index) => card.parentElement?.dataset.target === String(items[index].target)),
-    finish: () => { locked = true; cards.forEach((card) => { card.draggable = false; card.disabled = true }) },
+    finish: () => { locked = true; cards.forEach((card) => { card.disabled = true }) },
     getAnswer: () => {
       const assignments = Array(items.length).fill(null)
       cards.forEach((card, index) => { assignments[items[index].source] = card.parentElement?.dataset.target ?? null })
@@ -324,22 +322,22 @@ export function buildQuestion(question, index) {
         row.classList.add(`play-tone-${itemIndex % 4}`)
         row.append(rich(items[itemIndex].text, items[itemIndex].image_id))
         row.classList.add('is-draggable')
-        row.draggable = !orderLocked
-        row.addEventListener('dragstart', (event) => {
-          event.dataTransfer.setData('text/plain', String(position))
-          event.dataTransfer.effectAllowed = 'move'
-        })
-        row.addEventListener('dragover', (event) => { if (!orderLocked) event.preventDefault() })
-        row.addEventListener('drop', (event) => {
-          event.preventDefault()
-          if (orderLocked) return
-          const value = event.dataTransfer.getData('text/plain')
-          if (!/^(0|[1-9][0-9]*)$/.test(value)) return
-          const from = Number(value)
-          if (from >= order.length || from === position) return
-          order.splice(position, 0, ...order.splice(from, 1))
-          renderOrder()
-          card.dispatchEvent(new Event('change', { bubbles: true }))
+        makeScrollableDrag(row, {
+          canDrag: () => !orderLocked,
+          ignoreStart: (target) => Boolean(target.closest('button')),
+          targetAt: (x, y) => {
+            const target = document.elementFromPoint(x, y)?.closest('.play-order-row')
+            return rows.contains(target) ? target : null
+          },
+          drop: (target) => {
+            if (orderLocked) return
+            const from = order.indexOf(itemIndex)
+            const position = [...rows.querySelectorAll('.play-order-row')].indexOf(target)
+            if (from < 0 || position < 0 || from === position) return
+            order.splice(position, 0, ...order.splice(from, 1))
+            renderOrder()
+            card.dispatchEvent(new Event('change', { bubbles: true }))
+          },
         })
         for (const [direction, labelText] of [[-1, 'Move up'], [1, 'Move down']]) {
           const button = element('button', 'icon-action')
