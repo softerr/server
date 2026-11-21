@@ -75,6 +75,9 @@ export function openQuizPreview(dialog, quiz, questions) {
     const source = sequence.next()
     const view = buildQuestion(previewPresentation(source), views.length)
     view.timeLimit = source.time_limit_seconds
+    view.card.addEventListener('change', () => {
+      if (views[position] === view) updateContinueControls()
+    })
     views.push(view)
     deadlines.push(null)
     questionArea.append(view.card)
@@ -82,6 +85,12 @@ export function openQuizPreview(dialog, quiz, questions) {
   const initialCount = sequence.initialCount
   for (let i = 0; i < initialCount; i++) appendView()
   let position = 0
+
+  function updateContinueControls() {
+    const ready = views[position]?.canContinue() ?? true
+    next.disabled = !ready
+    finish.disabled = !ready
+  }
 
   function showPosition() {
     if (views[position].timeLimit !== null && deadlines[position] === null) {
@@ -92,6 +101,7 @@ export function openQuizPreview(dialog, quiz, questions) {
     if (!unlimited) progress.style.setProperty('--progress', `${(position / views.length) * 100}%`)
     previous.hidden = !quiz.allow_go_back || position === 0
     next.textContent = !unlimited && position === views.length - 1 ? 'Finish preview' : 'Next'
+    updateContinueControls()
     dialog.scrollTop = 0
     tick()
   }
@@ -139,8 +149,9 @@ export function openQuizPreview(dialog, quiz, questions) {
     controls.hidden = true
     dialog.scrollTop = 0
   }
-  finish.addEventListener('click', completePreview)
+  finish.addEventListener('click', () => { if (views[position]?.canContinue()) completePreview() })
   function advancePreview() {
+    if (!views[position]?.canContinue()) return
     if (position < views.length - 1) { position++; showPosition(); return }
     if (!unlimited) { completePreview(); return }
     appendView()

@@ -79,7 +79,7 @@ function readQuestionFields(?array $payload): array
     $config = $payload['config'] ?? null;
     if (!is_string($template) || !in_array($template, [
         'multiple_choice', 'one_choice', 'number', 'short_answer', 'open',
-        'true_false', 'yes_no', 'show_answer', 'no_answer', 'match',
+        'true_false', 'yes_no', 'show_answer', 'no_answer', 'match', 'wheel',
         'ordering', 'fill_blanks', 'categorize', 'labeled_diagram',
     ], true) || !is_array($config)) {
         respond(400, ['error' => 'Invalid question template or config']);
@@ -133,6 +133,17 @@ function readQuestionFields(?array $payload): array
         $normalized['answer'] = $config['answer'];
     } elseif ($template === 'show_answer') {
         $normalized['answer'] = questionText($config['answer'] ?? null, 1000, 'revealed answer');
+    } elseif ($template === 'wheel') {
+        $options = $config['options'] ?? null;
+        if (!is_array($options) || !array_is_list($options) || count($options) < 2) {
+            respond(400, ['error' => 'A wheel needs at least 2 options']);
+        }
+        $normalized['options'] = array_map(
+            static fn (mixed $option): string => questionText($option, 80, 'wheel option'), $options
+        );
+        if (count(array_unique($normalized['options'])) !== count($normalized['options'])) {
+            respond(400, ['error' => 'Wheel options must be distinct']);
+        }
     } elseif ($template === 'match') {
         $pairs = $config['pairs'] ?? null;
         if (!is_array($pairs) || !array_is_list($pairs) || count($pairs) < 2) {
@@ -236,7 +247,7 @@ function readQuestionFields(?array $payload): array
     $imageId = optionalQuestionImageId($config['image_id'] ?? null);
     if ($imageId !== null) $normalized['image_id'] = $imageId;
     $answerImageId = optionalQuestionImageId($config['answer_image_id'] ?? null);
-    if ($template === 'no_answer' && $answerImageId !== null) {
+    if (in_array($template, ['no_answer', 'wheel'], true) && $answerImageId !== null) {
         respond(400, ['error' => 'This question has no answer']);
     }
     if ($answerImageId !== null) $normalized['answer_image_id'] = $answerImageId;

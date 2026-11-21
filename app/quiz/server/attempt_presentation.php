@@ -128,7 +128,7 @@ function countCorrectDiagramLabels(array $config, ?array $answer, int $questionI
 
 function gradeAttemptAnswer(string $template, array $config, ?array $answer, int $questionId, bool $randomizeAnswers = false): ?bool
 {
-    if (in_array($template, ['open', 'show_answer', 'no_answer'], true)) return null;
+    if (in_array($template, ['open', 'show_answer', 'no_answer', 'wheel'], true)) return null;
     if ($answer === null) return false;
     if ($template === 'multiple_choice' || $template === 'one_choice') {
         $selected = $answer['selected'] ?? null;

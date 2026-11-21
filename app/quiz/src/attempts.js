@@ -438,7 +438,7 @@ export function renderQuizResults(app, { requestJson, responseError, setStatus }
         summary.append(element('p', '', `Diagram labels: ${attempt.score.diagram_correct} of ${attempt.score.diagram_total} correct.`))
       }
       if (ungraded) {
-        summary.append(element('p', '', `${ungraded} study or open-answer questions were not graded.`))
+        summary.append(element('p', '', `${ungraded} questions were not automatically graded.`))
       }
       const review = element('a', 'auth-button auth-button-secondary', 'Review answers')
       review.href = `#attempt?quiz=${quizId}&attempt=${attemptId}${explore ? '&source=explore' : ''}`

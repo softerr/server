@@ -574,6 +574,7 @@ Each returned question has
 | `yes_no` | `{"answer":false}` | Boolean answer. |
 | `show_answer` | `{"answer":"The answer"}` | Nonempty answer to reveal, up to 1000 bytes. |
 | `no_answer` | `{}` | Question only. |
+| `wheel` | `{"options":["Red","Blue","Green"]}` | At least 2 distinct text options, each up to 80 bytes. Players spin, keep the result, or eliminate it and spin again. The result is not graded. |
 | `match` | `{"pairs":[{"keyword":"France","definition":"Paris"},{"keyword":"Italy","definition":"Rome"}]}` | At least 2 pairs. |
 | `labeled_diagram` | `{"diagram_image_id":12,"labels":[{"text":"Heart","x":42.5,"y":30},{"text":"Lung","x":65,"y":45}]}` | Diagram image and 2 to 30 distinct labels; point coordinates are percentages from 0 to 100. |
 | `ordering` | `{"items":[{"text":"Wash"},{"text":"Cut"},{"text":"Cook"}]}` | At least 2 distinct items, listed in the correct order. |

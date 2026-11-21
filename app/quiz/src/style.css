@@ -1653,6 +1653,36 @@
 }
 .play-drag-card.is-selected,
 .play-drag-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.play-wheel-activity {
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  justify-items: center; gap: 16px;
+}
+.play-wheel-activity > .play-instruction { text-align: center; }
+.play-wheel-stage { position: relative; width: min(100%, 680px); aspect-ratio: 1; }
+.play-wheel-disc {
+  position: absolute; inset: 7px; border: 7px solid var(--text-h); border-radius: 50%;
+  box-shadow: 0 8px 24px #0005;
+}
+.play-wheel-pointer {
+  position: absolute; z-index: 1; top: 0; left: 50%; transform: translateX(-50%);
+  width: 0; height: 0; border-left: 16px solid transparent; border-right: 16px solid transparent;
+  border-top: 34px solid var(--text-h); filter: drop-shadow(0 2px 2px #0008);
+}
+.play-wheel-spoke {
+  position: absolute; width: 34%; height: 0; transform-origin: left center;
+  pointer-events: none;
+}
+.play-wheel-sector {
+  position: absolute; top: 0; left: 0; display: block; width: 100%;
+  transform: translateY(-50%);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  color: #fff; font-weight: 800;
+  text-align: left; text-shadow: 0 1px 3px #000c; pointer-events: auto;
+}
+.play-wheel-sector.is-dark { color: #161616; text-shadow: 0 1px 1px #fff9; }
+.play-wheel-result { margin: 0; color: var(--text-h); font-size: 18px; font-weight: 700; text-align: center; }
+.play-wheel-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.play-wheel-actions [hidden] { display: none; }
 .play-diagram-activity {
   display: grid; grid-template-columns: minmax(210px, 26%) minmax(0, 1fr);
   align-items: start; gap: 16px;

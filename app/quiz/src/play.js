@@ -3,11 +3,12 @@ import { submitAttempt } from './submit-attempt.js'
 import { showMissingImageWhenUnavailable } from './missing-image.js'
 import { mediaImageUrl } from '@softerr/shared/media-client.js'
 import { makeScrollableDrag } from './pointer-drag.js'
+import { createWheelActivity } from './wheel.js'
 
 const templateNames = {
   multiple_choice: 'Multiple choice', one_choice: 'One choice', number: 'Number',
   short_answer: 'Short answer', open: 'Open answer', true_false: 'True/false',
-  yes_no: 'Yes/no', show_answer: 'Show answer', no_answer: 'No answer',
+  yes_no: 'Yes/no', show_answer: 'Show answer', no_answer: 'No answer', wheel: 'Wheel',
   match: 'Match', ordering: 'Ordering', fill_blanks: 'Fill in the blanks',
   categorize: 'Categorize', labeled_diagram: 'Labeled diagram',
 }
@@ -283,6 +284,8 @@ export function buildQuestion(question, index) {
   const answer = element('div', 'play-answer')
   card.append(answer)
   let grade = () => null
+  let canContinue = () => true
+  let onLock = () => {}
   let finish = () => {}
   let getAnswer = () => ({ viewed: true })
   let restoreAnswer = () => {}
@@ -391,6 +394,14 @@ export function buildQuestion(question, index) {
     finish = () => { reveal.hidden = false; button.hidden = true }
   } else if (question.template === 'no_answer') {
     answer.append(element('p', 'play-instruction', 'Read the question, then continue.'))
+  } else if (question.template === 'wheel') {
+    const activity = createWheelActivity(answer, config.options || [])
+    grade = activity.grade
+    canContinue = activity.canContinue
+    finish = activity.finish
+    onLock = activity.finish
+    getAnswer = activity.getAnswer
+    restoreAnswer = activity.restoreAnswer
   } else if (question.template === 'match') {
     const pairs = config.pairs || []
     const definitions = config.definitions || pairs
@@ -562,15 +573,17 @@ export function buildQuestion(question, index) {
   const feedback = element('p', 'play-feedback')
   feedback.hidden = true
   card.append(feedback)
-  const solutionImage = config.answer_image_id && !['show_answer', 'open', 'no_answer'].includes(question.template)
+  const solutionImage = config.answer_image_id && !['show_answer', 'open', 'no_answer', 'wheel'].includes(question.template)
     ? rich('', config.answer_image_id) : null
   if (solutionImage) { solutionImage.hidden = true; card.append(solutionImage) }
   return {
     card,
     getAnswer,
     restoreAnswer,
+    canContinue,
     matchScore,
     lock() {
+      onLock()
       card.inert = true
       card.querySelectorAll('input, textarea, select, button').forEach((control) => { control.disabled = true })
       card.querySelectorAll('[draggable]').forEach((control) => { control.draggable = false })
@@ -790,6 +803,12 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     return saveQueue
   }
 
+  function updateContinueControls() {
+    const ready = questions[position]?.canContinue() ?? true
+    next.disabled = !ready
+    finish.disabled = !ready
+  }
+
   function showPosition() {
     sampleTime()
     const previousQuestionId = activeQuestionId
@@ -801,6 +820,7 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     if (!unlimited) progress.style.setProperty('--progress', `${(position / questionCount) * 100}%`)
     previous.hidden = !allowGoBack || position === 0
     next.textContent = !unlimited && position === questionCount - 1 ? 'Finish quiz' : 'Next'
+    updateContinueControls()
     page.querySelector('.quiz-play-page').scrollIntoView({ block: 'start' })
     void startCurrentQuestion()
     tick()
@@ -816,6 +836,7 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
   })
   async function completeAttempt(expired = false) {
     if (navigating || attemptId === null) return
+    if (!expired && !questions[position]?.canContinue()) return
     navigating = true
     next.disabled = true
     finish.disabled = true
@@ -833,14 +854,14 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     } catch (error) {
       setStatus(status, error.message || 'Could not finish quiz. Please try again.', true)
     } finally {
-      next.disabled = false
-      finish.disabled = false
+      updateContinueControls()
       navigating = false
     }
   }
   finish.addEventListener('click', () => { void completeAttempt() })
   async function advanceQuestion(expired = false) {
     if (navigating || attemptId === null) return
+    if (!expired && !questions[position]?.canContinue()) return
     if (!unlimited && position === questionCount - 1) { await completeAttempt(expired); return }
     navigating = true
     next.disabled = true
@@ -861,7 +882,7 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     } catch (error) {
       setStatus(status, error.message || 'Could not load next question. Please try again.', true)
     } finally {
-      next.disabled = false
+      updateContinueControls()
       navigating = false
     }
   }
@@ -884,7 +905,10 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     sentTime.set(question.id, question.time_spent_ms || 0)
     if (answers?.[question.id]) view.restoreAnswer(answers[question.id])
     view.card.addEventListener('input', () => markDirty(index))
-    view.card.addEventListener('change', () => markDirty(index))
+    view.card.addEventListener('change', () => {
+      markDirty(index)
+      if (index === position) updateContinueControls()
+    })
     questionArea.append(view.card)
   }
 
@@ -916,7 +940,7 @@ export function renderQuizPlay(app, { requestJson, responseError, setStatus }) {
     if (unlimited) progress.classList.add('is-unlimited')
     attempt.questions.forEach((question, index) => appendQuestion(question, index, attempt.answers))
     const firstUnanswered = questions.findIndex((question) =>
-      !Object.prototype.hasOwnProperty.call(attempt.answers ?? {}, question.id))
+      !Object.prototype.hasOwnProperty.call(attempt.answers ?? {}, question.id) || !question.canContinue())
     if (!allowGoBack) position = Math.max(0, Math.min(questions.length - 1, attempt.furthest_position - 1))
     else if (firstUnanswered > 0) position = firstUnanswered
     else if (firstUnanswered === -1) position = questions.length - 1

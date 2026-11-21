@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS public.question (
     quiz_id BIGINT NOT NULL REFERENCES public.quiz(id) ON DELETE CASCADE,
     template VARCHAR(32) NOT NULL CONSTRAINT question_template_check CHECK (template IN (
         'multiple_choice', 'one_choice', 'number', 'short_answer', 'open',
-        'true_false', 'yes_no', 'show_answer', 'no_answer', 'match',
+        'true_false', 'yes_no', 'show_answer', 'no_answer', 'match', 'wheel',
         'ordering', 'fill_blanks', 'categorize', 'labeled_diagram'
     )),
     prompt VARCHAR(500) NOT NULL,
@@ -54,11 +54,12 @@ BEGIN
         SELECT 1 FROM pg_constraint
         WHERE conrelid = 'public.question'::regclass AND conname = 'question_template_check'
           AND pg_get_constraintdef(oid) LIKE '%labeled_diagram%'
+          AND pg_get_constraintdef(oid) LIKE '%wheel%'
     ) THEN
         ALTER TABLE public.question DROP CONSTRAINT IF EXISTS question_template_check;
         ALTER TABLE public.question ADD CONSTRAINT question_template_check CHECK (template IN (
             'multiple_choice', 'one_choice', 'number', 'short_answer', 'open',
-            'true_false', 'yes_no', 'show_answer', 'no_answer', 'match',
+            'true_false', 'yes_no', 'show_answer', 'no_answer', 'match', 'wheel',
             'ordering', 'fill_blanks', 'categorize', 'labeled_diagram'
         ));
     END IF;

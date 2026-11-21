@@ -156,6 +156,48 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
     renderDiagramConfig(fields, form, config, imageLibrary)
     return
   }
+  if (template === 'wheel') {
+    const help = document.createElement('p')
+    help.className = 'question-template-help'
+    help.textContent = 'Add options for the wheel. A player spins, then keeps the result or removes it and spins again.'
+    const rows = document.createElement('div')
+    rows.className = 'question-config-rows'
+    const add = document.createElement('button')
+    add.type = 'button'
+    add.className = 'auth-button auth-button-secondary'
+    add.textContent = 'Add option'
+    function update() {
+      updateRowActions(rows, 'option', 2)
+      ;[...rows.children].forEach((row, index) => {
+        row.querySelector('[data-wheel-option]').setAttribute('aria-label', `Wheel option ${index + 1}`)
+      })
+    }
+    function addOption(value = '', refresh = true) {
+      const row = document.createElement('div')
+      row.className = 'question-config-row is-text-list'
+      const field = textField('Option', value, 80)
+      field.label.classList.add('compact-field')
+      field.input.placeholder = 'Option'
+      field.input.dataset.wheelOption = ''
+      row.append(field.label, rowActions(row, rows, () => {
+        update()
+        form.dispatchEvent(new Event('input'))
+      }))
+      rows.append(row)
+      if (refresh) update()
+      return row
+    }
+    const initial = Array.isArray(config.options) && config.options.length ? config.options : ['', '']
+    initial.forEach((value) => addOption(value, false))
+    update()
+    add.addEventListener('click', () => {
+      const row = addOption()
+      form.dispatchEvent(new Event('input'))
+      row.querySelector('[data-wheel-option]').focus()
+    })
+    fields.append(help, rows, add)
+    return
+  }
   if (template === 'multiple_choice' || template === 'one_choice' || template === 'match') {
     const heading = document.createElement('div')
     heading.className = `question-config-heading ${template === 'match' ? 'is-match' : 'is-choice'}`
@@ -618,6 +660,8 @@ export function collectConfig(form, template) {
     })) }
   } else if (template === 'labeled_diagram') {
     config = collectDiagramConfig(fields)
+  } else if (template === 'wheel') {
+    config = { options: [...fields.querySelectorAll('[data-wheel-option]')].map((input) => input.value.trim()) }
   } else if (template === 'ordering') {
     config = { items: [...fields.querySelectorAll('.question-config-row')].map((row) =>
       imageText(row, '[data-order-item]')) }

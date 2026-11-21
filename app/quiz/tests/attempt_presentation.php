@@ -108,4 +108,10 @@ expectAttempt(gradeAttemptAnswer('fill_blanks', $blanks, ['values' => ['paris', 
 
 expectAttempt(!isset(playQuestionConfig('show_answer', ['answer' => 'Secret'], 16, false)['answer']),
     'Reveal answer leaked');
+$wheel = ['options' => ['Red', 'Blue', 'Green']];
+expectAttempt(playQuestionConfig('wheel', $wheel, 21, false) === $wheel,
+    'Wheel options changed during presentation');
+expectAttempt(gradeAttemptAnswer('wheel', $wheel,
+    ['selected' => 1, 'remaining' => [0, 1, 2], 'spins' => 1], 21) === null,
+    'Wheel result was graded');
 echo "Quiz presentation and grading checks passed.\n";
