@@ -2,6 +2,7 @@ import { mountQuestionEditor } from './questions.js'
 import { openQuizPreview } from './preview.js'
 import { listMediaImages, mediaImageUrl } from '@softerr/shared/media-client.js'
 import { downloadBlob } from '@softerr/shared/download.js'
+import { enableFieldNavigation } from './field-navigation.js'
 
 export function renderQuizEditor(app, { currentUser, requestJson, responseError, setStatus }) {
   const quizId = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('quiz')
@@ -65,6 +66,11 @@ export function renderQuizEditor(app, { currentUser, requestJson, responseError,
   const form = page.querySelector('#quiz-editor-form')
   const status = page.querySelector('#quiz-editor-status')
   const saveButton = form.querySelector('[type="submit"]')
+  enableFieldNavigation(form, () => {
+    if (saveButton.disabled) return false
+    saveButton.focus()
+    return true
+  })
   const nameInput = form.elements.namedItem('name')
   const descriptionInput = form.elements.namedItem('description')
   const styleInputs = form.elements.namedItem('play_style')

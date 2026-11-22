@@ -1,5 +1,6 @@
 import { moveDownIcon, moveUpIcon, removeIcon } from './icons.js'
 import { mediaImageUrl } from '@softerr/shared/media-client.js'
+import { removeEmptyRowOnBackspace } from './field-navigation.js'
 
 const MAX_LABELS = 30
 const listeners = new WeakMap()
@@ -152,6 +153,8 @@ export function renderDiagramConfig(fields, form, config, imageLibrary) {
     actions.append(remove)
     row.append(number, label, x, y, placement, actions)
     rows.append(row)
+    removeEmptyRowOnBackspace(input, row,
+      { removeSelector: '[data-remove-label]', focusSelector: '[data-diagram-label]' })
     if (!selected) selected = row
     render()
     return row

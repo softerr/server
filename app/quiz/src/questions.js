@@ -2,6 +2,7 @@ import { deleteIcon, moveDownIcon, moveUpIcon } from './icons.js'
 import { mountImageLibrary } from './images.js'
 import { questionTypes, templateHints, templateIcons } from './question-templates.js'
 import { renderConfig, collectConfig } from './question-config.js'
+import { enableFieldNavigation } from './field-navigation.js'
 
 let nextCorrectGroup = 0
 
@@ -122,6 +123,11 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
     const resetButton = form.querySelector('[data-reset]')
     const cancelButton = form.querySelector('[data-cancel]')
     const deleteButton = form.querySelector('[data-delete-question]')
+    enableFieldNavigation(form, () => {
+      if (saveButton.disabled) return false
+      saveButton.focus()
+      return true
+    })
     let savedQuestion = initialQuestion
     let savedSnapshot = null
     let saving = false

@@ -1,5 +1,6 @@
 import { addImagesIcon, imageIcon, moveDownIcon, moveUpIcon, removeIcon, swapSidesIcon } from './icons.js'
 import { collectDiagramConfig, disposeDiagramConfig, renderDiagramConfig } from './labeled-diagram.js'
+import { removeEmptyRowOnBackspace } from './field-navigation.js'
 
 function textField(labelText, value = '', maxLength = 150) {
   const label = document.createElement('label')
@@ -120,7 +121,7 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
       else append(id)
     }
   }
-  function imageRowPlaceholder(label, createRow, inputSelector, pickerSelector, maxLength = 150, showLabel = false) {
+  function rowPlaceholder(label, createRow, inputSelector, pickerSelector, maxLength = 150, showLabel = false) {
     const placeholder = document.createElement('div')
     placeholder.className = 'question-row-placeholder'
     const field = textField(label, '', maxLength)
@@ -134,21 +135,24 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
       form.dispatchEvent(new Event('input'))
       row.querySelector(inputSelector).focus()
     })
-    const imageButton = document.createElement('button')
-    imageButton.type = 'button'
-    imageButton.className = 'image-picker-button'
-    imageButton.innerHTML = imageIcon
-    imageButton.setAttribute('aria-label', `Add ${label.toLowerCase()} with image`)
-    imageButton.title = `Add ${label.toLowerCase()} with image`
-    imageButton.addEventListener('click', () => {
-      const row = createRow()
-      if (!row) return
-      form.dispatchEvent(new Event('input'))
-      row.querySelector(`${pickerSelector} [data-choose-image]`).click()
-    })
     const body = document.createElement('div')
     body.className = 'question-image-field'
-    body.append(field.label, imageButton)
+    body.append(field.label)
+    if (pickerSelector) {
+      const imageButton = document.createElement('button')
+      imageButton.type = 'button'
+      imageButton.className = 'image-picker-button'
+      imageButton.innerHTML = imageIcon
+      imageButton.setAttribute('aria-label', `Add ${label.toLowerCase()} with image`)
+      imageButton.title = `Add ${label.toLowerCase()} with image`
+      imageButton.addEventListener('click', () => {
+        const row = createRow()
+        if (!row) return
+        form.dispatchEvent(new Event('input'))
+        row.querySelector(`${pickerSelector} [data-choose-image]`).click()
+      })
+      body.append(imageButton)
+    }
     placeholder.append(body)
     return placeholder
   }
@@ -159,13 +163,9 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
   if (template === 'wheel') {
     const help = document.createElement('p')
     help.className = 'question-template-help'
-    help.textContent = 'Add options for the wheel. A player spins, then keeps the result or removes it and spins again.'
+    help.textContent = 'Add options for the wheel. A player can keep the result, spin again, or remove it before spinning again.'
     const rows = document.createElement('div')
     rows.className = 'question-config-rows'
-    const add = document.createElement('button')
-    add.type = 'button'
-    add.className = 'auth-button auth-button-secondary'
-    add.textContent = 'Add option'
     function update() {
       updateRowActions(rows, 'option', 2)
       ;[...rows.children].forEach((row, index) => {
@@ -184,18 +184,16 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
         form.dispatchEvent(new Event('input'))
       }))
       rows.append(row)
+      removeEmptyRowOnBackspace(field.input, row)
       if (refresh) update()
       return row
     }
     const initial = Array.isArray(config.options) && config.options.length ? config.options : ['', '']
     initial.forEach((value) => addOption(value, false))
     update()
-    add.addEventListener('click', () => {
-      const row = addOption()
-      form.dispatchEvent(new Event('input'))
-      row.querySelector('[data-wheel-option]').focus()
-    })
-    fields.append(help, rows, add)
+    const placeholder = rowPlaceholder('Option', addOption, '[data-wheel-option]', null, 80)
+    placeholder.classList.add('is-text-list')
+    fields.append(help, rows, placeholder)
     return
   }
   if (template === 'multiple_choice' || template === 'one_choice' || template === 'match') {
@@ -300,6 +298,12 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
         form.dispatchEvent(new Event('input'))
       }))
       rows.append(row)
+      if (template === 'match') {
+        for (const side of ['keyword', 'definition']) {
+          removeEmptyRowOnBackspace(row.querySelector(`[data-${side}]`), row,
+            { focusSelector: `[data-${side}]` })
+        }
+      } else removeEmptyRowOnBackspace(row.querySelector('[data-option-text]'), row)
       updateButtons()
       return row
     }
@@ -338,7 +342,7 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
       }
       fields.append(heading, rows, placeholder, actions)
     } else {
-      const placeholder = imageRowPlaceholder('Answer option', addRow,
+      const placeholder = rowPlaceholder('Answer option', addRow,
         '[data-option-text]', '.option-image-picker')
       placeholder.classList.add('is-choice')
       const correct = document.createElement('label')
@@ -388,6 +392,7 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
         form.dispatchEvent(new Event('input'))
       }))
       rows.append(row)
+      removeEmptyRowOnBackspace(field.input, row)
       update()
       return row
     }
@@ -398,7 +403,7 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
     actions.append(addFromImages('Add items from images', (ids) =>
       fillImageRows(rows, ids, '[data-order-item]', '.inline-image-picker',
         (id) => addItem({ image_id: id }))))
-    const placeholder = imageRowPlaceholder('Item', addItem, '[data-order-item]', '.inline-image-picker')
+    const placeholder = rowPlaceholder('Item', addItem, '[data-order-item]', '.inline-image-picker')
     placeholder.classList.add('is-text-list')
     fields.append(help, rows, placeholder, actions)
     return
@@ -419,14 +424,30 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
     remove.type = 'button'
     iconButton(remove, 'Remove last blank', removeIcon)
     let placeholder = null
+    const prompt = form.querySelector('[data-prompt]')
     function update() {
       const count = rows.children.length
       remove.disabled = count <= 1
+      ;[...rows.children].forEach((row, index) => {
+        row.querySelector('.field span').textContent = `Answer for {{${index + 1}}}`
+      })
       if (placeholder) {
         const input = placeholder.querySelector('input')
         placeholder.querySelector('.field span').textContent = `Answer for {{${count + 1}}}`
         input.setAttribute('aria-label', `Add answer for blank ${count + 1}`)
       }
+    }
+    function removeBlank(row) {
+      const count = rows.children.length
+      const number = [...rows.children].indexOf(row) + 1
+      if (count <= 1 || number === 0) return
+      row.remove()
+      prompt.value = prompt.value.replace(/\{\{([1-9]\d*)\}\}/g, (marker, digits) => {
+        const index = Number(digits)
+        return index === number ? '' : index > number && index <= count ? `{{${index - 1}}}` : marker
+      })
+      update()
+      form.dispatchEvent(new Event('input'))
     }
     function addBlank(value = {}) {
       const field = textField(`Answer for {{${rows.children.length + 1}}}`, value.text ?? '')
@@ -438,12 +459,22 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
       image.classList.add('inline-image-picker')
       body.append(field.label, image)
       rows.append(body)
+      field.input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Backspace' || event.isComposing || event.altKey || event.ctrlKey
+            || event.metaKey || field.input.value !== '' || rows.children.length <= 1
+            || image.querySelector('[data-image-id]').value) return
+        const neighbor = body.previousElementSibling?.querySelector('[data-blank-answer]')
+          ?? body.nextElementSibling?.querySelector('[data-blank-answer]')
+        event.preventDefault()
+        removeBlank(body)
+        neighbor?.focus()
+        neighbor?.setSelectionRange(neighbor.value.length, neighbor.value.length)
+      })
       update()
       return body
     }
     const initial = Array.isArray(config.answers) && config.answers.length ? config.answers : [{}]
     initial.forEach(addBlank)
-    const prompt = form.querySelector('[data-prompt]')
     if (!Array.isArray(config.answers) && !prompt.value.includes('{{1}}')) {
       prompt.value += `${prompt.value ? ' ' : ''}{{1}}`
     }
@@ -460,7 +491,7 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
       prompt.value += addition
       return row
     }
-    placeholder = imageRowPlaceholder(`Answer for {{${rows.children.length + 1}}}`, createBlank,
+    placeholder = rowPlaceholder(`Answer for {{${rows.children.length + 1}}}`, createBlank,
       '[data-blank-answer]', '.inline-image-picker', 150, true)
     placeholder.classList.add('is-blank')
     grid.append(placeholder)
@@ -480,12 +511,7 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
       if (markers) prompt.value += addition
     }), remove)
     remove.addEventListener('click', () => {
-      const number = rows.children.length
-      if (number <= 1) return
-      rows.lastElementChild.remove()
-      prompt.value = prompt.value.replace(`{{${number}}}`, '')
-      update()
-      form.dispatchEvent(new Event('input'))
+      removeBlank(rows.lastElementChild)
     })
     fields.append(help, grid, actions)
     return
@@ -551,10 +577,11 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
         body.append(field.label, image)
         row.append(body, rowActions(row, items, changed))
         items.append(row)
+        removeEmptyRowOnBackspace(field.input, row)
         update()
         return row
       }
-      const itemPlaceholder = imageRowPlaceholder('Item', addItem,
+      const itemPlaceholder = rowPlaceholder('Item', addItem,
         '[data-category-item]', '.inline-image-picker')
       itemPlaceholder.classList.add('is-text-list')
       const itemActions = document.createElement('div')
@@ -565,6 +592,7 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
       }))
       category.append(heading, nameBody, itemsLabel, items, itemPlaceholder, itemActions)
       categories.append(category)
+      removeEmptyRowOnBackspace(name.input, category, { focusSelector: '[data-category-name]' })
       const initialItems = Array.isArray(value.items) && value.items.length ? value.items : [{}]
       initialItems.forEach(addItem)
       update()
@@ -582,7 +610,7 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
     placeholderCategory.className = 'question-category question-category-placeholder'
     const title = document.createElement('h4')
     title.textContent = 'New category'
-    const placeholder = imageRowPlaceholder('Category name', addCategory,
+    const placeholder = rowPlaceholder('Category name', addCategory,
       '[data-category-name]', '[data-category-name-image]', 100)
     placeholderCategory.append(title, placeholder)
     fields.append(help, categories, placeholderCategory, actions)
