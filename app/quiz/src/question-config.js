@@ -1,6 +1,8 @@
 import { addImagesIcon, imageIcon, moveDownIcon, moveUpIcon, removeIcon, swapSidesIcon } from './icons.js'
 import { collectDiagramConfig, disposeDiagramConfig, renderDiagramConfig } from './labeled-diagram.js'
 import { removeEmptyRowOnBackspace } from './field-navigation.js'
+import { layoutCrossword } from './crossword-layout.js'
+import { renderCrosswordPreview } from './crossword.js'
 
 function textField(labelText, value = '', maxLength = 150) {
   const label = document.createElement('label')
@@ -158,6 +160,83 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
   }
   if (template === 'labeled_diagram') {
     renderDiagramConfig(fields, form, config, imageLibrary)
+    return
+  }
+  if (template === 'crossword') {
+    const help = document.createElement('p')
+    help.className = 'question-template-help'
+    help.textContent = 'Enter 2 to 20 answers and clues. The crossword grid is arranged automatically.'
+    const rows = document.createElement('div')
+    rows.className = 'question-config-rows'
+    let placeholder = null
+    const preview = document.createElement('div')
+    preview.className = 'crossword-editor-preview'
+    const heading = document.createElement('h4')
+    heading.textContent = 'Grid preview'
+    const message = document.createElement('p')
+    message.className = 'question-template-help'
+    const puzzle = document.createElement('div')
+    preview.append(heading, message, puzzle)
+    let timer = null
+    function drafts() {
+      return [...rows.children].map((row) => ({
+        answer: row.querySelector('[data-crossword-answer]').value,
+        clue: row.querySelector('[data-crossword-clue]').value,
+      }))
+    }
+    function updatePreview() {
+      if (!rows.children.length) return
+      try {
+        renderCrosswordPreview(puzzle, layoutCrossword(drafts()))
+        message.textContent = ''
+      } catch (error) {
+        puzzle.replaceChildren()
+        message.textContent = error.message
+      }
+    }
+    function queuePreview() {
+      clearTimeout(timer)
+      timer = setTimeout(() => { if (rows.isConnected) updatePreview() }, 150)
+    }
+    function updateRows() {
+      updateRowActions(rows, 'entry', 2)
+      ;[...rows.children].forEach((row, index) => {
+        row.querySelector('[data-crossword-answer]').setAttribute('aria-label', `Crossword answer ${index + 1}`)
+        row.querySelector('[data-crossword-clue]').setAttribute('aria-label', `Crossword clue ${index + 1}`)
+      })
+      if (placeholder) placeholder.querySelector('input').disabled = rows.children.length >= 20
+      queuePreview()
+    }
+    function addEntry(value = {}) {
+      if (rows.children.length >= 20) return null
+      const row = document.createElement('div')
+      row.className = 'question-config-row is-crossword'
+      const answer = textField('Answer', value.answer ?? '', 40)
+      const clue = textField('Clue', value.clue ?? '', 200)
+      answer.label.classList.add('compact-field')
+      clue.label.classList.add('compact-field')
+      answer.input.placeholder = 'Answer'
+      clue.input.placeholder = 'Clue'
+      answer.input.dataset.crosswordAnswer = ''
+      clue.input.dataset.crosswordClue = ''
+      row.append(answer.label, clue.label, rowActions(row, rows, () => {
+        updateRows()
+        form.dispatchEvent(new Event('input'))
+      }))
+      rows.append(row)
+      removeEmptyRowOnBackspace(answer.input, row)
+      removeEmptyRowOnBackspace(clue.input, row, { focusSelector: '[data-crossword-clue]' })
+      updateRows()
+      return row
+    }
+    const initial = Array.isArray(config.entries) && config.entries.length ? config.entries : [{}, {}]
+    initial.forEach(addEntry)
+    placeholder = rowPlaceholder('Answer', addEntry, '[data-crossword-answer]', null, 40)
+    placeholder.classList.add('is-crossword')
+    updateRows()
+    rows.addEventListener('input', queuePreview)
+    fields.append(help, rows, placeholder, preview)
+    updatePreview()
     return
   }
   if (template === 'wheel') {
@@ -688,6 +767,11 @@ export function collectConfig(form, template) {
     })) }
   } else if (template === 'labeled_diagram') {
     config = collectDiagramConfig(fields)
+  } else if (template === 'crossword') {
+    config = { entries: [...fields.querySelectorAll('.question-config-row.is-crossword')].map((row) => ({
+      answer: row.querySelector('[data-crossword-answer]').value.trim(),
+      clue: row.querySelector('[data-crossword-clue]').value.trim(),
+    })) }
   } else if (template === 'wheel') {
     config = { options: [...fields.querySelectorAll('[data-wheel-option]')].map((input) => input.value.trim()) }
   } else if (template === 'ordering') {

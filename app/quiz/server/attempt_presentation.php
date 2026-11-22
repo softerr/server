@@ -56,6 +56,12 @@ function playQuestionConfig(string $template, array $config, int $questionId, bo
         $config['choices'] = array_map(static fn (int $index): string => $labels[$index]['text'],
             diagramLabelOrder(count($labels), $questionId));
         unset($config['labels']);
+    } elseif ($template === 'crossword') {
+        $config['entries'] = array_map(static function (array $entry): array {
+            $entry['length'] = strlen($entry['answer'] ?? '');
+            unset($entry['answer']);
+            return $entry;
+        }, $config['entries']);
     } elseif ($template === 'ordering') {
         $items = $config['items'];
         $config['items'] = array_map(static fn (int $index): array => $items[$index],
@@ -164,6 +170,19 @@ function gradeAttemptAnswer(string $template, array $config, ?array $answer, int
         $values = $answer['assignments'] ?? null;
         return is_array($values) && count($values) === count($config['labels'])
             && countCorrectDiagramLabels($config, $answer, $questionId) === count($config['labels']);
+    }
+    if ($template === 'crossword') {
+        $cells = $answer['cells'] ?? null;
+        if (!is_array($cells)) return false;
+        foreach ($config['entries'] as $entry) {
+            foreach (str_split($entry['answer']) as $offset => $letter) {
+                $row = $entry['row'] + ($entry['direction'] === 'down' ? $offset : 0);
+                $col = $entry['col'] + ($entry['direction'] === 'across' ? $offset : 0);
+                $value = $cells["$row,$col"] ?? null;
+                if (!is_string($value) || strtoupper($value) !== $letter) return false;
+            }
+        }
+        return true;
     }
     if ($template === 'ordering') {
         $values = $answer['order'] ?? null;

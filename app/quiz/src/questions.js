@@ -4,6 +4,7 @@ import { questionTypes, templateHints, templateIcons } from './question-template
 import { renderConfig, collectConfig } from './question-config.js'
 import { enableFieldNavigation } from './field-navigation.js'
 import { convertTemplateConfig } from './template-config.js'
+import { layoutCrossword } from './crossword-layout.js'
 
 let nextCorrectGroup = 0
 
@@ -209,6 +210,12 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
       const template = templateSelect.value
       const prompt = promptInput.value.trim()
       const config = collectConfig(form, template)
+      if (template === 'crossword') {
+        try { config.entries = layoutCrossword(config.entries) } catch (error) {
+          setStatus(status, error.message, true)
+          return null
+        }
+      }
       if ((template === 'multiple_choice' || template === 'one_choice')
           && config.options.some((option) => !option.text && !option.image_id)) {
         setStatus(status, 'Each option needs text or an image.', true)

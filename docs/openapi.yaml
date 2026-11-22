@@ -4477,7 +4477,7 @@ paths:
         The JSON body is limited to 32768 bytes. The answer is a template-specific
         object: `selected` for choices and booleans, `text` for number, short and
         open answers, `assignments` for match, categorize, and labeled diagrams, `order` for ordering,
-        `values` for blanks, `selected` and `remaining` for wheel, `revealed`
+        `values` for blanks, `cells` for crossword, `selected` and `remaining` for wheel, `revealed`
         for show-answer, or `viewed` for no-answer.
       security:
         - sessionCookie: []
@@ -5363,7 +5363,7 @@ components:
       description: |
         `prompt` is trimmed and limited to 500 bytes. `config` depends on the
         template; see the question template table in docs/api.md. Choice, match,
-        ordering, fill-in-the-blanks, and categorization templates have minimum
+        ordering, fill-in-the-blanks, categorization, and crossword templates have minimum
         row counts but no fixed maximum. Request size and prompt length still
         bound them. Answers and sample answers have the limits described there.
         Optional `config.image_id` and `config.answer_image_id` refer to reusable
@@ -5375,7 +5375,7 @@ components:
       properties:
         template:
           type: string
-          enum: [multiple_choice, one_choice, number, short_answer, open, true_false, yes_no, show_answer, no_answer, match, ordering, fill_blanks, categorize, labeled_diagram, wheel]
+          enum: [multiple_choice, one_choice, number, short_answer, open, true_false, yes_no, show_answer, no_answer, match, ordering, fill_blanks, categorize, labeled_diagram, wheel, crossword]
         prompt:
           type: string
           minLength: 1

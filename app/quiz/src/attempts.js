@@ -1,6 +1,7 @@
 import { buildQuestion } from './play.js'
 import { showMissingImageWhenUnavailable } from './missing-image.js'
 import { mediaImageUrl } from '@softerr/shared/media-client.js'
+import { numberedCrosswordEntries } from './crossword-layout.js'
 
 function element(tag, className = '', text) {
   const node = document.createElement(tag)
@@ -66,6 +67,12 @@ function correctAnswers(question) {
     case 'ordering':
       for (const [index, item] of (config.items || []).entries()) {
         row(element('strong', '', `${index + 1}.`), answerContent(item.text, item.image_id))
+      }
+      break
+    case 'crossword':
+      for (const entry of numberedCrosswordEntries(config.entries || [])) {
+        row(element('strong', '', `${entry.number} ${entry.direction} · ${entry.clue}:`),
+          answerContent(entry.answer))
       }
       break
     default:

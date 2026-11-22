@@ -79,7 +79,7 @@ function readQuestionFields(?array $payload): array
     $config = $payload['config'] ?? null;
     if (!is_string($template) || !in_array($template, [
         'multiple_choice', 'one_choice', 'number', 'short_answer', 'open',
-        'true_false', 'yes_no', 'show_answer', 'no_answer', 'match', 'wheel',
+        'true_false', 'yes_no', 'show_answer', 'no_answer', 'match', 'wheel', 'crossword',
         'ordering', 'fill_blanks', 'categorize', 'labeled_diagram',
     ], true) || !is_array($config)) {
         respond(400, ['error' => 'Invalid question template or config']);
@@ -143,6 +143,42 @@ function readQuestionFields(?array $payload): array
         );
         if (count(array_unique($normalized['options'])) !== count($normalized['options'])) {
             respond(400, ['error' => 'Wheel options must be distinct']);
+        }
+    } elseif ($template === 'crossword') {
+        $entries = $config['entries'] ?? null;
+        if (!is_array($entries) || !array_is_list($entries) || count($entries) < 2 || count($entries) > 20) {
+            respond(400, ['error' => 'A crossword needs 2 to 20 entries']);
+        }
+        $normalized['entries'] = [];
+        $grid = [];
+        $answers = [];
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) respond(400, ['error' => 'Invalid crossword entry']);
+            $answer = strtoupper(questionText($entry['answer'] ?? null, 20, 'crossword answer'));
+            $clue = questionText($entry['clue'] ?? null, 200, 'crossword clue');
+            $row = $entry['row'] ?? null;
+            $col = $entry['col'] ?? null;
+            $direction = $entry['direction'] ?? null;
+            if (!preg_match('/^[A-Z]{2,20}$/D', $answer) || in_array($answer, $answers, true)
+                || !is_int($row) || !is_int($col) || $row < 0 || $col < 0
+                || !in_array($direction, ['across', 'down'], true)
+                || $row + ($direction === 'down' ? strlen($answer) : 1) > 60
+                || $col + ($direction === 'across' ? strlen($answer) : 1) > 60) {
+                respond(400, ['error' => 'Invalid crossword entry or position']);
+            }
+            $answers[] = $answer;
+            foreach (str_split($answer) as $offset => $letter) {
+                $cellRow = $row + ($direction === 'down' ? $offset : 0);
+                $cellCol = $col + ($direction === 'across' ? $offset : 0);
+                $key = "$cellRow,$cellCol";
+                if (isset($grid[$key]) && ($grid[$key]['letter'] !== $letter
+                    || isset($grid[$key][$direction]))) {
+                    respond(400, ['error' => 'Crossword entries conflict in the grid']);
+                }
+                $grid[$key]['letter'] = $letter;
+                $grid[$key][$direction] = true;
+            }
+            $normalized['entries'][] = compact('answer', 'clue', 'row', 'col', 'direction');
         }
     } elseif ($template === 'match') {
         $pairs = $config['pairs'] ?? null;

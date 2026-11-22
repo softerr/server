@@ -114,6 +114,25 @@ test('category names and groups survive edits in a temporary wheel', () => {
   ])
 })
 
+test('crossword entries retain clues when converting through match', () => {
+  const crossword = { entries: [
+    { answer: 'CAT', clue: 'Feline' },
+    { answer: 'DOG', clue: 'Canine' },
+  ] }
+  assert.deepEqual(convertTemplateConfig('crossword', 'match', crossword), {
+    pairs: [
+      { keyword: 'CAT', definition: 'Feline' },
+      { keyword: 'DOG', definition: 'Canine' },
+    ],
+  })
+  assert.deepEqual(convertTemplateConfig('match', 'crossword', {
+    pairs: [{ keyword: 'CAT', definition: 'House cat' }, { keyword: 'DOG', definition: 'Canine' }],
+  }, crossword), { entries: [
+    { answer: 'CAT', clue: 'House cat' },
+    { answer: 'DOG', clue: 'Canine' },
+  ] })
+})
+
 test('switching back from a template without options restores its cached draft', () => {
   const choices = { options: [{ text: 'A', correct: true }, { text: 'B', correct: false }] }
   assert.deepEqual(convertTemplateConfig('no_answer', 'multiple_choice', {}, choices), choices)

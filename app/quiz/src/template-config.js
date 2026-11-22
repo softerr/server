@@ -1,6 +1,6 @@
 const choices = new Set(['multiple_choice', 'one_choice'])
 const imageLists = new Set(['multiple_choice', 'one_choice', 'match', 'ordering', 'fill_blanks', 'categorize'])
-const lists = new Set([...imageLists, 'wheel', 'labeled_diagram'])
+const lists = new Set([...imageLists, 'wheel', 'labeled_diagram', 'crossword'])
 
 function entries(template, config) {
   if (choices.has(template)) return (config.options ?? []).map((option) => ({ ...option }))
@@ -14,6 +14,9 @@ function entries(template, config) {
   if (template === 'categorize') return (config.categories ?? []).flatMap((category) =>
     (category.items ?? []).map((item) => ({ ...item })))
   if (template === 'labeled_diagram') return (config.labels ?? []).map((label) => ({ ...label }))
+  if (template === 'crossword') return (config.entries ?? []).map((entry) => ({
+    text: entry.answer, clue: entry.clue,
+  }))
   if (template === 'true_false' || template === 'yes_no') {
     const labels = template === 'true_false' ? ['True', 'False'] : ['Yes', 'No']
     return labels.map((text, index) => ({ text, correct: config.answer === (index === 0) }))
@@ -97,7 +100,7 @@ export function convertTemplateConfig(from, to, current, cached = null) {
       const keywordId = imageId(item, { image_id: previous?.keyword_image_id }, supportsImages)
       const definitionId = from === 'match' ? item.definition_image_id : previous?.definition_image_id
       return {
-        keyword: item.text ?? '', definition: item.definition ?? previous?.definition ?? '',
+        keyword: item.text ?? '', definition: item.definition ?? item.clue ?? previous?.definition ?? '',
         ...(keywordId ? { keyword_image_id: keywordId } : {}),
         ...(definitionId ? { definition_image_id: definitionId } : {}),
       }
@@ -113,6 +116,13 @@ export function convertTemplateConfig(from, to, current, cached = null) {
     })), 2, () => ({ text: '', x: null, y: null }))
     const diagramId = cached ? old.diagram_image_id : current.diagram_image_id ?? current.image_id
     return { labels, ...(diagramId ? { diagram_image_id: diagramId } : {}) }
+  }
+
+  if (to === 'crossword') {
+    const previous = correspondingRows(source, old.entries, (entry) => entry.answer)
+    return { entries: atLeast(source.map((item, index) => ({
+      answer: item.text ?? '', clue: item.clue ?? item.definition ?? previous[index]?.clue ?? '',
+    })), 2, () => ({ answer: '', clue: '' })) }
   }
 
   if (to === 'categorize') {

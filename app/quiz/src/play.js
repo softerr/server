@@ -4,13 +4,14 @@ import { showMissingImageWhenUnavailable } from './missing-image.js'
 import { mediaImageUrl } from '@softerr/shared/media-client.js'
 import { makeScrollableDrag } from './pointer-drag.js'
 import { createWheelActivity } from './wheel.js'
+import { createCrosswordActivity } from './crossword.js'
 
 const templateNames = {
   multiple_choice: 'Multiple choice', one_choice: 'One choice', number: 'Number',
   short_answer: 'Short answer', open: 'Open answer', true_false: 'True/false',
   yes_no: 'Yes/no', show_answer: 'Show answer', no_answer: 'No answer', wheel: 'Wheel',
   match: 'Match', ordering: 'Ordering', fill_blanks: 'Fill in the blanks',
-  categorize: 'Categorize', labeled_diagram: 'Labeled diagram',
+  categorize: 'Categorize', labeled_diagram: 'Labeled diagram', crossword: 'Crossword',
 }
 
 const imageUrl = mediaImageUrl
@@ -400,6 +401,11 @@ export function buildQuestion(question, index) {
     canContinue = activity.canContinue
     finish = activity.finish
     onLock = activity.finish
+    getAnswer = activity.getAnswer
+    restoreAnswer = activity.restoreAnswer
+  } else if (question.template === 'crossword') {
+    const activity = createCrosswordActivity(answer, config)
+    grade = activity.grade
     getAnswer = activity.getAnswer
     restoreAnswer = activity.restoreAnswer
   } else if (question.template === 'match') {

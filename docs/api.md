@@ -575,6 +575,7 @@ Each returned question has
 | `show_answer` | `{"answer":"The answer"}` | Nonempty answer to reveal, up to 1000 bytes. |
 | `no_answer` | `{}` | Question only. |
 | `wheel` | `{"options":["Red","Blue","Green"]}` | At least 2 distinct text options, each up to 80 bytes. Players spin, keep the result, or eliminate it and spin again. The result is not graded. |
+| `crossword` | `{"entries":[{"answer":"CAT","clue":"A small feline","row":0,"col":0,"direction":"across"},{"answer":"TAR","clue":"Dark road material","row":0,"col":2,"direction":"down"}]}` | 2 to 20 distinct answers of 2 to 20 Latin letters, each with a clue up to 200 bytes. The editor builds the grid automatically. API clients provide zero-based row and column positions with `across` or `down`; crossing letters must agree and the grid must fit within 60 by 60 cells. Players fill the cells and the question is automatically graded. |
 | `match` | `{"pairs":[{"keyword":"France","definition":"Paris"},{"keyword":"Italy","definition":"Rome"}]}` | At least 2 pairs. |
 | `labeled_diagram` | `{"diagram_image_id":12,"labels":[{"text":"Heart","x":42.5,"y":30},{"text":"Lung","x":65,"y":45}]}` | Diagram image and 2 to 30 distinct labels; point coordinates are percentages from 0 to 100. |
 | `ordering` | `{"items":[{"text":"Wash"},{"text":"Cut"},{"text":"Cook"}]}` | At least 2 distinct items, listed in the correct order. |
@@ -590,6 +591,9 @@ category items are objects such as
 `{"text":"Dog","image_id":12}`. A field with its own image may have empty
 text. Image IDs must belong to the current account; the same ID may be used
 in multiple fields and questions.
+Crossword answers are saved as uppercase A–Z letters without spaces or punctuation.
+The play presentation includes clue positions and answer lengths, but omits answer letters.
+Crossword attempts save a `cells` object keyed by `"row,col"`, with one letter per filled cell.
 
 Choice option text is limited to 150 bytes; match keywords and definitions
 are limited to 150 bytes each and require text or an image. Ordering items
