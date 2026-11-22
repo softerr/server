@@ -3,6 +3,7 @@ import { mountImageLibrary } from './images.js'
 import { questionTypes, templateHints, templateIcons } from './question-templates.js'
 import { renderConfig, collectConfig } from './question-config.js'
 import { enableFieldNavigation } from './field-navigation.js'
+import { convertTemplateConfig } from './template-config.js'
 
 let nextCorrectGroup = 0
 
@@ -131,6 +132,8 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
     let savedQuestion = initialQuestion
     let savedSnapshot = null
     let saving = false
+    let renderedTemplate = null
+    const templateDrafts = new Map()
 
     function formSnapshot() {
       return JSON.stringify([...form.querySelectorAll('input, textarea, select')].map((control) => [
@@ -150,8 +153,10 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
     }
 
     function populate(question) {
+      templateDrafts.clear()
       card.dataset.questionId = question ? String(question.id) : ''
       templateSelect.value = question?.template ?? initialTemplate
+      renderedTemplate = templateSelect.value
       promptInput.value = question?.prompt ?? ''
       form.querySelector('[data-time-limit]').value = question?.time_limit_seconds ?? ''
       form.querySelector('[data-question-image]').replaceChildren(
@@ -168,7 +173,12 @@ export function mountQuestionEditor(app, section, quizId, { currentUser, request
     populate(savedQuestion)
 
     templateSelect.addEventListener('change', () => {
-      renderConfig(form, templateSelect.value, {}, imageLibrary)
+      const previous = collectConfig(form, renderedTemplate)
+      templateDrafts.set(renderedTemplate, previous)
+      const next = templateSelect.value
+      const config = convertTemplateConfig(renderedTemplate, next, previous, templateDrafts.get(next))
+      renderConfig(form, next, config, imageLibrary)
+      renderedTemplate = next
     })
     function onEdit() {
       setStatus(status, '')
