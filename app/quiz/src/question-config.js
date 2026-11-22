@@ -1,6 +1,7 @@
-import { addImagesIcon, imageIcon, moveDownIcon, moveUpIcon, removeIcon, swapSidesIcon } from './icons.js'
+import { addImagesIcon, imageIcon, removeIcon, swapSidesIcon } from './icons.js'
 import { collectDiagramConfig, disposeDiagramConfig, renderDiagramConfig } from './labeled-diagram.js'
 import { removeEmptyRowOnBackspace } from './field-navigation.js'
+import { createRowReorderHandle } from './reorder-rows.js'
 import { layoutCrossword } from './crossword-layout.js'
 import { renderCrosswordPreview } from './crossword.js'
 
@@ -35,21 +36,7 @@ function longField(labelText, value = '', required = true) {
 function rowActions(row, rows, onUpdate) {
   const actions = document.createElement('div')
   actions.className = 'question-row-actions'
-  for (const [direction, icon] of [['up', moveUpIcon], ['down', moveDownIcon]]) {
-    const move = document.createElement('button')
-    move.type = 'button'
-    move.className = 'icon-action'
-    move.dataset.moveRow = direction
-    move.innerHTML = icon
-    move.addEventListener('click', () => {
-      const sibling = direction === 'up' ? row.previousElementSibling : row.nextElementSibling
-      if (!sibling) return
-      rows.insertBefore(row, direction === 'up' ? sibling : sibling.nextElementSibling)
-      onUpdate()
-      move.focus()
-    })
-    actions.append(move)
-  }
+  actions.append(createRowReorderHandle(row, rows, onUpdate))
   const remove = document.createElement('button')
   remove.type = 'button'
   remove.className = 'icon-action'
@@ -71,13 +58,10 @@ function updateRowActions(rows, itemName, minimum) {
     remove.disabled = count <= minimum
     remove.setAttribute('aria-label', removeLabel)
     remove.title = removeLabel
-    for (const [direction, disabled] of [['up', index === 0], ['down', index === count - 1]]) {
-      const move = row.querySelector(`[data-move-row="${direction}"]`)
-      const label = `Move ${itemName} ${index + 1} ${direction}`
-      move.disabled = disabled
-      move.setAttribute('aria-label', label)
-      move.title = label
-    }
+    const handle = row.querySelector('[data-reorder-handle]')
+    handle.disabled = count < 2
+    handle.setAttribute('aria-label', `Reorder ${itemName} ${index + 1}`)
+    handle.title = 'Drag to reorder, or press Alt + Arrow up or down'
   })
 }
 
@@ -137,24 +121,26 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
       form.dispatchEvent(new Event('input'))
       row.querySelector(inputSelector).focus()
     })
+    if (!pickerSelector) {
+      placeholder.append(field.label)
+      return placeholder
+    }
     const body = document.createElement('div')
     body.className = 'question-image-field'
     body.append(field.label)
-    if (pickerSelector) {
-      const imageButton = document.createElement('button')
-      imageButton.type = 'button'
-      imageButton.className = 'image-picker-button'
-      imageButton.innerHTML = imageIcon
-      imageButton.setAttribute('aria-label', `Add ${label.toLowerCase()} with image`)
-      imageButton.title = `Add ${label.toLowerCase()} with image`
-      imageButton.addEventListener('click', () => {
-        const row = createRow()
-        if (!row) return
-        form.dispatchEvent(new Event('input'))
-        row.querySelector(`${pickerSelector} [data-choose-image]`).click()
-      })
-      body.append(imageButton)
-    }
+    const imageButton = document.createElement('button')
+    imageButton.type = 'button'
+    imageButton.className = 'image-picker-button'
+    imageButton.innerHTML = imageIcon
+    imageButton.setAttribute('aria-label', `Add ${label.toLowerCase()} with image`)
+    imageButton.title = `Add ${label.toLowerCase()} with image`
+    imageButton.addEventListener('click', () => {
+      const row = createRow()
+      if (!row) return
+      form.dispatchEvent(new Event('input'))
+      row.querySelector(`${pickerSelector} [data-choose-image]`).click()
+    })
+    body.append(imageButton)
     placeholder.append(body)
     return placeholder
   }
@@ -204,7 +190,9 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
         row.querySelector('[data-crossword-answer]').setAttribute('aria-label', `Crossword answer ${index + 1}`)
         row.querySelector('[data-crossword-clue]').setAttribute('aria-label', `Crossword clue ${index + 1}`)
       })
-      if (placeholder) placeholder.querySelector('input').disabled = rows.children.length >= 20
+      if (placeholder) placeholder.querySelectorAll('input').forEach((input) => {
+        input.disabled = rows.children.length >= 20
+      })
       queuePreview()
     }
     function addEntry(value = {}) {
@@ -231,8 +219,26 @@ export function renderConfig(form, template, config = {}, imageLibrary) {
     }
     const initial = Array.isArray(config.entries) && config.entries.length ? config.entries : [{}, {}]
     initial.forEach(addEntry)
-    placeholder = rowPlaceholder('Answer', addEntry, '[data-crossword-answer]', null, 40)
-    placeholder.classList.add('is-crossword')
+    placeholder = document.createElement('div')
+    placeholder.className = 'question-row-placeholder is-crossword'
+    for (const [name, maxLength] of [['Answer', 40], ['Clue', 200]]) {
+      const field = textField(name, '', maxLength)
+      field.label.classList.add('compact-field')
+      field.input.required = false
+      field.input.placeholder = name
+      field.input.setAttribute('aria-label', `Add crossword ${name.toLowerCase()}`)
+      field.input.addEventListener('focus', () => {
+        const row = addEntry()
+        if (!row) { field.input.blur(); return }
+        form.dispatchEvent(new Event('input'))
+        row.querySelector(`[data-crossword-${name.toLowerCase()}]`).focus()
+      })
+      placeholder.append(field.label)
+    }
+    const actionSpace = document.createElement('div')
+    actionSpace.className = 'question-row-actions crossword-placeholder-actions'
+    actionSpace.setAttribute('aria-hidden', 'true')
+    placeholder.append(actionSpace)
     updateRows()
     rows.addEventListener('input', queuePreview)
     fields.append(help, rows, placeholder, preview)

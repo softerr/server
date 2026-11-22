@@ -1,6 +1,7 @@
-import { moveDownIcon, moveUpIcon, removeIcon } from './icons.js'
+import { placePointIcon, removeIcon, selectedPointIcon } from './icons.js'
 import { mediaImageUrl } from '@softerr/shared/media-client.js'
 import { removeEmptyRowOnBackspace } from './field-navigation.js'
+import { createRowReorderHandle } from './reorder-rows.js'
 
 const MAX_LABELS = 30
 const listeners = new WeakMap()
@@ -36,12 +37,23 @@ export function renderDiagramConfig(fields, form, config, imageLibrary) {
   empty.className = 'diagram-editor-empty'
   empty.textContent = 'Choose an image to place label points.'
 
+  const list = document.createElement('div')
+  list.className = 'diagram-editor-list'
   const rows = document.createElement('div')
   rows.className = 'diagram-editor-rows'
-  const add = document.createElement('button')
-  add.type = 'button'
-  add.className = 'auth-button auth-button-secondary'
-  add.textContent = 'Add label'
+  const placeholder = document.createElement('div')
+  placeholder.className = 'diagram-editor-row is-placeholder'
+  const placeholderNumber = document.createElement('strong')
+  const placeholderLabel = document.createElement('label')
+  placeholderLabel.className = 'field'
+  const placeholderInput = document.createElement('input')
+  placeholderInput.type = 'text'
+  placeholderInput.maxLength = 150
+  placeholderInput.placeholder = 'Add label'
+  placeholderInput.setAttribute('aria-label', 'Add diagram label')
+  placeholderLabel.append(placeholderInput)
+  placeholder.append(placeholderNumber, placeholderLabel)
+  list.append(rows, placeholder)
   let selected = null
   let shownImageId = null
 
@@ -52,33 +64,36 @@ export function renderDiagramConfig(fields, form, config, imageLibrary) {
 
   function render() {
     const all = [...rows.children]
-    add.disabled = all.length >= MAX_LABELS
+    placeholderNumber.textContent = `${all.length + 1}.`
+    placeholderInput.disabled = all.length >= MAX_LABELS
     markers.replaceChildren()
     all.forEach((row, index) => {
       const active = row === selected
       row.classList.toggle('is-selected', active)
-      row.querySelector('[data-select-point]').textContent = active ? 'Selected' : 'Place point'
-      row.querySelector('[data-select-point]').setAttribute('aria-pressed', String(active))
+      const select = row.querySelector('[data-select-point]')
+      select.innerHTML = active ? selectedPointIcon : placePointIcon
+      select.setAttribute('aria-pressed', String(active))
       row.querySelector('[data-label-number]').textContent = `${index + 1}.`
       row.querySelector('[data-diagram-label]').setAttribute('aria-label', `Diagram label ${index + 1}`)
-      row.querySelector('[data-move-up]').disabled = index === 0
-      row.querySelector('[data-move-down]').disabled = index === all.length - 1
+      const handle = row.querySelector('[data-reorder-handle]')
+      handle.disabled = all.length < 2
+      handle.setAttribute('aria-label', `Reorder label ${index + 1}`)
+      handle.title = 'Drag to reorder, or press Alt + Arrow up or down'
       row.querySelector('[data-remove-label]').disabled = all.length <= 2
-      const x = Number(row.querySelector('[data-point-x]').value)
-      const y = Number(row.querySelector('[data-point-y]').value)
-      if (!row.querySelector('[data-point-x]').value || !row.querySelector('[data-point-y]').value) {
-        row.querySelector('[data-point-status]').textContent = 'Point not placed'
-        row.querySelector('[data-point-status]').hidden = false
-        return
-      }
-      row.querySelector('[data-point-status]').textContent = ''
-      row.querySelector('[data-point-status]').hidden = true
+      const xValue = row.querySelector('[data-point-x]').value
+      const yValue = row.querySelector('[data-point-y]').value
+      const placed = xValue !== '' && yValue !== ''
+      const placementStatus = placed ? 'placed' : 'not placed'
+      select.classList.toggle('is-point-placed', placed)
+      select.setAttribute('aria-label', `${active ? 'Unselect' : 'Select'} label ${index + 1} for point placement; point ${placementStatus}`)
+      select.title = `${active ? 'Unselect' : 'Select for'} point placement; point ${placementStatus}`
+      if (!placed) return
       const marker = document.createElement('button')
       marker.type = 'button'
       marker.className = 'diagram-editor-marker'
       marker.classList.toggle('is-selected', active)
-      marker.style.left = `${x}%`
-      marker.style.top = `${y}%`
+      marker.style.left = `${Number(xValue)}%`
+      marker.style.top = `${Number(yValue)}%`
       marker.textContent = String(index + 1)
       marker.title = row.querySelector('[data-diagram-label]').value.trim() || `Point ${index + 1}`
       marker.setAttribute('aria-label', `${active ? 'Unselect' : 'Select'} point ${index + 1}`)
@@ -86,6 +101,14 @@ export function renderDiagramConfig(fields, form, config, imageLibrary) {
       markers.append(marker)
     })
   }
+
+  placeholderInput.addEventListener('focus', () => {
+    if (rows.children.length >= MAX_LABELS) { placeholderInput.blur(); return }
+    selected = addRow()
+    render()
+    form.dispatchEvent(new Event('input'))
+    selected.querySelector('[data-diagram-label]').focus()
+  })
 
   function addRow(value = {}) {
     const row = document.createElement('div')
@@ -111,32 +134,18 @@ export function renderDiagramConfig(fields, form, config, imageLibrary) {
     y.value = value.y ?? ''
     const select = document.createElement('button')
     select.type = 'button'
+    select.className = 'icon-action'
     select.dataset.selectPoint = ''
     select.addEventListener('click', () => toggleSelection(row))
-    const status = document.createElement('span')
-    status.className = 'diagram-editor-point-status'
-    status.dataset.pointStatus = ''
     const placement = document.createElement('div')
     placement.className = 'diagram-editor-placement'
-    placement.append(select, status)
+    placement.append(select)
     const actions = document.createElement('div')
     actions.className = 'question-row-actions'
-    for (const [direction, icon] of [['up', moveUpIcon], ['down', moveDownIcon]]) {
-      const button = document.createElement('button')
-      button.type = 'button'
-      button.className = 'icon-action'
-      button.dataset[direction === 'up' ? 'moveUp' : 'moveDown'] = ''
-      button.innerHTML = icon
-      button.setAttribute('aria-label', `Move label ${direction}`)
-      button.addEventListener('click', () => {
-        const sibling = direction === 'up' ? row.previousElementSibling : row.nextElementSibling
-        if (!sibling) return
-        rows.insertBefore(row, direction === 'up' ? sibling : sibling.nextElementSibling)
-        render()
-        form.dispatchEvent(new Event('input'))
-      })
-      actions.append(button)
-    }
+    actions.append(createRowReorderHandle(row, rows, () => {
+      render()
+      form.dispatchEvent(new Event('input'))
+    }))
     const remove = document.createElement('button')
     remove.type = 'button'
     remove.className = 'icon-action'
@@ -183,16 +192,9 @@ export function renderDiagramConfig(fields, form, config, imageLibrary) {
     }
     render()
   }, { signal: controller.signal })
-  add.addEventListener('click', () => {
-    if (rows.children.length >= MAX_LABELS) return
-    selected = addRow()
-    render()
-    form.dispatchEvent(new Event('input'))
-    selected.querySelector('[data-diagram-label]').focus()
-  })
   const initial = Array.isArray(config.labels) && config.labels.length ? config.labels : [{}, {}]
   initial.forEach(addRow)
-  fields.append(help, imageField, canvas, empty, rows, add)
+  fields.append(help, imageField, canvas, empty, list)
   const id = Number(imagePicker.querySelector('[data-image-id]').value)
   shownImageId = id
   canvas.hidden = !id
@@ -204,7 +206,7 @@ export function collectDiagramConfig(fields) {
   const id = Number(fields.querySelector('[data-diagram-image] [data-image-id]').value)
   return {
     ...(id ? { diagram_image_id: id } : {}),
-    labels: [...fields.querySelectorAll('.diagram-editor-row')].map((row) => {
+    labels: [...fields.querySelectorAll('.diagram-editor-rows > .diagram-editor-row')].map((row) => {
       const x = row.querySelector('[data-point-x]').value
       const y = row.querySelector('[data-point-y]').value
       return {
