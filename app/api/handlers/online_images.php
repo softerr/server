@@ -91,7 +91,7 @@ function handleSearchOnlineImages(): never
     foreach ($data['query']['pages'] ?? [] as $page) {
         $info = $page['imageinfo'][0] ?? null;
         if (!is_array($info) || !is_int($page['pageid'] ?? null)
-            || !in_array($info['mime'] ?? null, ['image/png', 'image/jpeg', 'image/webp'], true)
+            || !in_array($info['mime'] ?? null, ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], true)
             || ($info['size'] ?? 0) < 1 || ($info['size'] ?? 0) > MEDIA_IMAGE_MAX_BYTES
             || ($info['width'] ?? 0) < 1 || ($info['width'] ?? 0) > 4096
             || ($info['height'] ?? 0) < 1 || ($info['height'] ?? 0) > 4096) continue;

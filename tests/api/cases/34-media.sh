@@ -4,10 +4,11 @@ test_shared_media_across_users_and_quizzes() (
   set -e
   # Earlier login cases may have exhausted the per-IP Nginx bucket.
   sudo -n systemctl restart nginx
-  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file svg_file private_file answer_file direct_file folder_file large_file thumbnail_file public_file response status shared_id private_id answer_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id public_attempt_id archive manifest count public_file_id public_file_url
+  local admin_email user_email admin_id user_id admin_cookie user_cookie png_file gif_file svg_file private_file answer_file direct_file folder_file large_file thumbnail_file public_file response status shared_id private_id answer_id direct_id folder_id group_id quiz_id history_quiz_id history_question_id public_attempt_id archive manifest count public_file_id public_file_url
   admin_cookie="$(mktemp)"
   user_cookie="$(mktemp)"
   png_file="$(mktemp)"
+  gif_file="$(mktemp)"
   svg_file="$(mktemp)"
   private_file="$(mktemp)"
   answer_file="$(mktemp)"
@@ -17,7 +18,7 @@ test_shared_media_across_users_and_quizzes() (
   thumbnail_file="$(mktemp)"
   public_file="$(mktemp)"
   archive="$(mktemp)"
-  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$svg_file" "$private_file" "$answer_file" "$direct_file" "$folder_file" "$large_file" "$thumbnail_file" "$public_file" "$archive"' EXIT
+  trap 'rm -f "$admin_cookie" "$user_cookie" "$png_file" "$gif_file" "$svg_file" "$private_file" "$answer_file" "$direct_file" "$folder_file" "$large_file" "$thumbnail_file" "$public_file" "$archive"' EXIT
 
   create_test_identity
   admin_email="$TEST_EMAIL"
@@ -577,6 +578,38 @@ test_shared_media_across_users_and_quizzes() (
   response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/media/images/${svg_id}")"
   [[ "${response##*$'\n'}" == 204 ]] || { fail_test "SVG cleanup failed: ${response}"; return 1; }
+
+  printf '%s' 'R0lGODlhAgABAIEAAP8AAAAAAAAAAAAAACH5BAAKAAAAIf8LTkVUU0NBUEUyLjADAQAAACwAAAAAAgABAAAIBQABAAgIACH5BAAKAAAAIf8LTkVUU0NBUEUyLjADAQAAACwAAAAAAgABAIEAAP8AAAAAAAAAAAAIBQABAAgIADs=' \
+    | base64 -d > "$gif_file"
+  response="$(curl -sS -b "$admin_cookie" --data-binary @"$gif_file" \
+    -H "X-Image-Name: api_test_${API_TEST_RUN_ID}.gif" -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images")"
+  local gif_id
+  gif_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
+  [[ "${response##*$'\n'}" == 201 && "$gif_id" =~ ^[1-9][0-9]*$ ]] \
+    || { fail_test "GIF upload failed: ${response}"; return 1; }
+  jq -e '.mime_type == "image/gif" and .width == 2 and .height == 1' \
+    <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "GIF metadata was not preserved: ${response}"; return 1; }
+  status="$(curl -sS -b "$admin_cookie" -D "$archive" -o "$thumbnail_file" -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${gif_id}")"
+  [[ "$status" == 200 ]] && cmp -s "$gif_file" "$thumbnail_file" \
+    || { fail_test 'Saved GIF bytes changed'; return 1; }
+  grep -Eiq '^Content-Type: image/gif' "$archive" \
+    || { fail_test 'Saved GIF was served with the wrong MIME type'; return 1; }
+  status="$(curl -sS -b "$admin_cookie" -o "$thumbnail_file" -w '%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${gif_id}/thumbnail")"
+  [[ "$status" == 200 ]] && cmp -s "$gif_file" "$thumbnail_file" \
+    || { fail_test 'Small GIF thumbnail did not preserve animation'; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -H 'Content-Type: application/json' \
+    --data "$(jq -nc --argjson id "$gif_id" '{image_ids:[$id]}')" \
+    "${API_TEST_BASE_URL%/}/api/media/thumbnails")"
+  jq -e --argjson id "$gif_id" 'any(.images[]; .id == $id and .mime_type == "image/gif")' \
+    <<<"$response" >/dev/null \
+    || { fail_test "GIF thumbnail was missing from batch: ${response}"; return 1; }
+  response="$(curl -sS -b "$admin_cookie" -X DELETE -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/media/images/${gif_id}")"
+  [[ "${response##*$'\n'}" == 204 ]] || { fail_test "GIF cleanup failed: ${response}"; return 1; }
 )
 
 register_test_case test_shared_media_across_users_and_quizzes

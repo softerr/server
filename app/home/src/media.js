@@ -55,7 +55,7 @@ export function renderMedia(app, { currentUser, requestJson, responseError, setS
             <p class="media-usage-limit" data-image-per-limit></p>
           </div>
           <button type="button" class="auth-button auth-button-secondary media-upload" id="media-upload">Upload images</button>
-          <input id="media-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" multiple hidden>
+          <input id="media-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg" multiple hidden>
         </div>
         <div id="media-grid" class="media-grid"></div>
         <div class="media-selection-actions">

@@ -32,7 +32,7 @@ export async function fetchMediaThumbnails(ids, signal) {
   const requested = new Set(ids)
   const sources = new Map()
   for (const image of payload.images) {
-    if (!requested.has(image.id) || !/^image\/(png|jpeg|webp)$/.test(image.mime_type)
+    if (!requested.has(image.id) || !/^image\/(png|jpeg|webp|gif)$/.test(image.mime_type)
       || typeof image.data !== 'string') continue
     sources.set(image.id, `data:${image.mime_type};base64,${image.data}`)
   }

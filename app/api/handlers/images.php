@@ -16,7 +16,7 @@ function validMediaImage(string $bytes): array
     }
     $info = @getimagesizefromstring($bytes);
     $mime = $info['mime'] ?? null;
-    if (in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)
+    if (in_array($mime, ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], true)
         && ($info[0] ?? 0) >= 1 && ($info[0] ?? 0) <= 4096
         && ($info[1] ?? 0) >= 1 && ($info[1] ?? 0) <= 4096) {
         return [$mime, $info[0], $info[1]];
@@ -25,7 +25,7 @@ function validMediaImage(string $bytes): array
         || preg_match('/<[A-Za-z_][A-Za-z0-9_.-]*:svg(?:\s|>)/', $bytes)) {
         return validMediaSvg($bytes);
     }
-    respond(400, ['error' => 'Choose a PNG, JPEG, WebP, or SVG image up to 4096 pixels per side']);
+    respond(400, ['error' => 'Choose a PNG, JPEG, WebP, GIF, or SVG image up to 4096 pixels per side']);
 }
 
 function validMediaSvg(string $bytes): array
@@ -57,7 +57,7 @@ function validMediaSvg(string $bytes): array
             if (str_starts_with(strtolower($attribute->localName), 'on')
                 || ($attribute->localName === 'href'
                     && !str_starts_with($attribute->value, '#')
-                    && !preg_match('~^data:image/(?:png|jpeg|webp);base64,~i', $attribute->value))) {
+                    && !preg_match('~^data:image/(?:png|jpeg|webp|gif);base64,~i', $attribute->value))) {
                 respond(400, ['error' => 'SVG image contains unsupported content']);
             }
         }
@@ -549,7 +549,7 @@ function storedMediaThumbnail($db, array $row): array
             }
             $mime = $row['mime_type'] === 'image/svg+xml'
                 ? 'image/svg+xml' : (@getimagesizefromstring($stored)['mime'] ?? null);
-            if (in_array($mime, ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'], true)) {
+            if (in_array($mime, ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'], true)) {
                 $bytes = $stored;
             } else {
                 throw new RuntimeException('Stored image thumbnail is invalid');

@@ -42,7 +42,8 @@ function fixture(kind, ids) {
     querySelector: (selector) => selector === 'thead th'
       ? { getBoundingClientRect: () => ({ bottom: 40 }) } : null,
   }
-  const sceneDocument = { createElement: () => new Handle(), elementFromPoint: () => hit }
+  const sceneDocument = { createElement: () => new Handle(), elementFromPoint: () => hit,
+    addEventListener() {}, removeEventListener() {} }
   globalThis.document = sceneDocument
   const controller = createOrderingController({
     page: { isConnected: true }, tableArea, endpoint: '/table',

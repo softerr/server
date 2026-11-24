@@ -18,7 +18,7 @@ export function renderSharedMedia(section, { currentUser, requestJson, responseE
         <h2 id="shared-folder-title"></h2>
         <div id="shared-path-rename" class="media-folder-actions" hidden></div>
       </div>
-      ${admin ? '<button id="shared-upload-button" type="button" class="auth-button auth-button-secondary media-upload">Upload images</button><input id="shared-upload-files" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" multiple hidden>' : ''}
+      ${admin ? '<button id="shared-upload-button" type="button" class="auth-button auth-button-secondary media-upload">Upload images</button><input id="shared-upload-files" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg" multiple hidden>' : ''}
     </div>
     <div id="shared-folders" class="media-grid"></div>
     <div id="shared-images" class="media-grid"></div>

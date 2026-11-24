@@ -1,27 +1,20 @@
 // Pointer based dragging leaves wheel events available to the page and preview dialog.
+import { bindPointerDrag, scrollNearPointer } from '@softerr/shared/pointer-drag.js'
+
 export function makeScrollableDrag(source, { canDrag, targetAt, drop, ignoreStart = () => false }) {
   let active = null
   let suppressClick = false
 
   function scrollNearEdge() {
-    if (!active?.dragging) return
+    if (!active?.started) return
     const { scroller, dialog, pointerX, pointerY } = active
     const bounds = dialog?.getBoundingClientRect() || {
       left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight,
     }
-    if (scroller.scrollHeight > scroller.clientHeight
-      && pointerX >= bounds.left && pointerX <= bounds.right
-      && pointerY >= bounds.top && pointerY <= bounds.bottom) {
-      const edge = Math.min(72, (bounds.bottom - bounds.top) / 4)
-      let speed = 0
-      if (pointerY < bounds.top + edge) speed = -Math.ceil(18 * (bounds.top + edge - pointerY) / edge)
-      else if (pointerY > bounds.bottom - edge) speed = Math.ceil(18 * (pointerY - bounds.bottom + edge) / edge)
-      scroller.scrollTop += speed
-    }
+    scrollNearPointer(scroller, bounds, pointerX, pointerY)
     active.frame = requestAnimationFrame(scrollNearEdge)
   }
 
-  source.addEventListener('dragstart', (event) => event.preventDefault())
   source.addEventListener('click', (event) => {
     if (!suppressClick) return
     event.preventDefault()
@@ -29,76 +22,46 @@ export function makeScrollableDrag(source, { canDrag, targetAt, drop, ignoreStar
     suppressClick = false
   }, true)
 
-  function finish(event, shouldDrop) {
-    if (!active || event.pointerId !== active.pointerId) return
-    const { ghost, dragging, frame } = active
-    const target = dragging && shouldDrop ? targetAt(event.clientX, event.clientY) : null
-    if (frame) cancelAnimationFrame(frame)
-    active = null
-    ghost?.remove()
-    source.classList.remove('is-pointer-dragging')
-    document.removeEventListener('keydown', onKeyDown, true)
-    if (source.hasPointerCapture(event.pointerId)) source.releasePointerCapture(event.pointerId)
-    if (dragging) {
-      suppressClick = true
-      setTimeout(() => { suppressClick = false }, 0)
-      if (target) drop(target)
-    }
-  }
-
-  function onKeyDown(event) {
-    if (event.key !== 'Escape' || !active) return
-    event.preventDefault()
-    event.stopPropagation()
-    finish({ pointerId: active.pointerId }, false)
-  }
-
-  source.addEventListener('pointerdown', (event) => {
-    if (active || !event.isPrimary || event.button !== 0 || !canDrag() || ignoreStart(event.target)) return
-    const rect = source.getBoundingClientRect()
-    const dialog = source.closest('dialog[open]')
-    active = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-      width: rect.width,
-      dialog,
-      scroller: dialog || document.scrollingElement,
-      pointerX: event.clientX,
-      pointerY: event.clientY,
-      frame: null,
-      ghost: null,
-      dragging: false,
-    }
-    source.setPointerCapture(event.pointerId)
-    document.addEventListener('keydown', onKeyDown, true)
-  })
-
-  source.addEventListener('pointermove', (event) => {
-    if (!active || event.pointerId !== active.pointerId) return
-    if (!active.dragging) {
-      if (Math.hypot(event.clientX - active.startX, event.clientY - active.startY) < 5) return
-      active.dragging = true
+  bindPointerDrag(source, {
+    canStart: (event) => !active && canDrag() && !ignoreStart(event.target),
+    onDown(drag) {
+      const rect = source.getBoundingClientRect()
+      const dialog = source.closest('dialog[open]')
+      Object.assign(drag, {
+        offsetX: drag.x - rect.left, offsetY: drag.y - rect.top,
+        width: rect.width, dialog, scroller: dialog || document.scrollingElement,
+        pointerX: drag.x, pointerY: drag.y, frame: null, ghost: null,
+      })
+      active = drag
+    },
+    onStart(drag) {
       const ghost = source.cloneNode(true)
       ghost.classList.add('play-drag-ghost')
       ghost.setAttribute('aria-hidden', 'true')
       ghost.inert = true
-      ghost.style.width = `${active.width}px`
+      ghost.style.width = `${drag.width}px`
       ;(source.closest('.play-drag-activity') || source.closest('dialog[open]') || document.body).append(ghost)
-      active.ghost = ghost
+      drag.ghost = ghost
       source.classList.add('is-pointer-dragging')
-      active.frame = requestAnimationFrame(scrollNearEdge)
-    }
-    active.pointerX = event.clientX
-    active.pointerY = event.clientY
-    active.ghost.style.left = `${event.clientX - active.offsetX}px`
-    active.ghost.style.top = `${event.clientY - active.offsetY}px`
-    event.preventDefault()
+      drag.frame = requestAnimationFrame(scrollNearEdge)
+    },
+    onMove(drag) {
+      drag.pointerX = drag.x
+      drag.pointerY = drag.y
+      drag.ghost.style.left = `${drag.x - drag.offsetX}px`
+      drag.ghost.style.top = `${drag.y - drag.offsetY}px`
+    },
+    onFinish(drag, shouldDrop) {
+      const target = shouldDrop ? targetAt(drag.x, drag.y) : null
+      if (drag.frame) cancelAnimationFrame(drag.frame)
+      active = null
+      drag.ghost?.remove()
+      source.classList.remove('is-pointer-dragging')
+      if (drag.started) {
+        suppressClick = true
+        setTimeout(() => { suppressClick = false }, 0)
+        if (target) drop(target)
+      }
+    },
   })
-
-  source.addEventListener('pointerup', (event) => finish(event, true))
-  source.addEventListener('pointercancel', (event) => finish(event, false))
-  source.addEventListener('lostpointercapture', (event) => finish(event, false))
 }

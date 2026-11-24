@@ -67,9 +67,9 @@ test('thumbnail batches ignore results from a replaced search', async () => {
     requests[0].resolve({ ok: true, json: async () => ({ images: [{ id: 4, mime_type: 'image/webp', data: 'b2xk' }] }) })
     await new Promise((resolve) => setTimeout(resolve, 0))
     assert.deepEqual(delivered, [])
-    requests[1].resolve({ ok: true, json: async () => ({ images: [{ id: 4, mime_type: 'image/webp', data: 'bmV3' }] }) })
+    requests[1].resolve({ ok: true, json: async () => ({ images: [{ id: 4, mime_type: 'image/gif', data: 'bmV3' }] }) })
     await new Promise((resolve) => setTimeout(resolve, 0))
-    assert.deepEqual(delivered, [[4, 'data:image/webp;base64,bmV3']])
+    assert.deepEqual(delivered, [[4, 'data:image/gif;base64,bmV3']])
   } finally {
     batcher.clear()
     globalThis.fetch = originalFetch

@@ -1,7 +1,7 @@
 import './style.css'
 import { startAuthApp } from '@softerr/shared/auth-app.js'
 import { createPageNotice } from '@softerr/shared/page-notice.js'
-import { removeIcon, deleteIcon, editIcon } from '@softerr/shared/icons.js'
+import { deleteIcon, editIcon } from '@softerr/shared/icons.js'
 import { setupMdbSuggestions } from './suggestions.js'
 import { renderDatabases } from './library.js'
 import { setupMdbSharing } from './sharing.js'
@@ -146,19 +146,6 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
           <button class="auth-button auth-button-primary" type="submit">Save</button>
         </div>
       </form>
-    </dialog>
-    <dialog id="mdb-image-dialog" class="mdb-dialog mdb-image-dialog" aria-labelledby="mdb-image-title">
-      <div class="mdb-image-heading">
-        <h2 id="mdb-image-title">Choose image</h2>
-        <button id="mdb-image-close" type="button" aria-label="Close image picker" title="Close">${removeIcon}</button>
-      </div>
-      <div class="mdb-image-filters">
-        <input id="mdb-image-search" type="search" aria-label="Search images" placeholder="Search images" autocomplete="off" />
-        <select id="mdb-image-folder" aria-label="Filter images by folder"><option value="all">All images</option></select>
-      </div>
-      <input id="mdb-image-upload" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden />
-      <div id="mdb-image-grid" class="mdb-image-grid"></div>
-      <p id="mdb-image-status" class="form-status" role="status" aria-live="polite"></p>
     </dialog>
     <dialog id="mdb-delete-dialog" class="mdb-dialog mdb-delete-dialog" aria-labelledby="mdb-delete-title">
       <h2 id="mdb-delete-title"></h2>

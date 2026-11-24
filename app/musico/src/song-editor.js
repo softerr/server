@@ -15,7 +15,7 @@ function albumArtworkName(match, mimeType) {
     if (encoder.encode(name + character).length > 240) break
     name += character
   }
-  const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[mimeType]
+  const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[mimeType]
   return `${name.trimEnd()}.${extension}`
 }
 
@@ -45,7 +45,15 @@ export function mountSongEditor(container, { requestJson, responseError, onSaved
   const artButton = dialog.querySelector('[data-art]')
   const message = dialog.querySelector('[data-status]')
   const undo = dialog.querySelector('[data-undo]')
-  const artwork = mountArtworkPicker(container, { requestJson, responseError })
+  const artwork = mountArtworkPicker(container, {
+    requestJson, responseError,
+    onDelete(id) {
+      if (artImageId === id) {
+        artImageId = null
+        renderArt()
+      }
+    },
+  })
   let current = null
   let artImageId = null
   let pendingArtwork = null
@@ -76,7 +84,7 @@ export function mountSongEditor(container, { requestJson, responseError, onSaved
   }
 
   artButton.addEventListener('click', async () => {
-    const selected = await artwork.open()
+    const selected = await artwork.open(artImageId)
     if (!dialog.open || selected === undefined) return
     clearPendingArtwork()
     artImageId = selected
@@ -150,7 +158,7 @@ export function mountSongEditor(container, { requestJson, responseError, onSaved
           const coverResponse = await fetch(coverUrl, { credentials: 'omit' })
           if (!coverResponse.ok) throw new Error('iTunes artwork is unavailable.')
           const cover = await coverResponse.blob()
-          if (!['image/jpeg', 'image/png', 'image/webp'].includes(cover.type)
+          if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(cover.type)
             || cover.size < 1 || cover.size > MAX_IMAGE_BYTES) {
             throw new Error('iTunes artwork exceeds the image limits.')
           }

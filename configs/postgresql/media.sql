@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS public.image_blob (
     id BIGSERIAL PRIMARY KEY,
     sha256 CHAR(64) NOT NULL UNIQUE,
-    mime_type VARCHAR(16) NOT NULL CHECK (mime_type IN ('image/png', 'image/jpeg', 'image/webp', 'image/svg+xml')),
+    mime_type VARCHAR(16) NOT NULL CHECK (mime_type IN ('image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml')),
     width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 4096),
     height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 4096),
     size_bytes INTEGER NOT NULL CONSTRAINT image_blob_size_bytes_check
@@ -15,11 +15,12 @@ BEGIN
         SELECT 1 FROM pg_constraint
         WHERE conrelid = 'public.image_blob'::regclass
           AND conname = 'image_blob_mime_type_check'
-          AND pg_get_constraintdef(oid) NOT LIKE '%image/svg+xml%'
+          AND (pg_get_constraintdef(oid) NOT LIKE '%image/gif%'
+            OR pg_get_constraintdef(oid) NOT LIKE '%image/svg+xml%')
     ) THEN
         ALTER TABLE public.image_blob DROP CONSTRAINT image_blob_mime_type_check;
         ALTER TABLE public.image_blob ADD CONSTRAINT image_blob_mime_type_check
-            CHECK (mime_type IN ('image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'));
+            CHECK (mime_type IN ('image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'));
     END IF;
 END $$;
 
