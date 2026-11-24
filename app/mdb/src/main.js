@@ -1,7 +1,7 @@
 import './style.css'
 import { startAuthApp } from '@softerr/shared/auth-app.js'
 import { createPageNotice } from '@softerr/shared/page-notice.js'
-import { removeIcon, deleteIcon } from '@softerr/shared/icons.js'
+import { removeIcon, deleteIcon, editIcon } from '@softerr/shared/icons.js'
 import { setupMdbSuggestions } from './suggestions.js'
 import { renderDatabases } from './library.js'
 import { setupMdbSharing } from './sharing.js'
@@ -42,6 +42,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         <div class="mdb-editor-heading-main">
           <a class="back-button" href="#home">← Databases</a>
           <h1 id="mdb-editor-title" class="section-title">Database</h1>
+          <button id="mdb-rename-button" class="mdb-rename-button" type="button" aria-label="Rename database" title="Rename database" hidden>${editIcon}</button>
         </div>
         <div class="mdb-editor-actions">
           <label class="mdb-editor-search">
@@ -88,6 +89,17 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
         <label class="field"><span>Access</span><select name="permission"><option value="view">Can view</option><option value="edit">Can edit</option></select></label>
         <p id="mdb-share-status" class="form-status" role="status" aria-live="polite"></p>
         <div class="dialog-actions"><button class="auth-button auth-button-primary" type="submit">Share</button></div>
+      </form>
+    </dialog>
+    <dialog id="mdb-rename-dialog" class="mdb-dialog" aria-labelledby="mdb-rename-title">
+      <h2 id="mdb-rename-title">Rename database</h2>
+      <form id="mdb-rename-form">
+        <label class="field"><span>Name</span><input name="name" maxlength="100" required autocomplete="off" /></label>
+        <p id="mdb-rename-status" class="form-status" role="status" aria-live="polite"></p>
+        <div class="dialog-actions">
+          <button id="mdb-rename-cancel" class="auth-button auth-button-secondary" type="button">Cancel</button>
+          <button class="auth-button auth-button-primary" type="submit">Save</button>
+        </div>
       </form>
     </dialog>
     <dialog id="mdb-column-dialog" class="mdb-dialog" aria-labelledby="mdb-column-title">
@@ -178,6 +190,10 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   const notice = createPageNotice(page.querySelector('.mdb-page'))
   const title = page.querySelector('#mdb-editor-title')
   const status = page.querySelector('#mdb-editor-status')
+  const renameButton = page.querySelector('#mdb-rename-button')
+  const renameDialog = page.querySelector('#mdb-rename-dialog')
+  const renameForm = page.querySelector('#mdb-rename-form')
+  const renameStatus = page.querySelector('#mdb-rename-status')
   const searchInput = page.querySelector('#mdb-row-search')
   const tableArea = page.querySelector('#mdb-table-area')
   const pageSizeSelect = page.querySelector('#mdb-page-size')
@@ -209,6 +225,51 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
   let allRowsLoading = false
   let currentTable = null
   let canEdit = false
+
+  renameButton.addEventListener('click', () => {
+    renameForm.elements.name.value = currentTable?.database.name ?? title.textContent
+    setStatus(renameStatus, '')
+    renameDialog.showModal()
+    renameForm.elements.name.focus()
+    renameForm.elements.name.select()
+  })
+  page.querySelector('#mdb-rename-cancel').addEventListener('click', () => renameDialog.close())
+  renameForm.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const name = renameForm.elements.name.value.trim()
+    if (!name) {
+      setStatus(renameStatus, 'Enter a database name.', true)
+      renameForm.elements.name.focus()
+      return
+    }
+    if (name === currentTable?.database.name) { renameDialog.close(); return }
+    const button = renameForm.querySelector('[type="submit"]')
+    if (button.disabled) return
+    button.disabled = true
+    setStatus(renameStatus, '')
+    try {
+      await Promise.all([...pendingWrites])
+      const [response, payload] = await requestJson('PATCH', endpoint, { name })
+      if (!page.isConnected) return
+      if (!response.ok) {
+        setStatus(renameStatus, responseError(response, payload), true)
+        return
+      }
+      title.textContent = payload.name
+      if (currentTable) currentTable.database.name = payload.name
+      const listed = databases.find((database) => database.id === databaseId)
+      if (listed) listed.name = payload.name
+      const related = relatedDatabases.get(databaseId)
+      if (related) related.database.name = payload.name
+      renameDialog.close()
+      notice.show('Database renamed.')
+    } catch (error) {
+      if (page.isConnected) setStatus(renameStatus,
+        error.message || 'Could not rename database. Please try again.', true)
+    } finally {
+      button.disabled = false
+    }
+  })
 
   let searchTimer = null
   searchInput.addEventListener('input', () => {
@@ -445,6 +506,7 @@ function renderDatabaseEditor(app, { requestJson, postJson, responseError, setSt
       canEdit = payload.database.permission !== 'view'
       page.querySelector('.mdb-editor').dataset.permission = payload.database.permission
       page.querySelector('#mdb-share-button').hidden = !payload.database.is_owner
+      renameButton.hidden = !payload.database.is_owner
       page.querySelector('#mdb-suggestions-button').hidden = !payload.database.is_owner
       page.querySelector('#mdb-import-button').hidden = !canEdit
       if (pageSize !== null && pageOffset > 0 && payload.total_rows <= pageOffset) {

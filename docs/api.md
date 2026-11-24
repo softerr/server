@@ -38,6 +38,8 @@ app-local user linked to the shared auth user ID; each created database belongs
 to that local user. A created database is a workspace record in the `mdb`
 PostgreSQL database. Click it to edit its single table.
 `GET /api/mdb/databases/{databaseId}` returns its columns, rows, and cell values.
+The owner can rename it with `PATCH /api/mdb/databases/{databaseId}` and
+`{"name":"New name"}`. Names stay unique per owner without regard to case.
 Add a column with `POST /api/mdb/databases/{databaseId}/columns` and a name
 plus `type`: `text`, `number`, `date`, `checkbox`, `select`, `multi_select`,
 `relation`, `multi_relation`, or `image`. Select columns also need an `options` array

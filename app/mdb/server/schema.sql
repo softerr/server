@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS public.row_create_suggestion (
 GRANT CONNECT ON DATABASE mdb TO auth_api;
 GRANT USAGE ON SCHEMA public TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public."user" TO auth_api;
-GRANT SELECT, INSERT ON TABLE public.user_database TO auth_api;
+GRANT SELECT, INSERT, UPDATE (name) ON TABLE public.user_database TO auth_api;
 GRANT SELECT, INSERT, DELETE, UPDATE (can_edit) ON TABLE public.database_share TO auth_api;
 GRANT SELECT, INSERT, DELETE ON TABLE public.database_column, public.database_row TO auth_api;
 GRANT UPDATE (name, position, width, type, options, relation_database_id, relation_display_column_id) ON TABLE public.database_column TO auth_api;

@@ -2,6 +2,7 @@ import { editIcon, deleteIcon, imageIcon, missingMediaIcon } from '@softerr/shar
 import { mediaThumbnailUrl } from '@softerr/shared/media-client.js'
 import { showMissingImageWhenUnavailable } from '@softerr/shared/missing-image.js'
 import { parsePastedDate } from './date-parse.js'
+import { enableCellNavigation } from './cell-navigation.js'
 
 const calendarIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
   <rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>
@@ -153,6 +154,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
     const sortButtons = new Map()
     const table = document.createElement('table')
     table.className = 'mdb-data-table'
+    enableCellNavigation(table)
     const columnWidths = data.columns.length
       ? data.columns.map((column) => column.width ?? (['checkbox', 'image'].includes(column.type) ? 128 : 220))
       : [220]
@@ -290,7 +292,6 @@ export function createTableController({ page, endpoint, requestJson, responseErr
     function updateRowDragHandles() {
       body.querySelectorAll('.mdb-drag-handle[data-order-kind="rows"]').forEach((handle) => {
         handle.disabled = !editable || getAllRowsLoading() || getActiveSort() !== null || getSearchQuery() !== ''
-        handle.draggable = !handle.disabled
       })
     }
     function applyView() {
@@ -307,7 +308,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
       const cell = document.createElement('th')
       cell.className = 'mdb-column-heading'
       cell.scope = 'col'
-      dropTarget(cell, 'columns', index, columnIds)
+      dropTarget(cell, 'columns', index)
       const contents = document.createElement('div')
       contents.className = 'mdb-column-heading-content'
       contents.append(dragHandle('columns', column, index, columnIds))
@@ -367,7 +368,7 @@ export function createTableController({ page, endpoint, requestJson, responseErr
         tr.dataset.rowId = String(row.id)
         rowData.set(row.id, row)
         rowElements.set(row.id, tr)
-        dropTarget(tr, 'rows', index, rowIds)
+        dropTarget(tr, 'rows', index)
         const number = document.createElement('th')
         number.scope = 'row'
         number.className = 'mdb-row-heading'

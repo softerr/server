@@ -6,13 +6,14 @@ const dragIcon = `<svg viewBox="0 0 16 20" fill="currentColor" aria-hidden="true
 export function createOrderingController({ page, tableArea, endpoint, requestJson, responseError,
   setStatus, status, notice, pendingWrites, refresh, applyRowOrder, rowsCannotReorder,
   getPageSize, getPageOffset }) {
-  let dragState = null
-  let touchDrag = null
-  let touchScrollFrame = null
+  let pointerDrag = null
+  let scrollFrame = null
+  let markedTarget = null
   let reordering = false
 
   function clearDropMarkers() {
-    tableArea.querySelectorAll('[data-drop-side]').forEach((item) => { delete item.dataset.dropSide })
+    if (markedTarget) delete markedTarget.dataset.dropSide
+    markedTarget = null
   }
 
   async function saveOrder(kind, oldIds, nextIds, focusId = null, movedId = focusId) {
@@ -64,12 +65,19 @@ export function createOrderingController({ page, tableArea, endpoint, requestJso
       : y >= bounds.top + bounds.height / 2
   }
 
-  function markDropTarget(element, kind, x, y) {
-    clearDropMarkers()
-    element.dataset.dropSide = targetSide(element, kind, x, y) ? 'after' : 'before'
+  function markDropTarget(element, drag) {
+    const targetIndex = Number(element.dataset.reorderIndex)
+    const sourceIndex = drag.ids.indexOf(drag.id)
+    if (targetIndex === sourceIndex || sourceIndex < 0) { clearDropMarkers(); return }
+    let after = targetSide(element, drag.kind, drag.x, drag.y)
+    if (targetIndex === sourceIndex + 1) after = true
+    if (targetIndex === sourceIndex - 1) after = false
+    if (markedTarget !== element) clearDropMarkers()
+    markedTarget = element
+    element.dataset.dropSide = after ? 'after' : 'before'
   }
 
-  function touchTarget(kind, x, y) {
+  function targetAt(kind, x, y) {
     if (kind === 'rows') {
       const bounds = tableArea.getBoundingClientRect()
       if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return null
@@ -86,36 +94,51 @@ export function createOrderingController({ page, tableArea, endpoint, requestJso
     return target && tableArea.contains(target) && target.dataset.reorderKind === kind ? target : null
   }
 
-  function updateTouchTarget() {
-    const { kind, x, y } = touchDrag
-    const target = touchTarget(kind, x, y)
-    if (target) markDropTarget(target, kind, x, y)
+  function updatePointerTarget() {
+    const drag = pointerDrag
+    const target = targetAt(drag.kind, drag.x, drag.y)
+    if (target) markDropTarget(target, drag)
     else clearDropMarkers()
   }
 
-  function stopTouchScroll() {
-    if (touchScrollFrame !== null) cancelAnimationFrame(touchScrollFrame)
-    touchScrollFrame = null
+  function stopPointer(drag) {
+    if (pointerDrag !== drag) return
+    if (scrollFrame !== null) cancelAnimationFrame(scrollFrame)
+    scrollFrame = null
+    pointerDrag = null
+    clearDropMarkers()
+    delete drag.handle.dataset.dragging
+    drag.handle.removeEventListener('lostpointercapture', drag.onLost)
+    if (drag.handle.hasPointerCapture(drag.pointerId)) {
+      drag.handle.releasePointerCapture(drag.pointerId)
+    }
   }
 
   function scrollWhileDragging() {
-    touchScrollFrame = null
-    if (!touchDrag || touchDrag.kind !== 'rows' || !page.isConnected) return
+    scrollFrame = null
+    const drag = pointerDrag
+    if (!drag?.started) return
+    if (!page.isConnected) { stopPointer(drag); return }
     const bounds = tableArea.getBoundingClientRect()
-    const { x, y } = touchDrag
-    if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return
-    const top = tableArea.querySelector('thead th')?.getBoundingClientRect().bottom ?? bounds.top
-    const topDistance = y - top
-    const bottomDistance = bounds.bottom - y
-    const distance = Math.min(topDistance, bottomDistance)
-    if (distance >= 64) return
-    const direction = topDistance < bottomDistance ? -1 : 1
-    const speed = Math.ceil(2 + 18 * Math.min(1, (64 - distance) / 64))
-    const previous = tableArea.scrollTop
-    tableArea.scrollTop += direction * speed
-    if (tableArea.scrollTop === previous) return
-    updateTouchTarget()
-    touchScrollFrame = requestAnimationFrame(scrollWhileDragging)
+    if (drag.x >= bounds.left && drag.x <= bounds.right
+      && drag.y >= bounds.top && drag.y <= bounds.bottom) {
+      const start = drag.kind === 'rows'
+        ? tableArea.querySelector('thead th')?.getBoundingClientRect().bottom ?? bounds.top
+        : bounds.left
+      const end = drag.kind === 'rows' ? bounds.bottom : bounds.right
+      const position = drag.kind === 'rows' ? drag.y : drag.x
+      const edge = Math.min(64, (end - start) / 4)
+      let speed = 0
+      if (position < start + edge) speed = -Math.ceil(20 * (start + edge - position) / edge)
+      else if (position > end - edge) speed = Math.ceil(20 * (position - end + edge) / edge)
+      if (speed && drag.kind === 'rows' && tableArea.scrollHeight > tableArea.clientHeight) {
+        tableArea.scrollTop += speed
+      } else if (speed && drag.kind === 'columns' && tableArea.scrollWidth > tableArea.clientWidth) {
+        tableArea.scrollLeft += speed
+      }
+    }
+    updatePointerTarget()
+    scrollFrame = requestAnimationFrame(scrollWhileDragging)
   }
 
   function dragHandle(kind, item, index, ids) {
@@ -123,21 +146,20 @@ export function createOrderingController({ page, tableArea, endpoint, requestJso
     handle.type = 'button'
     handle.className = 'mdb-drag-handle'
     handle.disabled = kind === 'rows' && rowsCannotReorder()
-    handle.draggable = !handle.disabled
+    handle.draggable = false
     handle.innerHTML = dragIcon
     handle.dataset.orderKind = kind
     handle.dataset.orderId = String(item.id)
     const direction = kind === 'columns' ? 'left or right' : 'up or down'
     handle.setAttribute('aria-label', `Reorder ${kind === 'columns' ? 'column' : 'row'} ${index + 1}`)
     handle.title = `Drag to reorder, or press Alt + Arrow ${direction}`
-    handle.addEventListener('dragstart', (event) => {
-      if (reordering || touchDrag || (kind === 'rows' && rowsCannotReorder())) { event.preventDefault(); return }
-      dragState = { kind, id: item.id }
-      event.dataTransfer.effectAllowed = 'move'
-      event.dataTransfer.setData('text/plain', String(item.id))
-    })
-    handle.addEventListener('dragend', () => { dragState = null; clearDropMarkers() })
+    handle.addEventListener('dragstart', (event) => event.preventDefault())
     handle.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && pointerDrag?.handle === handle) {
+        event.preventDefault()
+        stopPointer(pointerDrag)
+        return
+      }
       const currentIndex = ids.indexOf(item.id)
       const step = kind === 'columns'
         ? (event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0)
@@ -151,57 +173,57 @@ export function createOrderingController({ page, tableArea, endpoint, requestJso
       saveOrder(kind, ids, nextIds, item.id)
     })
     handle.addEventListener('pointerdown', (event) => {
-      if (event.pointerType === 'mouse' || touchDrag || reordering
+      if (!event.isPrimary || event.button !== 0 || handle.disabled || pointerDrag || reordering
         || (kind === 'rows' && rowsCannotReorder())) return
       event.preventDefault()
+      const drag = { kind, id: item.id, ids, handle, pointerId: event.pointerId,
+        startX: event.clientX, startY: event.clientY,
+        x: event.clientX, y: event.clientY, started: false }
+      drag.onLost = (lost) => {
+        if (lost.pointerId === drag.pointerId) stopPointer(drag)
+      }
+      pointerDrag = drag
+      handle.addEventListener('lostpointercapture', drag.onLost)
       handle.setPointerCapture(event.pointerId)
-      touchDrag = { kind, id: item.id, ids, pointerId: event.pointerId, x: null, y: null }
+      handle.focus({ preventScroll: true })
     })
     handle.addEventListener('pointermove', (event) => {
-      if (touchDrag?.pointerId !== event.pointerId) return
-      touchDrag.x = event.clientX
-      touchDrag.y = event.clientY
-      updateTouchTarget()
-      if (kind === 'rows' && touchScrollFrame === null) {
-        touchScrollFrame = requestAnimationFrame(scrollWhileDragging)
+      const drag = pointerDrag
+      if (drag?.handle !== handle || drag.pointerId !== event.pointerId) return
+      drag.x = event.clientX
+      drag.y = event.clientY
+      if (!drag.started) {
+        if (Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < 5) return
+        drag.started = true
+        handle.dataset.dragging = ''
       }
+      event.preventDefault()
+      updatePointerTarget()
+      if (scrollFrame === null) scrollFrame = requestAnimationFrame(scrollWhileDragging)
     })
     handle.addEventListener('pointerup', (event) => {
-      if (touchDrag?.pointerId !== event.pointerId) return
-      stopTouchScroll()
-      const target = touchTarget(kind, event.clientX, event.clientY)
-      const after = target && targetSide(target, kind, event.clientX, event.clientY)
-      touchDrag = null
-      clearDropMarkers()
-      if (target) reorderFromDrop(kind, ids, item.id, Number(target.dataset.reorderIndex), after)
+      const drag = pointerDrag
+      if (drag?.handle !== handle || drag.pointerId !== event.pointerId) return
+      drag.x = event.clientX
+      drag.y = event.clientY
+      if (drag.started) updatePointerTarget()
+      const target = drag.started && markedTarget
+      const targetIndex = target && Number(target.dataset.reorderIndex)
+      const after = target?.dataset.dropSide === 'after'
+      stopPointer(drag)
+      if (target) reorderFromDrop(kind, ids, item.id, targetIndex, after)
     })
     handle.addEventListener('pointercancel', (event) => {
-      if (touchDrag?.pointerId !== event.pointerId) return
-      stopTouchScroll()
-      touchDrag = null
-      clearDropMarkers()
+      if (pointerDrag?.handle === handle && pointerDrag.pointerId === event.pointerId) {
+        stopPointer(pointerDrag)
+      }
     })
     return handle
   }
 
-  function dropTarget(element, kind, index, ids) {
+  function dropTarget(element, kind, index) {
     element.dataset.reorderKind = kind
     element.dataset.reorderIndex = String(index)
-    element.addEventListener('dragover', (event) => {
-      if (dragState?.kind !== kind || reordering || (kind === 'rows' && rowsCannotReorder())) return
-      event.preventDefault()
-      event.dataTransfer.dropEffect = 'move'
-      markDropTarget(element, kind, event.clientX, event.clientY)
-    })
-    element.addEventListener('drop', (event) => {
-      if (dragState?.kind !== kind || reordering || (kind === 'rows' && rowsCannotReorder())) return
-      event.preventDefault()
-      const movedId = dragState.id
-      const after = element.dataset.dropSide === 'after'
-      dragState = null
-      clearDropMarkers()
-      reorderFromDrop(kind, ids, movedId, Number(element.dataset.reorderIndex), after)
-    })
   }
 
   return { dragHandle, dropTarget }

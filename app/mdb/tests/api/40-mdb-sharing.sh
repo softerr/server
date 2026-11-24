@@ -59,6 +59,10 @@ test_mdb_database_sharing() (
   sharing_request "${owner_cookie}" POST /api/mdb/databases '{"name":"Shared project"}'
   assert_status 201
   database_id="$(json_field_or_empty '.id')"
+  sharing_request "${owner_cookie}" PATCH "/api/mdb/databases/${database_id}" \
+    '{"name":"Renamed shared project"}'
+  assert_status 200
+  assert_json_value '.name' 'Renamed shared project'
   sharing_request "${guest_cookie}" GET "/api/mdb/databases/${database_id}"
   assert_status 404
   sharing_request "${owner_cookie}" POST "/api/mdb/databases/${database_id}/shares" \
@@ -98,6 +102,9 @@ test_mdb_database_sharing() (
   assert_status 201
   row_id="$(json_field_or_empty '.id')"
   [[ "${row_id}" =~ ^[1-9][0-9]*$ ]] || { fail_test 'Editor did not create a row'; return 1; }
+  sharing_request "${guest_cookie}" PATCH "/api/mdb/databases/${database_id}" \
+    '{"name":"Guest rename"}'
+  assert_status 404
   sharing_request "${owner_cookie}" PATCH "/api/mdb/databases/${database_id}/shares/${guest_id}" \
     '{"permission":"view"}'
   assert_status 200

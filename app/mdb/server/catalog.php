@@ -59,6 +59,26 @@ function handleCreateMdbDatabase(array $user): never
     respond(201, publicMdbDatabase($row));
 }
 
+function handleRenameMdbDatabase(array $user, int $databaseId): never
+{
+    $payload = readJsonBody();
+    $name = mdbName($payload['name'] ?? null);
+    $db = connectAppDb('mdb');
+    mdbBeginWrite($db, $user, $databaseId, [], true, true);
+    $updated = @pg_query_params($db,
+        'UPDATE public.user_database d SET name = $2
+         WHERE d.id = $1 AND NOT EXISTS (
+             SELECT 1 FROM public.user_database existing
+             WHERE existing.user_id = d.user_id AND existing.id <> d.id
+               AND lower(existing.name) = lower($2))
+         RETURNING d.id, d.name, d.created', [$databaseId, $name]);
+    if ($updated === false) respond(500, ['error' => 'Failed to rename database']);
+    $row = pg_fetch_assoc($updated);
+    if ($row === false) respond(409, ['error' => 'A database with this name already exists']);
+    if (@pg_query($db, 'COMMIT') === false) respond(500, ['error' => 'Failed to rename database']);
+    respond(200, publicMdbDatabase($row));
+}
+
 function handleGetMdbDatabase(array $user, int $databaseId): never
 {
     $db = connectAppDb('mdb');

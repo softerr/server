@@ -169,6 +169,36 @@ paths:
         in: path
         required: true
         schema: {type: integer, format: int64, minimum: 1}
+    patch:
+      tags: [MDB]
+      operationId: renameMdbDatabase
+      summary: Rename an owned database
+      description: Names must be unique within the owner's account, ignoring case. Shared editors cannot rename databases.
+      security:
+        - sessionCookie: []
+        - apiBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, minLength: 1, maxLength: 100}
+      responses:
+        '200':
+          description: Database renamed.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MdbDatabase'}
+        '400': {description: Invalid database name or JSON body.}
+        '401': {description: No active session.}
+        '403': {description: API token lacks permission for this operation; mobile tokens cannot access MDB.}
+        '404': {description: Database not owned by this account.}
+        '409': {description: A database with this name already exists.}
+        '413': {description: Request body is too large.}
+        '500': {$ref: '#/components/responses/InternalError'}
     get:
       tags: [MDB]
       operationId: getMdbDatabase

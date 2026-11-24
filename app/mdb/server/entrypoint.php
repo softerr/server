@@ -38,6 +38,7 @@ if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)$#D', $path, $matc
         }
         handleGetMdbDatabase($authUser, $id);
     }
+    if ($method === 'PATCH') handleRenameMdbDatabase($authUser, $id);
     respond(405, ['error' => 'Method not allowed']);
 }
 if (is_string($path) && preg_match('#^/databases/([1-9][0-9]*)/shares$#D', $path, $match)) {

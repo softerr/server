@@ -5,6 +5,8 @@ test_mdb_database_library() (
   assert_status 401 || return 1
   api_request POST /api/mdb/databases '{"name":"Guest database"}'
   assert_status 401 || return 1
+  api_request PATCH /api/mdb/databases/1 '{"name":"Guest name"}'
+  assert_status 401 || return 1
   api_request PUT /api/mdb/databases/1/columns/order '{"ids":[]}'
   assert_status 401 || return 1
   api_request DELETE /api/mdb/databases/1/rows/1
@@ -138,6 +140,37 @@ test_mdb_database_library() (
   other_id="$(jq -r '.id // empty' <<<"${response%$'\n'*}")"
   [[ "${response##*$'\n'}" == 201 && "${other_id}" =~ ^[1-9][0-9]*$ ]] \
     || { fail_test "MDB could not create a second database: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"  Updated records  "}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    && jq -e '.name == "Updated records" and .is_owner == true' \
+      <<<"${response%$'\n'*}" >/dev/null \
+    || { fail_test "MDB could not rename a database: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}")"
+  jq -e '.database.name == "Updated records"' <<<"${response}" >/dev/null \
+    || { fail_test "MDB editor did not return the renamed database: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases")"
+  jq -e --argjson id "${database_id}" \
+    '.databases | any(.id == $id and .name == "Updated records")' <<<"${response}" >/dev/null \
+    || { fail_test "MDB library did not return the renamed database: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"ANOTHER TABLE"}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}")"
+  [[ "${response##*$'\n'}" == 409 ]] \
+    || { fail_test "MDB accepted a duplicate database name: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"   "}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}")"
+  [[ "${response##*$'\n'}" == 400 ]] \
+    || { fail_test "MDB accepted an empty database name: ${response}"; return 1; }
+  response="$(curl -sS -b "${cookie_file}" -X PATCH -H 'Content-Type: application/json' \
+    --data '{"name":"Personal records"}' -w $'\n%{http_code}' \
+    "${API_TEST_BASE_URL%/}/api/mdb/databases/${database_id}")"
+  [[ "${response##*$'\n'}" == 200 ]] \
+    || { fail_test "MDB could not restore the database name: ${response}"; return 1; }
   response="$(curl -sS -b "${cookie_file}" -X POST -H 'Content-Type: application/json' \
     --data '{}' -w $'\n%{http_code}' \
     "${API_TEST_BASE_URL%/}/api/mdb/databases/${other_id}/rows")"

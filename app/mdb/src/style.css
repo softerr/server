@@ -402,6 +402,23 @@
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
+.mdb-rename-button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--field);
+  color: var(--text-grey);
+  cursor: pointer;
+}
+.mdb-rename-button svg { width: 18px; height: 18px; }
+.mdb-rename-button:hover,
+.mdb-rename-button:focus-visible { color: var(--accent); border-color: var(--accent); }
+.mdb-rename-button:focus-visible { outline: 1px solid var(--accent); }
 
 .mdb-editor-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; max-width: 100%; }
 .mdb-editor-search {
