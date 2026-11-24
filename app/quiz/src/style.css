@@ -240,7 +240,6 @@
 
 .quiz-preview-dialog::backdrop { background: #121212dd; }
 .quiz-preview-dialog .quiz-play-page { width: 100%; padding-top: 24px; }
-.quiz-preview-dialog [data-preview-next] { margin-left: auto; }
 .quiz-preview-toolbar {
   position: sticky;
   top: 0;

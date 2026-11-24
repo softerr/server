@@ -10,6 +10,7 @@ startAuthApp({
   name: 'Quiz',
   homeHref: '/quiz/',
   signupPrompt: 'New to Quiz?',
+  authenticatedDefaultView: 'explore',
   views: ['explore', 'library', 'edit', 'play', 'results', 'attempts', 'attempt'],
   links: [
     { view: 'explore', label: 'Explore' },

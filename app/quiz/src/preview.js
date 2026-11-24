@@ -1,5 +1,7 @@
-import { buildQuestion } from './play.js'
-import { createPreviewQuestionSequence } from './question-sequence.js'
+import { createPreviewSource } from './preview-source.js'
+import { createQuizRunner } from './quiz-runner.js'
+import { decorateReviewedQuestion } from './review.js'
+import { renderScoreSummary } from './score-summary.js'
 
 function element(tag, className = '', text) {
   const node = document.createElement(tag)
@@ -14,153 +16,115 @@ export function openQuizPreview(dialog, quiz, questions) {
       <span>Preview · Answers are not saved</span>
       <button class="icon-action quiz-preview-close" type="button" aria-label="Close preview" title="Close preview">×</button>
     </div>
-    <main class="quiz-play-page">
-      <h1 class="section-title"></h1>
-      <p class="play-description" hidden></p>
-      <div class="play-progress"></div>
-      <div class="play-timers" data-preview-timers hidden><span data-preview-quiz-timer hidden></span><span data-preview-question-timer hidden></span></div>
-      <div class="quiz-preview-questions"></div>
-      <div class="play-controls">
-        <button class="auth-button auth-button-secondary" type="button" data-preview-previous>Previous</button>
-        <button class="auth-button auth-button-secondary" type="button" data-preview-finish hidden>Finish preview</button>
-        <button class="auth-button auth-button-primary" type="button" data-preview-next>Next</button>
-      </div>
-    </main>
   `
-  const page = dialog.querySelector('.quiz-play-page')
-  page.querySelector('h1').textContent = quiz.name
-  const description = page.querySelector('.play-description')
-  description.textContent = quiz.description
-  description.hidden = !quiz.description
-  const gameShow = quiz.play_style === 'game_show'
-  page.classList.add(gameShow ? 'is-game-show' : 'is-basic')
-  const progress = page.querySelector('.play-progress')
-  const timerArea = page.querySelector('[data-preview-timers]')
-  const quizTimer = page.querySelector('[data-preview-quiz-timer]')
-  const questionTimer = page.querySelector('[data-preview-question-timer]')
-  const questionArea = page.querySelector('.quiz-preview-questions')
-  const controls = page.querySelector('.play-controls')
-  const previous = page.querySelector('[data-preview-previous]')
-  const next = page.querySelector('[data-preview-next]')
-  const finish = page.querySelector('[data-preview-finish]')
+  const runner = createQuizRunner(dialog, {
+    initialTitle: quiz.name,
+    finishLabel: 'Finish preview',
+    scrollToTop: () => { dialog.scrollTop = 0 },
+  })
+  runner.configure(quiz)
+  const { page, progress, timerArea, summary, questionArea, controls } = runner
+  questionArea.id = 'preview-review-questions'
   const unlimited = quiz.question_limit === 0
-  finish.hidden = !unlimited
-  if (unlimited) progress.classList.add('is-unlimited')
-  const sequence = createPreviewQuestionSequence(questions, quiz)
+  const source = createPreviewSource(quiz, questions)
   const views = []
+  const reviewQuestions = []
   const deadlines = []
   const quizDeadline = quiz.time_limit_seconds === null ? null : Date.now() + quiz.time_limit_seconds * 1000
-  const remaining = (deadline) => Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
-  const clockText = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
   let tickTimer = null
   let completed = false
-  const expiredQuestions = new Set()
-  function previewPresentation(source) {
-    if (!quiz.randomize_answers) return source
-    const config = { ...source.config }
-    const shuffle = (items) => {
-      const copy = [...items]
-      for (let index = copy.length - 1; index > 0; index--) {
-        const other = Math.floor(Math.random() * (index + 1))
-        ;[copy[index], copy[other]] = [copy[other], copy[index]]
-      }
-      return copy
-    }
-    if (['multiple_choice', 'one_choice'].includes(source.template)) config.options = shuffle(config.options)
-    if (source.template === 'match') config.pairs = shuffle(config.pairs)
-    if (source.template === 'categorize') config.categories = shuffle(config.categories)
-    return { ...source, config }
-  }
   function appendView() {
-    const source = sequence.next()
-    const view = buildQuestion(previewPresentation(source), views.length)
-    view.timeLimit = source.time_limit_seconds
-    view.card.addEventListener('change', () => {
-      if (views[position] === view) updateContinueControls()
+    const presented = source.nextQuestion()
+    const view = runner.addQuestion(presented, views.length, {
+      onChange: () => {
+        if (views[position] === view) flow.updateControls()
+      },
     })
+    reviewQuestions.push({ ...presented,
+      solution: { ...presented.config, ...(view.displayOrder ? { _display_order: view.displayOrder } : {}) } })
+    view.timeLimit = presented.time_limit_seconds
     views.push(view)
     deadlines.push(null)
-    questionArea.append(view.card)
   }
-  const initialCount = sequence.initialCount
+  const initialCount = source.initialCount
   for (let i = 0; i < initialCount; i++) appendView()
   let position = 0
-
-  function updateContinueControls() {
-    const ready = views[position]?.canContinue() ?? true
-    next.disabled = !ready
-    finish.disabled = !ready
-  }
+  const flow = runner.createFlow({
+    currentQuestion: () => views[position],
+    isUnlimited: () => unlimited,
+    isLast: () => position === views.length - 1,
+    onAdvance: advancePreview,
+    onFinish: completePreview,
+  })
 
   function showPosition() {
     if (views[position].timeLimit !== null && deadlines[position] === null) {
       deadlines[position] = Date.now() + views[position].timeLimit * 1000
     }
-    views.forEach(({ card }, index) => { card.hidden = index !== position })
-    progress.textContent = unlimited ? `Question ${position + 1} · Until you finish` : `Question ${position + 1} of ${views.length}`
-    if (!unlimited) progress.style.setProperty('--progress', `${(position / views.length) * 100}%`)
-    previous.hidden = !quiz.allow_go_back || position === 0
-    next.textContent = !unlimited && position === views.length - 1 ? 'Finish preview' : 'Next'
-    updateContinueControls()
-    dialog.scrollTop = 0
+    runner.showPosition({ views, position, total: views.length, unlimited, allowGoBack: quiz.allow_go_back, flow })
     tick()
   }
 
   function tick() {
     if (completed || !dialog.open) { clearInterval(tickTimer); return }
-    quizTimer.hidden = quizDeadline === null
-    if (quizDeadline !== null) quizTimer.textContent = `Quiz ${clockText(remaining(quizDeadline))}`
-    const deadline = deadlines[position]
-    questionTimer.hidden = deadline === null
-    if (deadline !== null) questionTimer.textContent = `Question ${clockText(remaining(deadline))}`
-    timerArea.hidden = quizTimer.hidden && questionTimer.hidden
-    if (quizDeadline !== null && remaining(quizDeadline) === 0) { completePreview(); return }
-    if (deadline !== null && remaining(deadline) === 0 && !expiredQuestions.has(position)) {
-      expiredQuestions.add(position)
-      views[position].lock()
-      if (!unlimited && position === views.length - 1) completePreview()
-      else if (!unlimited) advancePreview()
-    }
+    flow.tick({ quizDeadline, questionDeadline: deadlines[position],
+      questionTimeLimit: views[position]?.timeLimit ?? null })
   }
 
-  previous.addEventListener('click', () => {
+  runner.bindControls(flow, () => {
     if (quiz.allow_go_back && position > 0) { position--; showPosition() }
   })
   function completePreview() {
     if (completed) return
     completed = true
     clearInterval(tickTimer)
-    const results = views.map((view) => view.complete())
+    const results = views.map((view, index) => {
+      const answer = view.getAnswer()
+      const result = view.complete()
+      decorateReviewedQuestion(view, reviewQuestions[index], answer, result)
+      view.card.hidden = true
+      return result
+    })
     const graded = results.filter((result) => result !== null).length
     const correct = results.filter((result) => result === true).length
     const matchScores = views.flatMap((view) => view.matchScore ? [view.matchScore()] : [])
     const matchTotal = matchScores.reduce((sum, score) => sum + score.total, 0)
     const matchCorrect = matchScores.reduce((sum, score) => sum + score.correct, 0)
-    const summary = element('section', 'play-results')
-    summary.append(element('h2', '', 'Preview complete'),
-      element('p', '', graded
-        ? `${correct} of ${graded} automatically graded questions correct.`
-        : 'This quiz has no automatically graded questions.'))
-    if (matchTotal) summary.append(element('p', '', `Match choices: ${matchCorrect} of ${matchTotal} correct.`))
-    summary.append(element('p', '', 'Answers were not saved.'))
-    questionArea.replaceChildren(summary)
+    const diagramScores = views.flatMap((view) => view.diagramScore ? [view.diagramScore()] : []).filter(Boolean)
+    const diagramTotal = diagramScores.reduce((sum, score) => sum + score.total, 0)
+    const diagramCorrect = diagramScores.reduce((sum, score) => sum + score.correct, 0)
+    const reviewButton = element('button', 'auth-button auth-button-secondary', 'Review answers')
+    reviewButton.type = 'button'
+    reviewButton.setAttribute('aria-expanded', 'false')
+    reviewButton.setAttribute('aria-controls', 'preview-review-questions')
+    reviewButton.addEventListener('click', () => {
+      const showing = reviewButton.getAttribute('aria-expanded') !== 'true'
+      reviewButton.setAttribute('aria-expanded', String(showing))
+      reviewButton.textContent = showing ? 'Hide answers' : 'Review answers'
+      views.forEach((view) => { view.card.hidden = !showing })
+      page.classList.toggle('quiz-review-page', showing)
+      questionArea.classList.toggle('review-questions', showing)
+      dialog.scrollTop = 0
+    })
+    renderScoreSummary(summary, { title: 'Preview complete',
+      score: { graded, correct, ungraded: results.length - graded,
+        match_total: matchTotal, match_correct: matchCorrect,
+        diagram_total: diagramTotal, diagram_correct: diagramCorrect },
+      notice: 'Answers were not saved.', actions: [reviewButton] })
     progress.hidden = true
     timerArea.hidden = true
     controls.hidden = true
     dialog.scrollTop = 0
   }
-  finish.addEventListener('click', () => { if (views[position]?.canContinue()) completePreview() })
   function advancePreview() {
-    if (!views[position]?.canContinue()) return
     if (position < views.length - 1) { position++; showPosition(); return }
-    if (!unlimited) { completePreview(); return }
     appendView()
     position++
     showPosition()
   }
-  next.addEventListener('click', advancePreview)
   dialog.querySelector('.quiz-preview-close').addEventListener('click', () => { clearInterval(tickTimer); dialog.close() })
   dialog.showModal()
+  runner.setReady()
   showPosition()
   tickTimer = setInterval(tick, 250)
 }

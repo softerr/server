@@ -17,7 +17,9 @@ export function startAuthApp(config) {
     if (['signup', 'login', 'forgot-password', 'reset'].includes(view)) return view
     if (config.publicViews?.includes(view)) return view
     if (canOpenPrivateView(view)) return view
-    return config.defaultView ?? (currentUser ? 'home' : 'login')
+    return currentUser
+      ? config.authenticatedDefaultView ?? config.defaultView ?? 'home'
+      : config.defaultView ?? 'login'
   }
 
   function navigate(view) {
