@@ -17,7 +17,7 @@
     "globals": "17.14.0"
   },
   "dependencies": {
-    "music-metadata": "^12.5.0",
+    "music-metadata": "^12.8.1",
     "@softerr/shared": "file:../shared"
   }
 }
